@@ -22,3 +22,9 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 beamlet-*.tar
 
+# Environment variables
+.env
+.envrc
+
+# Data dir
+/data/
