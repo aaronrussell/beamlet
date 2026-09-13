@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-13
+**Last updated:** 2026-09-13 (config settled; policy and identity direction recorded)
 
 ---
 
@@ -68,9 +68,9 @@ beamlet/                 the repo and the hex package
 
 The library is a **child spec** a host starts in its own supervision
 tree; it declares no OTP application of its own. This keeps boot
-ordering in the host's hands, lets tests start a beamlet per test
-against a scratch data dir, and makes the standalone server the
-smallest possible consumer rather than a special case.
+ordering in the host's hands, lets tests start and stop a beamlet
+per test, and makes the standalone server the smallest possible
+consumer rather than a special case.
 
 The server test: `server/` holds nothing a second embedder would
 want. Endpoint, application module, config, release, Dockerfile.
@@ -105,6 +105,19 @@ host both get an authenticated `/mcp` for free, while a host calling
 tools in-process hands a principal in directly and Beamlet never
 learns about that host's users.
 
+### Config
+
+One surface: `:beamlet` application config, read at runtime through
+`Beamlet.Config` accessors, so a release or container sets it from
+the environment in `runtime.exs`. No start options carry
+configuration, nothing is read at compile time, nothing is stashed.
+`data_dir` is the root everything a beamlet persists lives under;
+starting checks it exists and fails the boot otherwise, and the
+modules owning paths beneath it add their accessors as they arrive.
+Tests use one data dir per run, `tmp/test_data` in the repo, wiped
+at the start of each run; a test that needs its own directory gives
+it to the component directly rather than through config.
+
 ### Web
 
 Beamlet takes the endpoint as an option and owns the dynamic router
@@ -117,15 +130,46 @@ server copies it.
 
 Decided as each step arrives, not before:
 
-- The data dir layout (step 2).
+- The data dir layout, one path at a time as its owners land.
 - The user and token model, and what the MCP authorization
   metadata says for a server that issues its own tokens (step 5).
-- Policy: what carries over from code mode, and whether policy is
-  per beamlet, per user, or both (step 8).
+- Policy: what carries over from code mode and how named policies
+  are declared (step 8).
 - The exact stdlib surface, module by module (step 12).
 - What the server instructions and tool descriptions say within a
   2KB budget per item (step 13).
 - Deployment model, source-run or release (step 14).
+
+### Direction for policy and identity (2026-09-13)
+
+Recorded so steps 5 and 8 start here rather than rediscover it;
+either may revise it.
+
+- **A policy is everything a principal may do:** the allow and deny
+  lists, the stance options (`allow_defmacro`,
+  `allow_dynamic_dispatch`), and capabilities (define, or exec
+  only). One name answers "what may this principal do on my
+  beamlet".
+- **Beamlet ships `:default`:** today's curated table, strict stance,
+  both tools. A user with no policy has it. Most beamlets never
+  define another.
+- **Policies are per user, not per beamlet.** The name policy is a
+  check on the code a client submits, not an isolation boundary:
+  anything one user is granted reaches the shared pool through a
+  module they define, exactly as a macro does under
+  `allow_defmacro` today. That leak is accepted once and documented;
+  it is not a reason to withhold the lever.
+- **Named policies are application config, boot time.** Inert data,
+  validated when app grants expand at boot, a bad one fails the boot.
+  Set and restart, not reloaded. A prebuilt image will need an
+  optional policies file merged at boot (step 14).
+- **Policy attaches to the user; tokens are credentials.** A user is
+  the durable identity that commits, routes and the audit trail
+  name. A token is a named, revocable secret authenticating as a
+  user; a user has many. Two policies means two users, because it
+  also means two names in the history. A request whose user names a
+  policy config no longer defines fails clearly rather than falling
+  back to `:default`.
 
 ## 4. Deferred
 

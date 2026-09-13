@@ -112,8 +112,10 @@ claiming done.
   client. Drive the MCP plug with `Plug.Test`; assert on tool
   results, teaching errors, and what appears in the data dir.
 - No test hits the network or a real model. Stub HTTP with `Req.Test`.
-- `start_supervised!/1` for every process; Beamlet itself starts per
-  test against a scratch data dir.
+- `start_supervised!/1` for every process; `use Beamlet.Case` starts
+  a beamlet per test against the per-run data dir from
+  `config/test.exs`. A test needing its own directory passes it to
+  the component, not through config.
 - No `Process.sleep/1` for synchronisation: `assert_receive` on the
   event, `Process.monitor` for termination, `:sys.get_state/1` to
   flush a mailbox.

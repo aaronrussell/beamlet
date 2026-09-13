@@ -22,9 +22,10 @@ the end.
 ## Steps
 
 1. **Initialise `beamlet`.** Project, CLAUDE.md, design and roadmap
-   notes, the `Beamlet` child spec skeleton, test support that starts
-   a beamlet against a scratch data dir. *In progress.*
-2. **Minimal config.** The data dir and its layout.
+   notes, the `Beamlet` supervisor. *Done 2026-09-13.*
+2. **Minimal config.** Application config as the one surface,
+   `data_dir` required and checked at boot, per-run test data dir and
+   `Beamlet.Case`. *Done 2026-09-13.*
 3. **Ecto and the system database.** Library-run migrations from
    priv; the SQLite authorizer.
 4. **Anubis.** Server, two stub tools, the MCP test client. Pin the
@@ -51,4 +52,9 @@ the end.
 
 ## Done
 
-Nothing yet.
+- **Step 1** (2026-09-13): project, notes, `Beamlet` as a supervisor
+  with no `mod:`.
+- **Step 2** (2026-09-13): `Beamlet.Config.data_dir!/0`, the boot
+  check, `config/` for dev and test, `Beamlet.Case`. Design § 2
+  Config records the decision; § 3 records the policy and identity
+  direction for steps 5 and 8.
