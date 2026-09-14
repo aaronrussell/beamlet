@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-14 (databases settled)
+**Last updated:** 2026-09-14 (MCP server and tool names settled)
 
 ---
 
@@ -127,6 +127,36 @@ modules owning paths beneath it add their accessors as they arrive.
 Tests use one data dir per run, `tmp/test_data` in the repo, wiped
 at the start of each run; a test that needs its own directory gives
 it to the component directly rather than through config.
+
+### MCP
+
+`Beamlet.MCP.Server` (Anubis, Streamable HTTP) runs as a child of
+`Beamlet` and serves two tools, `define` and `eval`. Unprefixed: the
+protocol makes names unique per server and clients namespace across
+servers themselves (Claude Code shows `mcp__beamlet__eval`), so a
+`code_` prefix would only repeat the server name. `eval` rather than
+`exec` because the tool evaluates an expression and returns its
+result, which is what Elixir calls it. Schemas carry only what the
+tool needs; there is no per-call description field, since the
+client owns its UI and already shows the arguments. A host serves
+the tools by mounting `Anubis.Server.Transport.StreamableHTTP.Plug`
+with `server: Beamlet.MCP.Server`; `Beamlet.Router` takes that over
+when it arrives.
+
+Server instructions and each tool description are held under 2,048
+bytes by tests: Claude Code truncates both at 2KB, and bytes are the
+conservative measure against a client counting characters. The
+instructions are a pointer block, what matters most first and the
+stdlib for the rest.
+
+Authorization is off until step 6. Its shape, pinned now: an
+`authorization:` keyword on the server naming a
+`Anubis.Server.Authorization.Validator` over Beamlet's token store,
+plus the `authorization_servers` and `resource` URLs the config
+requires, with `Beamlet.Router` mounting the `WellKnown` plug beside
+`/mcp`. `resource` makes the instance's public URL a config key;
+what the metadata says for a server issuing its own tokens is
+step 5.
 
 ### Web
 

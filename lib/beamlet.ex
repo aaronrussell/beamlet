@@ -39,7 +39,8 @@ defmodule Beamlet do
     children = [
       Beamlet.Repo,
       Host.Repo,
-      {Ecto.Migrator, repos: [Beamlet.Repo]}
+      {Ecto.Migrator, repos: [Beamlet.Repo]},
+      {Beamlet.MCP.Server, transport: {:streamable_http, start: true}, request_timeout: 60_000}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

@@ -29,7 +29,7 @@ the end.
 3. **Ecto and the system database.** Library-run migrations from
    priv; the SQLite authorizer. *Done 2026-09-14.*
 4. **Anubis.** Server, two stub tools, the MCP test client. Pin the
-   authorization config shape.
+   authorization config shape. *Done 2026-09-14.*
 5. **DESIGN: users, tokens, authentication, identification.**
 6. **Implement users and auth,** wired to the MCP server.
 7. **Management interface** for users and tokens.
@@ -62,3 +62,8 @@ the end.
   `<data_dir>/db`, the migrator running at every boot, the SQLite
   authorizer on the agent database, `mix ecto.setup` / `ecto.reset`
   for both repos. Design § 2 Two databases records the layout.
+- **Step 4** (2026-09-14): `Beamlet.MCP.Server` with stub `define`
+  and `eval` components, the `Beamlet.MCPClient` test support over
+  `Plug.Test`, byte-size tests at 2,048 for the instructions and
+  each description. Design § 2 MCP records the names, the budget
+  and the pinned authorization shape.

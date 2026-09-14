@@ -32,8 +32,10 @@ defmodule Beamlet.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
+      {:anubis_mcp, "~> 2.0"},
       {:ecto_sql, "~> 3.14"},
-      {:ecto_sqlite3, "~> 0.24"}
+      {:ecto_sqlite3, "~> 0.24"},
+      {:plug, "~> 1.20"}
     ]
   end
 
