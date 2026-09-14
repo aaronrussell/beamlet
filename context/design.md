@@ -5,7 +5,8 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-14 (MCP server and tool names settled)
+**Last updated:** 2026-09-14 (users, tokens, principals and
+provenance settled)
 
 ---
 
@@ -110,15 +111,85 @@ alias. An authorizer on every agent database connection refuses
 `ATTACH` and `DETACH`, so raw SQL granted to agents stays inside that
 file (`Beamlet.SQLiteAuthorizer`).
 
-### Principal and authentication
+### Users, tokens and principals
 
-The **principal** (user, stance, policy) is what every exec, define,
-commit and route keys on. **Authentication** turns a bearer token on
-an MCP request into a principal, at the plug. Beamlet owns both and
-exposes them separately: the standalone server and an embedding
-host both get an authenticated `/mcp` for free, while a host calling
-tools in-process hands a principal in directly and Beamlet never
-learns about that host's users.
+Settled 2026-09-14 (step 5). The vocabulary first, because the
+words do the work:
+
+- A **user** is a row in the system database: the durable name the
+  operator creates and the history refers to. Id, name, timestamps,
+  nothing else. No roles, no email, no login.
+- A **token** is a credential belonging to one user: a random secret
+  shown once at creation and stored as a hash, with a name and a
+  **policy**. A user has many, one per client or device, and the
+  same person holds a permissive token and a restricted one and uses
+  them in different places. Delete is delete; nothing references a
+  token row, so there is no revoked state, and no expiry.
+- **Authentication** turns the bearer token on a request into its
+  token row and user. It happens once per request, at the edge, and
+  only Beamlet's own tokens are valid.
+- The **principal** is what a request acts as: user id and name,
+  token id and name, policy name, and the client's name and version
+  when the client sent them. Built per request from the token, never
+  stored. Every exec, define, commit and route keys on it.
+- **Authorization** is checking what the principal may do, forward
+  looking: the scanner enforcing the policy. **Provenance** is the
+  record a persisted thing keeps of the principal that made it,
+  backward looking. "Identity" is not a term of art here; the
+  principal covers it.
+
+**Policy attaches to the token, not the user.** A policy is a
+named document (step 9 says what it contains); Beamlet ships
+`default`, a token names one and has `default` when it names none.
+Two policies for one person means two tokens, and the history names
+both the user and the token, so nothing is lost. A request whose
+token names a policy the config no longer defines fails clearly
+rather than falling back.
+
+**Identity is per request, with no session binding.** The protocol
+is heading that way (the 2026-07-28 revision removes sessions) and
+nothing here needs the alternative: server instructions never depend
+on the token, so `print_policy` under the request's own token is how
+a client learns what it may call.
+
+**Management is operator-only.** Public store functions
+(`Beamlet.Users`, `Beamlet.Tokens`) are the product; step 8 puts a
+thin CLI over them. Nothing under `Host.*` creates, lists or deletes
+users or tokens. Tests create a user and token through the same
+functions, so every test authenticates the way production does.
+
+### Provenance
+
+One struct, two encodings. A route row stores the principal as
+JSON in a map column; a commit carries it as git trailers, with the
+user as the author (`aaron <aaron@beamlet>`) so `git log` and
+`git blame` show a proper name. Both come from the same struct, so
+they cannot disagree, and both decode back to it:
+
+```
+define: Shopping.Item
+
+User: aaron (1)
+Token: laptop (3)
+Policy: default
+Client: claude-code 1.2.3
+```
+
+```json
+{"user": {"id": 1, "name": "aaron"}, "token": {"id": 3, "name": "laptop"},
+ "policy": "default", "client": {"name": "claude-code", "version": "1.2.3"}}
+```
+
+Names first and ids beside them: the name is what a reader wants,
+the id is what a program wants after a rename. Time is not in the
+stamp; git and the row's timestamp already have it. Trailers because
+git parses them natively, so a future history call filters by token
+or policy with no code of ours. The route table lives in the agent
+database, a different file from users and tokens, so there is no
+foreign key to keep and no discrete columns: the set is small enough
+to load and filter in memory. What carries provenance is exactly
+what did in code mode, every commit the code server makes and every
+route row. Not KV entries, not files, and there is no eval log.
 
 ### Config
 
@@ -144,9 +215,8 @@ servers themselves (Claude Code shows `mcp__beamlet__eval`), so a
 result, which is what Elixir calls it. Schemas carry only what the
 tool needs; there is no per-call description field, since the
 client owns its UI and already shows the arguments. A host serves
-the tools by mounting `Anubis.Server.Transport.StreamableHTTP.Plug`
-with `server: Beamlet.MCP.Server`; `Beamlet.Router` takes that over
-when it arrives.
+the tools by mounting `Beamlet.MCP.Plug` at `/mcp`; `Beamlet.Router`
+takes that over when it arrives.
 
 Server instructions and each tool description are held under 2,048
 bytes by tests: Claude Code truncates both at 2KB, and bytes are the
@@ -154,14 +224,21 @@ conservative measure against a client counting characters. The
 instructions are a pointer block, what matters most first and the
 stdlib for the rest.
 
-Authorization is off until step 6. Its shape, pinned now: an
-`authorization:` keyword on the server naming a
-`Anubis.Server.Authorization.Validator` over Beamlet's token store,
-plus the `authorization_servers` and `resource` URLs the config
-requires, with `Beamlet.Router` mounting the `WellKnown` plug beside
-`/mcp`. `resource` makes the instance's public URL a config key;
-what the metadata says for a server issuing its own tokens is
-step 5.
+**Authentication is Beamlet's own plug, not Anubis's authorization.**
+`Beamlet.MCP.Plug` runs on every request, hashes the bearer secret,
+loads the token and user, builds the principal and puts it in the
+conn's assigns, which Anubis merges into the frame for every
+callback; then it forwards to the transport plug. A missing or bad
+token is a 401 with a plain `Bearer` challenge and a body saying how
+to create a token. The step 4 pin on Anubis's `authorization:`
+config was revised at step 5: that path is OAuth-shaped, requiring
+`authorization_servers` and `resource` URLs and advertising
+protected-resource metadata that sends a client without a token off
+to an authorization server Beamlet does not have; its claims are
+also absent from `init/2` and task-style tool calls. The instance's
+public URL is therefore not a config key for authentication. Should
+a login ever arrive, the metadata can then honestly point at Beamlet
+itself.
 
 ### Web
 
@@ -176,49 +253,48 @@ server copies it.
 Decided as each step arrives, not before:
 
 - The data dir layout, one path at a time as its owners land.
-- The user and token model, and what the MCP authorization
-  metadata says for a server that issues its own tokens (step 5).
 - Policy: what carries over from code mode and how named policies
-  are declared (step 8).
-- The exact stdlib surface, module by module (step 12).
+  are declared (step 9).
+- The exact stdlib surface, module by module (step 13).
 - What the server instructions and tool descriptions say within a
-  2KB budget per item (step 13).
-- Deployment model, source-run or release (step 14).
+  2KB budget per item (step 14).
+- Deployment model, source-run or release (step 15).
 
-### Direction for policy and identity (2026-09-13)
+### Direction for policy (2026-09-13, revised 2026-09-14)
 
-Recorded so steps 5 and 8 start here rather than rediscover it;
-either may revise it.
+Recorded so step 9 starts here rather than rediscover it; it may
+revise it. Where policy attaches was settled at step 5 (§ 2, Users,
+tokens and principals): on the token.
 
 - **A policy is everything a principal may do:** the allow and deny
   lists, the stance options (`allow_defmacro`,
   `allow_dynamic_dispatch`), and capabilities (define, or exec
   only). One name answers "what may this principal do on my
   beamlet".
-- **Beamlet ships `:default`:** today's curated table, strict stance,
-  both tools. A user with no policy has it. Most beamlets never
-  define another.
-- **Policies are per user, not per beamlet.** The name policy is a
+- **Beamlet ships `default`,** which cannot be changed: today's
+  curated table, strict stance, both tools. A token naming no policy
+  has it. Most beamlets never define another.
+- **Policies are per token, not per beamlet.** The name policy is a
   check on the code a client submits, not an isolation boundary:
-  anything one user is granted reaches the shared pool through a
-  module they define, exactly as a macro does under
-  `allow_defmacro` today. That leak is accepted once and documented;
-  it is not a reason to withhold the lever.
+  anything one token is granted reaches the shared pool through a
+  module it defines, exactly as a macro does under `allow_defmacro`
+  today. That leak is accepted once and documented; it is not a
+  reason to withhold the lever.
 - **Named policies are application config, boot time.** Inert data,
   validated when app grants expand at boot, a bad one fails the boot.
   Set and restart, not reloaded. A prebuilt image will need an
-  optional policies file merged at boot (step 14).
-- **Policy attaches to the user; tokens are credentials.** A user is
-  the durable identity that commits, routes and the audit trail
-  name. A token is a named, revocable secret authenticating as a
-  user; a user has many. Two policies means two users, because it
-  also means two names in the history. A request whose user names a
-  policy config no longer defines fails clearly rather than falling
-  back to `:default`.
+  optional policies file merged at boot (step 15). How an operator
+  declares one is step 9.
 
 ## 4. Deferred
 
 - Admin UI and login.
+- A principal handed in by an embedding host calling tools
+  in-process, without a Beamlet token. Struck from § 2 at step 5;
+  if it returns, a principal that encodes and decodes is the seam.
+- User-scoped modules, routes, files and KV entries beside the
+  shared ones. The user id on every principal is what it would key
+  on.
 - Supervised processes for agent code.
 - Agent-installed dependencies.
 - Static assets.

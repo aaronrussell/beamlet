@@ -31,23 +31,39 @@ the end.
 4. **Anubis.** Server, two stub tools, the MCP test client. Pin the
    authorization config shape. *Done 2026-09-14.*
 5. **DESIGN: users, tokens, authentication, identification.**
-6. **Implement users and auth,** wired to the MCP server.
-7. **Management interface** for users and tokens.
-8. **DESIGN: policy and stance review.** What migrates, what changes,
-   per beamlet or per user.
-9. **Port scanner, rules, policy** under the new declaration story.
-10. **`code_exec`.** The exec runtime and tool result, with cancel
+   *Done 2026-09-14.*
+6. **Users and tokens store.** The migration, the two schemas with
+   changesets, `Beamlet.Users` and `Beamlet.Tokens`, and the
+   authenticate function turning a secret into its token and user.
+   Tested against the system repo directly; no MCP involved.
+7. **The principal and the plug.** The `Beamlet.Principal` struct,
+   `Beamlet.MCP.Plug` with the 401 teaching body and the principal
+   in assigns, the test client sending a bearer header, and
+   `Beamlet.Case` creating a user and token for every test. Touches
+   every existing MCP test.
+8. **Management interface** for users and tokens: mix tasks over the
+   store functions. The tasks touch only the system database, and
+   the migrator runs inside the `Beamlet` supervisor, so a task
+   starts the repo and migrates on its own rather than booting a
+   whole beamlet.
+9. **DESIGN: policy and stance review.** What migrates, what changes,
+   and how an operator declares a named policy. Policy attaches to
+   the token (step 5).
+10. **Port scanner, rules, policy** under the new declaration story.
+11. **`code_exec`.** The exec runtime and tool result, with cancel
     linkage. No stdlib yet.
-11. **`code_define`.** Plain modules, the code server, git audit. No
-    migrations yet.
-12. **The stdlib, module by module.** Fs, PubSub, Repo and KV and
+12. **`code_define`.** Plain modules, the code server, git audit. No
+    migrations yet. The provenance trailers land here with the
+    audit, their first caller, along with the round-trip test.
+13. **The stdlib, module by module.** Fs, PubSub, Repo and KV and
     Migrator, Code, then Web and Router. The test endpoint arrives
-    with Web and Router.
-13. **Descriptions and instructions pass** against the 2KB budget,
+    with Web and Router. The provenance JSON encoding lands with the
+    route table.
+14. **Descriptions and instructions pass** against the 2KB budget,
     with tests that fail past it.
-14. **Server app and Docker image.** Deployment model decided here.
-15. **Verify** against the M14 walkthrough over MCP.
-16. **Beyond the port:** supervised processes, agent-installed
+15. **Server app and Docker image.** Deployment model decided here.
+16. **Verify** against the M14 walkthrough over MCP.
+17. **Beyond the port:** supervised processes, agent-installed
     dependencies, static assets, the admin UI.
 
 ## Done
@@ -57,7 +73,7 @@ the end.
 - **Step 2** (2026-09-13): `Beamlet.Config.data_dir!/0`, the boot
   check, `config/` for dev and test, `Beamlet.Case`. Design § 2
   Config records the decision; § 3 records the policy and identity
-  direction for steps 5 and 8.
+  direction for steps 5 and 9.
 - **Step 3** (2026-09-14): `Beamlet.Repo` and `Host.Repo` under
   `<data_dir>/db`, the migrator running at every boot, the SQLite
   authorizer on the agent database, `mix ecto.setup` / `ecto.reset`
@@ -67,3 +83,13 @@ the end.
   `Plug.Test`, byte-size tests at 2,048 for the instructions and
   each description. Design § 2 MCP records the names, the budget
   and the pinned authorization shape.
+- **Step 5** (2026-09-14): the user and token model, policy on the
+  token, per-request identity with no session binding, a
+  Beamlet-owned authentication plug in place of Anubis's OAuth-shaped
+  authorization, and the provenance stamp with its two encodings.
+  Design § 2 Users, tokens and principals, and Provenance, record it;
+  § 3 Direction for policy was revised to match. The in-process
+  principal for an embedding host moved to § 4 Deferred. The
+  implementation was then split into steps 6, 7 and 8, with the
+  provenance encodings deferred to their first callers at 12 and 13,
+  and everything after renumbered up by one.

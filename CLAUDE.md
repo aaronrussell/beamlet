@@ -63,9 +63,11 @@ claiming done.
   database for users and tokens. Agent-built work wipes and backs up
   as a unit.
 - **Principal and authentication are separate.** The principal
-  (user, stance, policy) is what everything keys on. Turning a token
-  into a principal is edge work at the MCP plug. Embedding hosts may
-  hand a principal in directly.
+  (user, token, policy, client) is what everything keys on and is
+  built per request, never stored. Turning a token into a principal
+  is edge work at `Beamlet.MCP.Plug`; only Beamlet's own tokens are
+  valid. Policy attaches to the token. Provenance is one struct with
+  two encodings: JSON on a route row, git trailers on a commit.
 - **Plain Phoenix and Ecto.** Agents author vanilla Phoenix at
   runtime, so no DSL layer in the way. Canonical Ecto: root-level
   stores own their tables and are their only `Repo` callers;
