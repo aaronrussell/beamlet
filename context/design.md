@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-13 (config settled; policy and identity direction recorded)
+**Last updated:** 2026-09-14 (databases settled)
 
 ---
 
@@ -92,8 +92,18 @@ Both Beamlet's, both under the data dir:
 - **Agent database** (`Host.Repo`): tables agents migrate and query,
   the key/value table, and the route table. Everything an agent
   builds, so it wipes and backs up as one unit.
-- **System database**: users and tokens. Migrated by Beamlet itself
-  at boot from the package's priv dir.
+- **System database** (`Beamlet.Repo`): users and tokens. Migrated
+  by Beamlet itself at boot from the package's priv dir.
+
+Both live under `db/` in the data dir, `agent.db` and `beamlet.db`,
+with SQLite's `-wal` and `-shm` sidecars beside them. The paths are
+derived, never configured; adapter options for either repo go under
+`config :beamlet, <Repo>`. The `Ecto.Migrator` child migrates the
+system database at every boot in every environment, so no consumer
+runs a migration step and the test suite needs no `ecto.migrate`
+alias. An authorizer on every agent database connection refuses
+`ATTACH` and `DETACH`, so raw SQL granted to agents stays inside that
+file (`Beamlet.SQLiteAuthorizer`).
 
 ### Principal and authentication
 

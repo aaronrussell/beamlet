@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-13
+**Last updated:** 2026-09-14
 
 ---
 
@@ -27,7 +27,7 @@ the end.
    `data_dir` required and checked at boot, per-run test data dir and
    `Beamlet.Case`. *Done 2026-09-13.*
 3. **Ecto and the system database.** Library-run migrations from
-   priv; the SQLite authorizer.
+   priv; the SQLite authorizer. *Done 2026-09-14.*
 4. **Anubis.** Server, two stub tools, the MCP test client. Pin the
    authorization config shape.
 5. **DESIGN: users, tokens, authentication, identification.**
@@ -58,3 +58,7 @@ the end.
   check, `config/` for dev and test, `Beamlet.Case`. Design § 2
   Config records the decision; § 3 records the policy and identity
   direction for steps 5 and 8.
+- **Step 3** (2026-09-14): `Beamlet.Repo` and `Host.Repo` under
+  `<data_dir>/db`, the migrator running at every boot, the SQLite
+  authorizer on the agent database, `mix ecto.setup` / `ecto.reset`
+  for both repos. Design § 2 Two databases records the layout.

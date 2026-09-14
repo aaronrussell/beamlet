@@ -36,7 +36,11 @@ defmodule Beamlet do
   def init(_opts) do
     ensure_data_dir!()
 
-    children = []
+    children = [
+      Beamlet.Repo,
+      Host.Repo,
+      {Ecto.Migrator, repos: [Beamlet.Repo]}
+    ]
 
     Supervisor.init(children, strategy: :one_for_one)
   end

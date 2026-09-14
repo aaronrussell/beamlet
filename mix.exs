@@ -32,14 +32,28 @@ defmodule Beamlet.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
+      {:ecto_sql, "~> 3.14"},
+      {:ecto_sqlite3, "~> 0.24"}
     ]
   end
 
   defp aliases do
     [
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      "ecto.setup": [
+        "ecto.create -r Beamlet.Repo -r Host.Repo",
+        "ecto.migrate",
+        "run priv/repo/seeds.exs"
+      ],
+      "ecto.reset": [
+        "ecto.drop -r Beamlet.Repo -r Host.Repo",
+        "ecto.setup"
+      ],
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "test"
+      ]
     ]
   end
 end

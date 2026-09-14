@@ -1,6 +1,5 @@
 defmodule Beamlet.ConfigTest do
   use ExUnit.Case, async: false
-
   alias Beamlet.Config
 
   setup do
@@ -9,40 +8,48 @@ defmodule Beamlet.ConfigTest do
     %{configured: previous}
   end
 
-  test "data_dir! returns the configured absolute path", %{configured: configured} do
-    assert Config.data_dir!() == configured
-  end
+  describe "data_dir!/0" do
+    test "returns the configured absolute path", %{configured: configured} do
+      assert Config.data_dir!() == configured
+    end
 
-  test "data_dir! raises when unset" do
-    Application.delete_env(:beamlet, :data_dir)
+    test "raises when unset" do
+      Application.delete_env(:beamlet, :data_dir)
 
-    assert_raise ArgumentError, ~r/:data_dir is not set/, fn -> Config.data_dir!() end
-  end
+      assert_raise ArgumentError, ~r/:data_dir is not set/, fn -> Config.data_dir!() end
+    end
 
-  test "data_dir! raises when relative" do
-    Application.put_env(:beamlet, :data_dir, "data")
+    test "raises when relative" do
+      Application.put_env(:beamlet, :data_dir, "data")
 
-    assert_raise ArgumentError, ~r/must be absolute, got: data/, fn -> Config.data_dir!() end
-  end
+      assert_raise ArgumentError, ~r/must be absolute, got: data/, fn -> Config.data_dir!() end
+    end
 
-  test "data_dir! raises when not a string" do
-    Application.put_env(:beamlet, :data_dir, :data)
+    test "raises when not a string" do
+      Application.put_env(:beamlet, :data_dir, :data)
 
-    assert_raise ArgumentError, ~r/must be a path string, got: :data/, fn ->
-      Config.data_dir!()
+      assert_raise ArgumentError, ~r/must be a path string, got: :data/, fn ->
+        Config.data_dir!()
+      end
+    end
+
+    @tag :capture_log
+    test "starting fails when the data dir does not exist" do
+      missing =
+        Path.join(System.tmp_dir!(), "beamlet_missing_#{System.unique_integer([:positive])}")
+
+      Application.put_env(:beamlet, :data_dir, missing)
+
+      assert {:error, {{%ArgumentError{message: message}, _stack}, _spec}} =
+               start_supervised({Beamlet, []})
+
+      assert message =~ "does not exist: #{missing}"
     end
   end
 
-  @tag :capture_log
-  test "starting fails when the data dir does not exist" do
-    missing =
-      Path.join(System.tmp_dir!(), "beamlet_missing_#{System.unique_integer([:positive])}")
-
-    Application.put_env(:beamlet, :data_dir, missing)
-
-    assert {:error, {{%ArgumentError{message: message}, _stack}, _spec}} =
-             start_supervised({Beamlet, []})
-
-    assert message =~ "does not exist: #{missing}"
+  describe "db_dir/0" do
+    test "is the db directory under the data dir", %{configured: configured} do
+      assert Config.db_dir() == Path.join(configured, "db")
+    end
   end
 end

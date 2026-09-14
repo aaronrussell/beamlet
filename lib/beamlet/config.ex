@@ -34,4 +34,8 @@ defmodule Beamlet.Config do
         raise ArgumentError, "config :beamlet, :data_dir is not set"
     end
   end
+
+  @doc "Directory holding Beamlet and agent database files."
+  @spec db_dir() :: Path.t()
+  def db_dir, do: Path.join(data_dir!(), "db")
 end
