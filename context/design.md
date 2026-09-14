@@ -98,7 +98,12 @@ Both Beamlet's, both under the data dir:
 Both live under `db/` in the data dir, `agent.db` and `beamlet.db`,
 with SQLite's `-wal` and `-shm` sidecars beside them. The paths are
 derived, never configured; adapter options for either repo go under
-`config :beamlet, <Repo>`. The `Ecto.Migrator` child migrates the
+`config :beamlet, <Repo>`. Boot creates each file in WAL mode with
+a single connection before its pool starts, because a pool opening
+several connections on a file not yet in WAL mode races to switch it
+and logs failed connects; `mix ecto.create` would not prevent this,
+since `storage_up` ignores the adapter's WAL default, so the journal
+mode is explicit in each repo's `init/2`. The `Ecto.Migrator` child migrates the
 system database at every boot in every environment, so no consumer
 runs a migration step and the test suite needs no `ecto.migrate`
 alias. An authorizer on every agent database connection refuses

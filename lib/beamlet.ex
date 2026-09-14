@@ -35,6 +35,7 @@ defmodule Beamlet do
   @impl true
   def init(_opts) do
     ensure_data_dir!()
+    Enum.each([Beamlet.Repo, Host.Repo], &ensure_database!/1)
 
     children = [
       Beamlet.Repo,
@@ -52,6 +53,16 @@ defmodule Beamlet do
     unless File.dir?(dir) do
       raise ArgumentError,
             "config :beamlet, :data_dir does not exist: #{dir} (create or mount it before starting)"
+    end
+  end
+
+  # Pool connections opening a file not yet in WAL mode race to switch
+  # it and log failed connects, so one connection creates it first.
+  # The repo config must carry journal_mode: :wal for this to hold.
+  defp ensure_database!(repo) do
+    case repo.__adapter__().storage_up(repo.config()) do
+      :ok -> :ok
+      {:error, :already_up} -> :ok
     end
   end
 end

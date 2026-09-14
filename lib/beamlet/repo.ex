@@ -17,7 +17,12 @@ defmodule Beamlet.Repo do
   @impl true
   def init(_context, config) do
     db_file = Path.join(Beamlet.Config.db_dir(), @db_file)
-    config = Keyword.put(config, :database, db_file)
+
+    config =
+      config
+      |> Keyword.put(:database, db_file)
+      |> Keyword.put(:journal_mode, :wal)
+
     {:ok, config}
   end
 end
