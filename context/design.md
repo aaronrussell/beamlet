@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-15 (policy and the default built, step 10)
+**Last updated:** 2026-09-15 (policy at the edges, step 11)
 
 ---
 
@@ -70,7 +70,11 @@ The library is a **child spec** a host starts in its own supervision
 tree; it declares no OTP application of its own. This keeps boot
 ordering in the host's hands, lets tests start and stop a beamlet
 per test, and makes the standalone server the smallest possible
-consumer rather than a special case.
+consumer rather than a special case. `start_link/1` takes
+`only: :system` to start the policies and the system database alone,
+migrated, which is what the operator CLI needs in a VM with no
+beamlet running (step 11); the knowledge of a beamlet's processes
+stays in `Beamlet.init/1`.
 
 The server test: `server/` holds nothing a second embedder would
 want. Endpoint, application module, config, release, Dockerfile.
@@ -170,14 +174,17 @@ the one implementation and the entries stay a few lines. Commands
 are dotted, `users.create USER`, `tokens.create USER TOKEN`, and
 address everything by name; a token name is unique per user, so
 every token command names the user first. Delete asks nothing and
-says what it removed. The CLI touches only the system database: when
-no beamlet runs in the VM it calls `Beamlet.prepare!/0`, starts
-`Beamlet.Repo`, migrates, runs and stops it, so it works beside a
-beamlet in another VM or with none at all; a beamlet in the same VM
-lends its repo as it is, because `Ecto.Migrator.with_repo` would
-restart a running repo's pool afterwards. The `--policy` option
-and the `policies` commands arrive at step 11, once the policies
-exist to validate against (§ 2 Policy).
+says what it removed. The CLI needs the policies and the system
+database and nothing an agent reaches: when no beamlet runs in the
+VM it starts that half of one with `Beamlet.start_link(only: :system)`,
+runs the command and stops it, so it works beside a beamlet in
+another VM or with none at all, and a bad policy declaration fails
+the command with the boot's own error; a beamlet in the same VM is
+used as it is. Starting the repo by hand was the first shape and
+lost at step 11 to the option, so that which processes a beamlet has
+is written in one place. `--policy` on `tokens.create` and
+`tokens.update`, `policies` listing the declared names and
+`policies.show NAME` rendering one arrived at step 11 (§ 2 Policy).
 
 **One context, structs at the root** (step 6): `Beamlet.Users` owns
 users and their tokens, with `Beamlet.User` and `Beamlet.Token`
@@ -332,11 +339,12 @@ points, `Req` and `Req.Request`, which is short for any package; a
   the principal's policy and to refuse a `tools/call` for an
   ungranted tool before dispatch, delegating everything else to
   Anubis. A listed tool is a promise, and a model that never sees
-  `define` never reaches for it. The refusal is a JSON-RPC error
-  saying the tool is not in the token's policy, which is what
-  Anubis returns for an unknown tool and for insufficient scope; an
-  HTTP error on a `tools/call` POST reads as a transport failure to
-  a client. Anubis's own per-component `scopes` does exactly this
+  `define` never reaches for it. The refusal is the JSON-RPC error
+  Anubis returns for a tool that does not exist, since to that token
+  it does not: the listing never showed it, and a distinct "not in
+  your policy" message was considered and dropped at step 11. An
+  HTTP error on a `tools/call` POST would read as a transport failure
+  to a client. Anubis's own per-component `scopes` does exactly this
   but reads only its OAuth claims, which step 5 rejected, so under
   Beamlet's plug they are always empty. No list-changed
   notifications: a policy change is a restart.
@@ -349,9 +357,11 @@ points, `Req` and `Req.Request`, which is short for any package; a
   at `initialize` is what makes it visible to the person connecting
   the client.
 - **The token.** `Beamlet.Token`'s changeset validates the policy
-  name against the declared names, so the store refuses a token for
-  a policy that does not exist and the CLI's error comes from the
-  changeset. The principal is unchanged, five flat fields with the
+  name against the declared names (`Beamlet.Policies.names/0`), so
+  the store refuses a token for a policy that does not exist and the
+  CLI's error comes from the changeset. A token whose policy has
+  since left the config is therefore made in tests by writing the
+  row directly, standing in for the restart that removed it. The principal is unchanged, five flat fields with the
   policy name; the components fetch the resolved policy by name.
 - **The scanner** is the gate for rules and grants, as in code
   mode, taking the policy struct in place of a table and a stance.
@@ -389,7 +399,12 @@ it outlives the supervisor. `fetch/1` and `names/0` are its whole
 surface, and `Beamlet.Config.policies!/0` reads the declarations.
 `Beamlet.Scanner` scans against a policy (step 12), and the exec
 runner stashes one ambient value, the principal, where code mode
-stashed an agent name and a stance (step 13).
+stashed an agent name and a stance (step 13). A test declares the
+policies its beamlet has with `@tag policies: [...]`, in the shape
+config takes, which `Beamlet.Case` puts into config before the
+beamlet starts and removes after (step 11); a fixed set in the test
+config was the alternative and lost on each test saying what it
+expects.
 
 Small calls made at step 10: policy names are strings everywhere
 outside config, where keyword keys are atoms because that syntax

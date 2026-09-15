@@ -10,7 +10,9 @@ defmodule Beamlet.CLITest do
     test "prints usage with no arguments or --help" do
       assert {:ok, output} = with_io(fn -> CLI.main([]) end)
       assert output =~ "Usage: beamlet COMMAND"
-      assert output =~ "tokens.create USER TOKEN"
+      assert output =~ "tokens.create USER TOKEN [--policy POLICY]"
+      assert output =~ "tokens.update USER TOKEN [--name NEW_NAME] [--policy POLICY]"
+      assert output =~ "policies.show POLICY"
 
       assert {:ok, output} = with_io(fn -> CLI.main(["--help"]) end)
       assert output =~ "Usage: beamlet COMMAND"
@@ -124,7 +126,7 @@ defmodule Beamlet.CLITest do
 
     test "creates a token and prints its secret once", %{user: alice} do
       assert {:ok, output} = with_io(fn -> CLI.main(["tokens.create", "alice", "laptop"]) end)
-      assert output =~ "Created token laptop for alice."
+      assert output =~ "Created token laptop for alice (policy default)."
       assert [_, secret] = Regex.run(~r/Secret \(shown once\): (\S+)/, output)
 
       assert {:ok, %{name: "laptop", policy: "default", user: %{id: user_id}}} =
@@ -149,16 +151,72 @@ defmodule Beamlet.CLITest do
       assert {:ok, output} =
                with_io(fn -> CLI.main(["tokens.update", "alice", "test", "--name", "phone"]) end)
 
-      assert output =~ "Renamed token test to phone for alice."
+      assert output =~ "Updated token test for alice: name phone."
       assert {:ok, %{id: id}} = Users.find_token_by(alice, name: "phone")
       assert id == token.id
     end
 
-    test "update needs --name" do
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "changes a token's policy with --policy, alone or with --name", %{user: alice} do
+      assert {:ok, output} =
+               with_io(fn ->
+                 CLI.main(["tokens.update", "alice", "test", "--policy", "restricted"])
+               end)
+
+      assert output =~ "Updated token test for alice: policy restricted."
+      assert {:ok, %{policy: "restricted"}} = Users.find_token_by(alice, name: "test")
+
+      assert {:ok, output} =
+               with_io(fn ->
+                 CLI.main([
+                   "tokens.update",
+                   "alice",
+                   "test",
+                   "--name",
+                   "phone",
+                   "--policy",
+                   "default"
+                 ])
+               end)
+
+      assert output =~ "Updated token test for alice: name phone, policy default."
+      assert {:ok, %{policy: "default"}} = Users.find_token_by(alice, name: "phone")
+    end
+
+    test "update needs --name or --policy" do
       assert {:error, output} =
                with_io(:stderr, fn -> CLI.main(["tokens.update", "alice", "test"]) end)
 
-      assert output =~ "beamlet tokens.update needs --name NEW_NAME."
+      assert output =~ "beamlet tokens.update needs --name NEW_NAME or --policy POLICY."
+    end
+
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "creates a token under a declared policy", %{user: alice} do
+      assert {:ok, output} =
+               with_io(fn ->
+                 CLI.main(["tokens.create", "alice", "laptop", "--policy", "restricted"])
+               end)
+
+      assert output =~ "Created token laptop for alice (policy restricted)."
+      assert {:ok, %{policy: "restricted"}} = Users.find_token_by(alice, name: "laptop")
+    end
+
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "an undeclared policy is the changeset's error" do
+      assert {:error, output} =
+               with_io(:stderr, fn ->
+                 CLI.main(["tokens.create", "alice", "laptop", "--policy", "gone"])
+               end)
+
+      assert output =~
+               "policy gone is not a policy on this beamlet (declared: default, restricted)"
+
+      assert {:error, output} =
+               with_io(:stderr, fn ->
+                 CLI.main(["tokens.update", "alice", "test", "--policy", "gone"])
+               end)
+
+      assert output =~ "policy gone is not a policy on this beamlet"
     end
 
     test "deletes a token and its secret stops authenticating", %{user: alice, token: token} do
@@ -184,14 +242,33 @@ defmodule Beamlet.CLITest do
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens", "bob"]) end)
       assert output =~ "No user named bob. Run `beamlet users` to list them."
     end
+  end
 
-    test "no policy option yet" do
-      assert {:error, output} =
-               with_io(:stderr, fn ->
-                 CLI.main(["tokens.create", "alice", "laptop", "--policy", "strict"])
-               end)
+  describe "policies" do
+    test "lists the default alone when none are declared" do
+      assert {:ok, output} = with_io(fn -> CLI.main(["policies"]) end)
+      assert String.split(output, "\n", trim: true) == ["default"]
+    end
 
-      assert output =~ "Unknown option --policy."
+    @tag policies: [restricted: [tools: [:eval]], builder: [rules: [allow_defmacro: true]]]
+    test "lists every policy by name" do
+      assert {:ok, output} = with_io(fn -> CLI.main(["policies"]) end)
+      assert String.split(output, "\n", trim: true) == ["builder", "default", "restricted"]
+    end
+
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "shows a policy as the agent reads it" do
+      assert {:ok, output} = with_io(fn -> CLI.main(["policies.show", "restricted"]) end)
+      assert output =~ ~r/^Policy: restricted\nTools: eval\n/
+      assert output =~ "Rules for your code:"
+
+      assert {:ok, output} = with_io(fn -> CLI.main(["policies.show", "default"]) end)
+      assert output =~ ~r/^Policy: default\nTools: define, eval\n/
+    end
+
+    test "an unknown policy says how to list them" do
+      assert {:error, output} = with_io(:stderr, fn -> CLI.main(["policies.show", "nope"]) end)
+      assert output =~ "No policy named nope. Run `beamlet policies` to list them."
     end
   end
 end

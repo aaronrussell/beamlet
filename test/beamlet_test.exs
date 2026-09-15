@@ -36,3 +36,24 @@ defmodule BeamletNotStartedTest do
     assert Application.spec(:beamlet, :mod) in [nil, []]
   end
 end
+
+defmodule BeamletSystemOnlyTest do
+  use ExUnit.Case
+
+  test "only: :system starts the policies and the system database, nothing else" do
+    start_supervised!({Beamlet, only: :system})
+
+    assert Process.whereis(Beamlet.Policies)
+    assert Process.whereis(Beamlet.Repo)
+    refute Process.whereis(Host.Repo)
+    refute Process.whereis(Beamlet.MCP.Server)
+  end
+
+  @tag :capture_log
+  test "another only: value fails to start" do
+    assert {:error, {{%ArgumentError{message: message}, _stack}, _spec}} =
+             start_supervised({Beamlet, only: :web})
+
+    assert message =~ "Beamlet.start_link only: accepts :system, got: :web"
+  end
+end

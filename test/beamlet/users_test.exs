@@ -111,11 +111,24 @@ defmodule Beamlet.UsersTest do
       assert a.secret =~ ~r/^[A-Za-z0-9_-]{43}$/
     end
 
-    test "defaults the policy and accepts a named one", %{user: user} do
+    @tag policies: [restricted: []]
+    test "defaults the policy and accepts a declared one", %{user: user} do
       assert {:ok, %Token{policy: "default"}} = Users.create_token(user, name: "laptop")
 
       assert {:ok, %Token{policy: "restricted"}} =
                Users.create_token(user, name: "phone", policy: "restricted")
+    end
+
+    @tag policies: [restricted: []]
+    test "refuses a policy the beamlet does not declare", %{user: user} do
+      assert {:error, changeset} = Users.create_token(user, name: "phone", policy: "gone")
+
+      assert %{policy: ["gone is not a policy on this beamlet (declared: default, restricted)"]} =
+               errors_on(changeset)
+
+      {:ok, token} = Users.create_token(user, name: "laptop")
+      assert {:error, changeset} = Users.update_token(token, policy: "gone")
+      assert %{policy: [_message]} = errors_on(changeset)
     end
 
     test "requires a name under the name rules", %{user: user} do
@@ -146,6 +159,7 @@ defmodule Beamlet.UsersTest do
   end
 
   describe "update_token/2" do
+    @tag policies: [restricted: []]
     test "changes the policy or name and keeps the secret", %{user: user} do
       {:ok, %Token{id: id, secret: secret} = token} = Users.create_token(user, name: "laptop")
 
@@ -201,6 +215,7 @@ defmodule Beamlet.UsersTest do
                Users.authenticate(secret)
     end
 
+    @tag policies: [restricted: []]
     test "two tokens for one user authenticate to the same user", %{user: user} do
       {:ok, laptop} = Users.create_token(user, name: "laptop")
       {:ok, phone} = Users.create_token(user, name: "phone", policy: "restricted")

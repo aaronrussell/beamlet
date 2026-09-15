@@ -17,7 +17,8 @@ defmodule Beamlet.Users do
   hash is stored, so `authenticate/1` is how a request finds its token
   and user, and a lost secret means a new token. Policy attaches to
   the token, not the user: a token names one and has `default` when
-  it names none.
+  it names none, and the name must be a policy the beamlet declares
+  (`Beamlet.Policies`).
 
   Operator-only. Nothing under `Host.*` reaches these functions, and
   deleting a user deletes their tokens with them. The command line

@@ -1,13 +1,15 @@
 defmodule Mix.Tasks.Beamlet do
-  @shortdoc "Manages users and tokens on your beamlet"
+  @shortdoc "Manages users, tokens and policies on your beamlet"
 
   @moduledoc """
-  Manages users and tokens on your beamlet from the command line:
+  Manages users, tokens and policies on your beamlet from the command
+  line:
 
       $ mix beamlet users
       $ mix beamlet users.create alice
-      $ mix beamlet tokens.create alice laptop
+      $ mix beamlet tokens.create alice laptop --policy explorer
       $ mix beamlet tokens alice
+      $ mix beamlet policies
       $ mix beamlet --help
 
   The commands are `Beamlet.CLI`'s. This task loads the application

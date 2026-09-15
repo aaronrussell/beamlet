@@ -13,24 +13,25 @@ defmodule Beamlet do
         MyApp.Endpoint
       ]
 
-  Configuration is application config (`Beamlet.Config`); the start
-  options carry nothing yet. Starting checks the configured data dir
-  exists and builds the declared policies, and fails the boot loudly
-  when the dir is missing or a policy is bad. One beamlet runs per
-  VM.
+  Configuration is application config (`Beamlet.Config`). Starting
+  checks the configured data dir exists and builds the declared
+  policies, and fails the boot loudly when the dir is missing or a
+  policy is bad. One beamlet runs per VM.
 
-  `prepare!/0` is the part of starting that happens before any child
-  runs: the data dir check and the database files. It is public so the
-  operator CLI (`Beamlet.CLI`) can bring up the system database on its
-  own without starting a beamlet.
+  `only: :system` starts the system half alone: the policies and the
+  system database, migrated. Nothing an agent reaches, no agent
+  database and no MCP server. The operator CLI (`Beamlet.CLI`) uses it
+  to manage users and tokens in a VM with no beamlet running:
+
+      {:ok, pid} = Beamlet.start_link(only: :system)
   """
 
   use Supervisor
 
   alias Beamlet.Config
 
-  @typedoc "Options accepted by `start_link/1`. None yet."
-  @type option :: {atom(), term()}
+  @typedoc "Options accepted by `start_link/1`."
+  @type option :: {:only, :system}
 
   @doc "Starts a beamlet, supervising everything it needs to run."
   @spec start_link([option()]) :: Supervisor.on_start()
@@ -38,33 +39,41 @@ defmodule Beamlet do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @doc """
-  Checks the data dir exists and creates both database files in WAL
-  mode, without starting anything.
-
-  `start_link/1` calls this before the children start; `Beamlet.CLI`
-  calls it before starting the system repo alone. Raises when the
-  data dir is missing.
-  """
-  @spec prepare!() :: :ok
-  def prepare! do
-    ensure_data_dir!()
-    Enum.each([Beamlet.Repo, Host.Repo], &ensure_database!/1)
-  end
-
   @impl true
-  def init(_opts) do
+  def init(opts) do
+    children = children(Keyword.get(opts, :only))
     prepare!()
 
-    children = [
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  defp children(:system) do
+    [
       Beamlet.Policies,
       Beamlet.Repo,
-      Host.Repo,
+      {Ecto.Migrator, repos: [Beamlet.Repo]}
+    ]
+  end
+
+  defp children(nil) do
+    [
+      Beamlet.Policies,
+      Beamlet.Repo,
       {Ecto.Migrator, repos: [Beamlet.Repo]},
+      Host.Repo,
       {Beamlet.MCP.Server, transport: {:streamable_http, start: true}, request_timeout: 60_000}
     ]
+  end
 
-    Supervisor.init(children, strategy: :one_for_one)
+  defp children(other) do
+    raise ArgumentError,
+          "Beamlet.start_link only: accepts :system, got: #{inspect(other)}"
+  end
+
+  # The data dir check and the database files, before any child runs.
+  defp prepare! do
+    ensure_data_dir!()
+    Enum.each([Beamlet.Repo, Host.Repo], &ensure_database!/1)
   end
 
   defp ensure_data_dir! do

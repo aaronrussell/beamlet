@@ -1,32 +1,39 @@
 defmodule Beamlet.CLI do
   @moduledoc """
-  The command line for managing users and tokens on your beamlet.
+  The command line for managing users, tokens and policies on your
+  beamlet.
 
       beamlet users                                 list users
       beamlet users.create USER                     create a user
       beamlet users.update USER --name NEW_NAME     rename a user
       beamlet users.delete USER                     delete a user and their tokens
       beamlet tokens USER                           list a user's tokens
-      beamlet tokens.create USER TOKEN              create a token, printing its secret once
-      beamlet tokens.update USER TOKEN --name NEW_NAME
+      beamlet tokens.create USER TOKEN [--policy POLICY]
+      beamlet tokens.update USER TOKEN [--name NEW_NAME] [--policy POLICY]
       beamlet tokens.delete USER TOKEN
+      beamlet policies                              list policies
+      beamlet policies.show POLICY                  show what a policy permits
 
   Everything addresses users and tokens by name; a token's name is
-  unique per user, so every token command names the user first. The
-  commands are the public functions of `Beamlet.Users` with plain
-  text output, and `main/1` is the whole surface: it takes the
+  unique per user, so every token command names the user first. A
+  token runs under `default` unless `--policy` names one of the
+  policies declared in config (`Beamlet.Policy`). The commands are the
+  public functions of `Beamlet.Users` and `Beamlet.Policies` with
+  plain text output, and `main/1` is the whole surface: it takes the
   arguments as a list, prints, and returns `:ok` or `:error`. In
   development `mix beamlet` hands it the arguments; a release ships a
   `bin/beamlet` script that does the same.
 
-  The commands touch only the system database. When no beamlet is
-  running in the VM, `main/1` checks the data dir, starts
-  `Beamlet.Repo`, migrates it, runs the command and stops the repo
-  again, so it works beside a beamlet running in another VM or with
-  none running at all. A beamlet running in the same VM lends its
-  repo as it is.
+  The commands need the policies and the system database, nothing an
+  agent reaches. When no beamlet is running in the VM, `main/1` starts
+  that half of one (`Beamlet.start_link/1` with `only: :system`), runs
+  the command and stops it again, so it works beside a beamlet running
+  in another VM or with none running at all. A beamlet running in the
+  same VM is used as it is.
   """
 
+  alias Beamlet.Policies
+  alias Beamlet.Policy
   alias Beamlet.Users
 
   @commands [
@@ -35,9 +42,12 @@ defmodule Beamlet.CLI do
     {"users.update", "USER --name NEW_NAME", "rename a user"},
     {"users.delete", "USER", "delete a user and their tokens"},
     {"tokens", "USER", "list a user's tokens"},
-    {"tokens.create", "USER TOKEN", "create a token, printing its secret once"},
-    {"tokens.update", "USER TOKEN --name NEW_NAME", "rename a token"},
-    {"tokens.delete", "USER TOKEN", "delete a token"}
+    {"tokens.create", "USER TOKEN [--policy POLICY]", "create a token, printing its secret once"},
+    {"tokens.update", "USER TOKEN [--name NEW_NAME] [--policy POLICY]",
+     "rename a token or change its policy"},
+    {"tokens.delete", "USER TOKEN", "delete a token"},
+    {"policies", "", "list policies"},
+    {"policies.show", "POLICY", "show what a policy permits"}
   ]
 
   @shapes Enum.map(@commands, fn {command, args, description} ->
@@ -48,8 +58,8 @@ defmodule Beamlet.CLI do
   @usage """
   Usage: beamlet COMMAND [ARGS]
 
-  Manage users and tokens on your beamlet. Names are lowercase
-  letters, digits, underscores and hyphens.
+  Manage users, tokens and policies on your beamlet. Names are
+  lowercase letters, digits, underscores and hyphens.
 
   #{Enum.map_join(@shapes, "\n", fn {shape, description} -> "  " <> String.pad_trailing(shape, @width + 2) <> description end)}
   """
@@ -64,7 +74,10 @@ defmodule Beamlet.CLI do
   @spec main([String.t()]) :: :ok | :error
   def main(argv) when is_list(argv) do
     parsed =
-      OptionParser.parse(argv, strict: [name: :string, help: :boolean], aliases: [h: :help])
+      OptionParser.parse(argv,
+        strict: [name: :string, policy: :string, help: :boolean],
+        aliases: [h: :help]
+      )
 
     case parsed do
       {_opts, _args, [{switch, _value} | _rest]} ->
@@ -80,31 +93,35 @@ defmodule Beamlet.CLI do
     end
   end
 
-  defp run("users", [], _opts), do: with_repo(&list_users/0)
-  defp run("users.create", [name], _opts), do: with_repo(fn -> create_user(name) end)
+  defp run("users", [], _opts), do: with_beamlet(&list_users/0)
+  defp run("users.create", [name], _opts), do: with_beamlet(fn -> create_user(name) end)
 
   defp run("users.update", [name], opts) do
     with_name("users.update", opts, fn new_name ->
-      with_repo(fn -> update_user(name, new_name) end)
+      with_beamlet(fn -> update_user(name, new_name) end)
     end)
   end
 
-  defp run("users.delete", [name], _opts), do: with_repo(fn -> delete_user(name) end)
-  defp run("tokens", [user], _opts), do: with_repo(fn -> list_tokens(user) end)
+  defp run("users.delete", [name], _opts), do: with_beamlet(fn -> delete_user(name) end)
+  defp run("tokens", [user], _opts), do: with_beamlet(fn -> list_tokens(user) end)
 
-  defp run("tokens.create", [user, name], _opts) do
-    with_repo(fn -> create_token(user, name) end)
+  defp run("tokens.create", [user, name], opts) do
+    with_beamlet(fn -> create_token(user, name, Keyword.take(opts, [:policy])) end)
   end
 
   defp run("tokens.update", [user, name], opts) do
-    with_name("tokens.update", opts, fn new_name ->
-      with_repo(fn -> update_token(user, name, new_name) end)
-    end)
+    case Keyword.take(opts, [:name, :policy]) do
+      [] -> fail("beamlet tokens.update needs --name NEW_NAME or --policy POLICY.")
+      attrs -> with_beamlet(fn -> update_token(user, name, attrs) end)
+    end
   end
 
   defp run("tokens.delete", [user, name], _opts) do
-    with_repo(fn -> delete_token(user, name) end)
+    with_beamlet(fn -> delete_token(user, name) end)
   end
+
+  defp run("policies", [], _opts), do: with_beamlet(&list_policies/0)
+  defp run("policies.show", [name], _opts), do: with_beamlet(fn -> show_policy(name) end)
 
   defp run(command, _args, _opts) do
     case List.keyfind(@commands, command, 0) do
@@ -170,11 +187,11 @@ defmodule Beamlet.CLI do
     end)
   end
 
-  defp create_token(user_name, name) do
+  defp create_token(user_name, name, attrs) do
     with_user(user_name, fn user ->
-      case Users.create_token(user, name: name) do
+      case Users.create_token(user, [name: name] ++ attrs) do
         {:ok, token} ->
-          puts("Created token #{token.name} for #{user.name}.")
+          puts("Created token #{token.name} for #{user.name} (policy #{token.policy}).")
           puts("Secret (shown once): #{token.secret}")
 
         {:error, changeset} ->
@@ -183,11 +200,15 @@ defmodule Beamlet.CLI do
     end)
   end
 
-  defp update_token(user_name, name, new_name) do
+  defp update_token(user_name, name, attrs) do
     with_token(user_name, name, fn user, token ->
-      case Users.update_token(token, name: new_name) do
-        {:ok, updated} -> puts("Renamed token #{token.name} to #{updated.name} for #{user.name}.")
-        {:error, changeset} -> fail(changeset)
+      case Users.update_token(token, attrs) do
+        {:ok, _updated} ->
+          changes = Enum.map_join(attrs, ", ", fn {field, value} -> "#{field} #{value}" end)
+          puts("Updated token #{token.name} for #{user.name}: #{changes}.")
+
+        {:error, changeset} ->
+          fail(changeset)
       end
     end)
   end
@@ -199,6 +220,18 @@ defmodule Beamlet.CLI do
         {:error, changeset} -> fail(changeset)
       end
     end)
+  end
+
+  defp list_policies, do: Policies.names() |> Enum.join("\n") |> puts()
+
+  defp show_policy(name) do
+    case Policies.fetch(name) do
+      {:ok, policy} ->
+        puts(Policy.render(policy))
+
+      {:error, :not_found} ->
+        fail("No policy named #{name}. Run `beamlet policies` to list them.")
+    end
   end
 
   defp with_user(name, fun) do
@@ -229,21 +262,34 @@ defmodule Beamlet.CLI do
     end
   end
 
-  # Ecto.Migrator.with_repo restarts the pool of a repo that was
-  # already running, so a running beamlet's repo is used as it is.
-  defp with_repo(fun) do
-    if Process.whereis(Beamlet.Repo) do
-      fun.()
-    else
-      Beamlet.prepare!()
+  defp with_beamlet(fun) do
+    if Process.whereis(Beamlet), do: fun.(), else: start_and_run(fun)
+  end
 
-      {:ok, result, _apps} =
-        Ecto.Migrator.with_repo(Beamlet.Repo, fn repo ->
-          Ecto.Migrator.run(repo, :up, all: true)
-          fun.()
-        end)
+  # Beamlet has no application of its own, so starting it here starts
+  # only its dependencies, which a bare VM has not. The beamlet then
+  # links to this process, so a boot that fails on a bad policy would
+  # take the command down with it instead of printing the error;
+  # trapping turns that exit into a message.
+  defp start_and_run(fun) do
+    {:ok, _apps} = Application.ensure_all_started(:beamlet)
+    trapping? = Process.flag(:trap_exit, true)
 
-      result
+    try do
+      case Beamlet.start_link(only: :system) do
+        {:ok, pid} ->
+          try do
+            fun.()
+          after
+            Supervisor.stop(pid)
+          end
+
+        {:error, {:shutdown, {:failed_to_start_child, _child, {error, _stack}}}}
+        when is_exception(error) ->
+          fail(Exception.message(error))
+      end
+    after
+      Process.flag(:trap_exit, trapping?)
     end
   end
 

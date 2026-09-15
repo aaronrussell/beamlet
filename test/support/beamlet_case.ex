@@ -12,6 +12,12 @@ defmodule Beamlet.Case do
   `user` and `token`, created through `Beamlet.Users` so a test
   authenticates the way production does. The token still carries its
   `secret`.
+
+  A test declares policies for its beamlet with a tag in the shape
+  config takes, put into config before the beamlet starts and removed
+  after:
+
+      @tag policies: [restricted: [tools: [:eval]]]
   """
 
   use ExUnit.CaseTemplate
@@ -24,7 +30,12 @@ defmodule Beamlet.Case do
     end
   end
 
-  setup do
+  setup context do
+    if policies = context[:policies] do
+      Application.put_env(:beamlet, :policies, policies)
+      on_exit(fn -> Application.delete_env(:beamlet, :policies) end)
+    end
+
     start_supervised!({Beamlet, []})
 
     for repo <- [Beamlet.Repo, Host.Repo] do

@@ -36,6 +36,29 @@ defmodule Beamlet.MCP.PlugTest do
     assert conn.status == 401
   end
 
+  test "a token naming an undeclared policy is a 403 naming both", %{token: token} do
+    # The changeset refuses to create such a token, so this stands in
+    # for a policy removed from config between restarts.
+    import Ecto.Query
+
+    Beamlet.Repo.update_all(from(t in Beamlet.Token, where: t.id == ^token.id),
+      set: [policy: "gone"]
+    )
+
+    conn = request("Bearer " <> token.secret)
+    assert conn.status == 403
+    assert get_resp_header(conn, "www-authenticate") == []
+    assert conn.resp_body == "Token test names policy gone, which this beamlet does not declare."
+
+    conn =
+      :get
+      |> conn("/")
+      |> put_req_header("authorization", "Bearer " <> token.secret)
+      |> Beamlet.MCP.Plug.call(@plug_opts)
+
+    assert conn.status == 403
+  end
+
   test "a valid token reaches the server with the principal in assigns", %{token: token} do
     conn = MCPClient.rpc(%MCPClient{secret: token.secret}, "initialize", initialize_params())
 

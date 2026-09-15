@@ -16,10 +16,12 @@ defmodule Beamlet.PrincipalTest do
            }
   end
 
+  @tag policies: [restricted: []]
   test "carries the token's policy", %{user: user} do
-    {:ok, token} = Users.create_token(user, name: "phone", policy: "strict")
+    {:ok, token} = Users.create_token(user, name: "phone", policy: "restricted")
     {:ok, authenticated} = Users.authenticate(token.secret)
 
-    assert %Principal{token_name: "phone", policy: "strict"} = Principal.from_token(authenticated)
+    assert %Principal{token_name: "phone", policy: "restricted"} =
+             Principal.from_token(authenticated)
   end
 end

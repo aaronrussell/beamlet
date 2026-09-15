@@ -7,8 +7,10 @@ defmodule Beamlet.Token do
   stored only as a hash. `secret` is a virtual field: it carries the
   value on the struct `Beamlet.Users.create_token/2` returns and is nil on
   every token loaded afterwards. A user holds one token per client or
-  device, and two policies for one person means two tokens. Rows are
-  managed through `Beamlet.Users`.
+  device, and two policies for one person means two tokens. The
+  policy must be one the beamlet declares (`Beamlet.Policies`); a
+  token has `default` when it names none. Rows are managed through
+  `Beamlet.Users`.
   """
 
   use Ecto.Schema
@@ -41,7 +43,8 @@ defmodule Beamlet.Token do
 
   @doc """
   Changeset for creating or updating a token: name and policy. The
-  name is unique per user; the hash is set by the store, never cast.
+  name is unique per user, the policy must be declared on the
+  beamlet, and the hash is set by the store, never cast.
   """
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(token, attrs) do
@@ -49,9 +52,22 @@ defmodule Beamlet.Token do
     |> cast(attrs, [:name, :policy])
     |> User.validate_name()
     |> validate_required([:policy])
+    |> validate_policy()
     |> unique_constraint([:user_id, :name],
       error_key: :name,
       message: "is already a token name for this user"
     )
+  end
+
+  defp validate_policy(changeset) do
+    validate_change(changeset, :policy, fn :policy, name ->
+      names = Beamlet.Policies.names()
+
+      if name in names do
+        []
+      else
+        [policy: "#{name} is not a policy on this beamlet (declared: #{Enum.join(names, ", ")})"]
+      end
+    end)
   end
 end

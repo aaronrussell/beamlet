@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-15 (step 10 done)
+**Last updated:** 2026-09-15 (step 11 done)
 
 ---
 
@@ -58,7 +58,7 @@ the end.
     policy, the server's `handle_request` override filtering the
     listing and refusing an ungranted call, and the CLI's `--policy`
     with `policies` and `policies.show`. End to end at the MCP plug
-    against the stub tools.
+    against the stub tools. *Done 2026-09-15.*
 12. **The scanner.** The port with its tests, scanning against a
     policy struct, `scan_eval` and `scan_define`. Right before its
     first caller.
@@ -172,3 +172,19 @@ the end.
   host rows wait for step 15. Validation extended to functions under
   `only:` and `except:`; allow-then-deny is deny. Design § 2 Policy
   records the as-built shape.
+- **Step 11** (2026-09-15): `Beamlet.Token`'s changeset validating
+  the policy against `Beamlet.Policies.names/0`; the plug's 403 with
+  a line naming the token and the policy; `Beamlet.MCP.Server`
+  overriding `handle_request/2` to filter `tools/list` and to answer
+  a `tools/call` for a withheld tool with Anubis's own unknown-tool
+  error, the distinct "not in your policy" message dropped since the
+  listing never showed the tool; `--policy` on `tokens.create` and
+  `tokens.update`, `policies` and `policies.show`. The CLI's cold
+  path was reshaped: `Beamlet.start_link(only: :system)` starts the
+  policies and the system database alone, so the CLI starts that
+  half of a beamlet and stops it rather than assembling processes
+  itself, ensuring the dependency applications first and trapping
+  the link so a bad declaration prints the boot's error;
+  `Beamlet.prepare!/0` went private again. Tests declare policies
+  with `@tag policies`, and the missing-policy case writes the row
+  directly. Design § 2 records all of it.
