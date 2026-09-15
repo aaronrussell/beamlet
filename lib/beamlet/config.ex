@@ -5,7 +5,8 @@ defmodule Beamlet.Config do
   One config surface, read at runtime, so a release or container sets
   it from the environment in `runtime.exs`. The data dir is the root
   everything a beamlet persists lives under; the modules owning paths
-  beneath it add their accessors here as they arrive.
+  beneath it add their accessors here as they arrive. Policies are
+  declared here too (`Beamlet.Policy`).
 
       config :beamlet, data_dir: "/var/lib/beamlet"
   """
@@ -38,4 +39,24 @@ defmodule Beamlet.Config do
   @doc "Directory holding Beamlet and agent database files."
   @spec db_dir() :: Path.t()
   def db_dir, do: Path.join(data_dir!(), "db")
+
+  @doc """
+  The policies declared beside `default`, as a keyword list of name
+  to document (`Beamlet.Policy`). Empty when unset.
+
+  Raises when the value is not a keyword list; each document is
+  validated by `Beamlet.Policies` at boot.
+  """
+  @spec policies!() :: keyword()
+  def policies! do
+    policies = Application.get_env(:beamlet, :policies, [])
+
+    if Keyword.keyword?(policies) do
+      policies
+    else
+      raise ArgumentError,
+            "config :beamlet, :policies must be a keyword list of policy name to " <>
+              "document, got: #{inspect(policies)}"
+    end
+  end
 end

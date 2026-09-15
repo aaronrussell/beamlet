@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-15 (policy designed, step 9)
+**Last updated:** 2026-09-15 (policy and the default built, step 10)
 
 ---
 
@@ -295,11 +295,16 @@ The document, applied as `default`, then `allow`, then `deny`:
   included, so `allow: [Kernel]` re-enables `apply`, the operator's
   deliberate call. `only:` and `except:` are relative to the
   module's full surface.
-- `deny` removes the module's entry; denying a module nothing
-  grants is a no-op.
+- `deny` removes the module's entry. It applies after `allow`, so a
+  module in both keys is denied, documented rather than an error;
+  denying a module nothing grants is a no-op.
 - Order inside a key does not matter, a module named twice in one
-  key is an error, and every module named must be loadable on the
-  beamlet, so a typo fails the boot rather than granting nothing.
+  key is an error, every module named must be loadable on the
+  beamlet, and every function under `only:` or `except:` must be
+  exported at that arity, as a function or macro, so a typo fails
+  the boot rather than granting nothing (step 10 extended the check
+  from modules to functions; it is a few lines and the same
+  argument).
 - Policy names follow the user and token name rule; `default` is
   reserved.
 - Declare and restart. No reload.
@@ -308,9 +313,11 @@ Two keys were considered and left out. `extends` between custom
 policies: every policy extends `default`, and chains are a
 speculative need. `allow_app`: which packages exist is a property
 of the runtime, not of a policy. The default grants the packages
-the beamlet ships, each expanded at boot into per-module entries
-with `@moduledoc false` modules excluded, exactly as code mode
-expanded its bundled dependencies, so it always expands. A custom
+the beamlet ships, `jason` and `req`, each expanded at boot into
+per-module entries with `@moduledoc false` modules excluded,
+exactly as code mode expanded its bundled dependencies, so it
+always expands. Jason stays beside Elixir's `JSON` because models
+reach for it by training, and turning them away teaches nothing. A custom
 policy speaks only in modules; an embedder granting their own
 package lists its modules under `allow`, and agent-installed
 dependencies (§ 4) will decide who grants those. `deny` is per
@@ -363,30 +370,54 @@ operator as `beamlet policies.show NAME`, beside `beamlet policies`
 listing the declared names and `--policy` on `tokens.create` and
 `tokens.update`.
 
-The shape in code, decided in outline here and pinned at steps 10
-to 12: `Beamlet.Policy` holds the struct with the document
-validation and the rendering, public, its moduledoc the operator's
-reference including each rule's blast radius; `Beamlet.Policy.Rules`
-is the rules struct with strict defaults; `Beamlet.Policy.Default`
-is the curation record, grants and signage and the not-granted walk
-with the moduledoc rendered from the data and the golden fixture
-pinning the composed default; `Beamlet.Policies` builds every
-declared policy at boot as a child of `Beamlet`, fails the boot on
-a bad one, and answers `fetch/1` and `names/0`; `Beamlet.Scanner`
-scans against a policy. The exec runner stashes one ambient value,
-the principal, where code mode stashed an agent name and a stance.
+The shape in code, built at step 10 and completed at 11 and 12:
+`Beamlet.Policy` holds the struct (name, tools, rules, grants),
+`build/2` with the document validation, the grant lookups, and
+`render/1`; public, its moduledoc the operator's reference
+including what each relaxed rule reaches. `Beamlet.Policy.Rules` is
+the rules struct with strict defaults. `Beamlet.Policy.Default` is
+the curation record, grants and signage and the not-granted walk,
+with the moduledoc rendered from the data, package expansion
+private to it, and the golden fixture pinning the composed table.
+`Beamlet.Policies` is a `GenServer`, the first child of `Beamlet`,
+that builds `default` and every declared policy in its init and
+loads them into an ETS table it owns, so a bad declaration fails
+the boot, a lookup is one read in the caller with no message to a
+process, and the policies live exactly as long as the beamlet;
+`:persistent_term` was the alternative and lost on lifetime, since
+it outlives the supervisor. `fetch/1` and `names/0` are its whole
+surface, and `Beamlet.Config.policies!/0` reads the declarations.
+`Beamlet.Scanner` scans against a policy (step 12), and the exec
+runner stashes one ambient value, the principal, where code mode
+stashed an agent name and a stance (step 13).
 
-What migrates straight across: the grant maps for Elixir, Erlang,
-the exception families and `__MODULE__`, with the host, web and
-data rows joining the default as their stdlib modules land; the
-table type and the app expansion; the scanner with its tests; the
-curation coverage tests and golden fixture; the discovery
-rendering. What changes: one cached table becomes a cache per
-policy, the stance struct becomes the rules struct, `scan_exec`
-becomes `scan_eval`, and the copy loses "code-mode" and "for this
-agent". Code mode's open question about two re-grant mechanisms of
-different scope is resolved by construction: everything is per
-policy, and only the pool is shared.
+Small calls made at step 10: policy names are strings everywhere
+outside config, where keyword keys are atoms because that syntax
+reads best; `tools: []` is accepted, since nothing needs a special
+case for it; the valid tool names are a list on `Beamlet.Policy`,
+not read from the MCP server, and step 11 tests that the server's
+components match; the rendering opens with the policy's name and
+tools and then reads as code mode's did, rules in force, deliberate
+denials not re-granted with their reasons, partial grants. The
+one-line-per-module renderer for the golden fixture is test support.
+
+What migrated straight across at step 10: the grant maps for
+Elixir, Erlang, the exception families and `__MODULE__`; the web
+and data rows and Ecto's exception family, since `phoenix`,
+`phoenix_html`, `phoenix_live_view`, `req` and `jason` were added as
+dependencies at the same time; `Host.Repo`'s row; the table type
+and the package expansion; the curation coverage tests and golden
+fixture; the rendering. The seven remaining host rows (`Host.Code`,
+`Host.FS`, `Host.KV`, `Host.Migrator`, `Host.PubSub`, `Host.Router`,
+`Host.Web`) join the default at step 15 as each module lands, one
+line each; no stub modules were written to carry them early. The
+signage copy that names those modules came across as written, since
+the names are settled. What changes: one cached table becomes a
+table per policy, the stance struct becomes the rules struct,
+`scan_exec` becomes `scan_eval`, and the copy loses "code-mode" and
+"for this agent". Code mode's open question about two re-grant
+mechanisms of different scope is resolved by construction:
+everything is per policy, and only the pool is shared.
 
 Deliberately out: exec limits per policy, since they are how much
 rather than what and stay ordinary config; reload; operator-added

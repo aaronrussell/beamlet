@@ -15,8 +15,9 @@ defmodule Beamlet do
 
   Configuration is application config (`Beamlet.Config`); the start
   options carry nothing yet. Starting checks the configured data dir
-  exists and fails the boot loudly when it does not. One beamlet runs
-  per VM.
+  exists and builds the declared policies, and fails the boot loudly
+  when the dir is missing or a policy is bad. One beamlet runs per
+  VM.
 
   `prepare!/0` is the part of starting that happens before any child
   runs: the data dir check and the database files. It is public so the
@@ -56,6 +57,7 @@ defmodule Beamlet do
     prepare!()
 
     children = [
+      Beamlet.Policies,
       Beamlet.Repo,
       Host.Repo,
       {Ecto.Migrator, repos: [Beamlet.Repo]},

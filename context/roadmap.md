@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-15
+**Last updated:** 2026-09-15 (step 10 done)
 
 ---
 
@@ -52,7 +52,7 @@ the end.
     `Beamlet.Policy.Default` with the platform rulings, the golden
     fixture and the coverage test, and `Beamlet.Policies` built at
     boot as a child of `Beamlet`, failing the boot on a bad
-    declaration. Tested directly, no MCP.
+    declaration. Tested directly, no MCP. *Done 2026-09-15.*
 11. **Policy at the edges.** The token changeset validating the
     policy name, the plug's 403 for a token naming an undeclared
     policy, the server's `handle_request` override filtering the
@@ -71,9 +71,14 @@ the end.
 15. **The stdlib, module by module.** Fs, PubSub, Repo and KV and
     Migrator, Code, then Web and Router. The test endpoint arrives
     with Web and Router. The provenance JSON encoding lands with the
-    route table. The host, web and data rulings join the default as
-    each module lands, and `Host.Code.print_policy` renders through
-    step 10's rendering.
+    route table. The seven remaining host rows (`Host.Code`,
+    `Host.FS`, `Host.KV`, `Host.Migrator`, `Host.PubSub`,
+    `Host.Router`, `Host.Web`) join `Beamlet.Policy.Default` as each
+    module lands, one line and a regenerated golden each; the
+    discovery accessors code mode kept on its curation record
+    (`framework_modules`, package descriptions) return if the
+    listing needs them; and `Host.Code.print_policy` renders through
+    `Beamlet.Policy.render/1`.
 16. **Descriptions and instructions pass** against the 2KB budget,
     with tests that fail past it. The instructions are phrased to
     survive an eval-only token, since they stay static while the
@@ -154,3 +159,16 @@ the end.
   defers `deny_app` and reload. The implementation was split into
   steps 10, 11 and 12 (the document and default, the edges, the
   scanner), and everything after was renumbered up by two.
+- **Step 10** (2026-09-15): `Beamlet.Policy` with the struct,
+  `build/2` validating the document with teaching errors that name
+  the policy and the key, the grant lookups and `render/1`;
+  `Beamlet.Policy.Rules`; `Beamlet.Policy.Default` as the curation
+  record with its rendered moduledoc, package expansion and the
+  golden fixture; `Beamlet.Policies` as a `GenServer` owning an ETS
+  table, first child of `Beamlet`, with `fetch/1` and `names/0`;
+  `Beamlet.Config.policies!/0`. `req`, `jason`, `phoenix`,
+  `phoenix_html` and `phoenix_live_view` became dependencies so the
+  web, data and package rows came across now; only the seven absent
+  host rows wait for step 15. Validation extended to functions under
+  `only:` and `except:`; allow-then-deny is deny. Design § 2 Policy
+  records the as-built shape.

@@ -35,7 +35,12 @@ defmodule Beamlet.MixProject do
       {:anubis_mcp, "~> 2.0"},
       {:ecto_sql, "~> 3.14"},
       {:ecto_sqlite3, "~> 0.24"},
-      {:plug, "~> 1.20"}
+      {:jason, "~> 1.4"},
+      {:phoenix, "~> 1.8"},
+      {:phoenix_html, "~> 4.3"},
+      {:phoenix_live_view, "~> 1.2"},
+      {:plug, "~> 1.20"},
+      {:req, "~> 0.6"}
     ]
   end
 
