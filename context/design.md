@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-15 (users and tokens store landed)
+**Last updated:** 2026-09-15 (the principal and the plug landed)
 
 ---
 
@@ -128,9 +128,12 @@ words do the work:
   token row and user. It happens once per request, at the edge, and
   only Beamlet's own tokens are valid.
 - The **principal** is what a request acts as: user id and name,
-  token id and name, policy name, and the client's name and version
-  when the client sent them. Built per request from the token, never
-  stored. Every exec, define, commit and route keys on it.
+  token id and name, policy name. Built per request from the token,
+  never stored. Every exec, define, commit and route keys on it. The
+  client's name and version are not on it (revised at step 7): they
+  are connection metadata, the token is the provenance, and a user
+  knows where each of their tokens is used. `Beamlet.Principal` is
+  flat, five fields; the encodings below do the nesting.
 - **Authorization** is checking what the principal may do, forward
   looking: the scanner enforcing the policy. **Provenance** is the
   record a persisted thing keeps of the principal that made it,
@@ -152,9 +155,11 @@ on the token, so `print_policy` under the request's own token is how
 a client learns what it may call.
 
 **Management is operator-only.** The public functions of
-`Beamlet.Users` are the product; step 8 puts a thin CLI over them. Nothing under `Host.*` creates, lists or deletes
-users or tokens. Tests create a user and token through the same
-functions, so every test authenticates the way production does.
+`Beamlet.Users` are the product; step 8 puts a thin CLI over them.
+Nothing under `Host.*` creates, lists or deletes users or tokens.
+`Beamlet.Case` creates a user, `alice`, and one token for every test
+through the same functions, so every test authenticates the way
+production does.
 
 **One context, structs at the root** (step 6): `Beamlet.Users` owns
 users and their tokens, with `Beamlet.User` and `Beamlet.Token`
@@ -201,12 +206,11 @@ define: Shopping.Item
 User: alice (1)
 Token: laptop (3)
 Policy: default
-Client: claude-code 1.2.3
 ```
 
 ```json
 {"user": {"id": 1, "name": "alice"}, "token": {"id": 3, "name": "laptop"},
- "policy": "default", "client": {"name": "claude-code", "version": "1.2.3"}}
+ "policy": "default"}
 ```
 
 Names first and ids beside them: the name is what a reader wants,
@@ -254,12 +258,18 @@ instructions are a pointer block, what matters most first and the
 stdlib for the rest.
 
 **Authentication is Beamlet's own plug, not Anubis's authorization.**
-`Beamlet.MCP.Plug` runs on every request, hashes the bearer secret,
-loads the token and user, builds the principal and puts it in the
-conn's assigns, which Anubis merges into the frame for every
-callback; then it forwards to the transport plug. A missing or bad
-token is a 401 with a plain `Bearer` challenge and a body saying how
-to create a token. The step 4 pin on Anubis's `authorization:`
+`Beamlet.MCP.Plug` wraps the transport plug with the server baked
+in, so a host mounts `forward "/mcp", Beamlet.MCP.Plug` and nothing
+else. It runs on every request and method: reads the `Bearer`
+secret, authenticates it through `Beamlet.Users`, and puts the
+principal in the conn's assigns as `:principal` before forwarding.
+Anubis re-merges the conn's assigns into the frame on every request,
+so `frame.assigns.principal` in a callback is always the current
+request's, which is what makes identity per request rather than per
+session. A missing token, another scheme or an unknown secret is a
+401 with a plain `Bearer` challenge and a one-line body; the status
+and the challenge carry the message, nobody reads a 401 body. The
+step 4 pin on Anubis's `authorization:`
 config was revised at step 5: that path is OAuth-shaped, requiring
 `authorization_servers` and `resource` URLs and advertising
 protected-resource metadata that sends a client without a token off

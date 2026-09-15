@@ -33,15 +33,13 @@ the end.
 5. **DESIGN: users, tokens, authentication, identification.**
    *Done 2026-09-14.*
 6. **Users and tokens store.** The migration, the two schemas with
-   changesets, `Beamlet.Users` and `Beamlet.Tokens`, and the
-   authenticate function turning a secret into its token and user.
+   changesets, `Beamlet.Users`, and the authenticate function turning a secret into its token and user.
    Tested against the system repo directly; no MCP involved.
    *Done 2026-09-15.*
 7. **The principal and the plug.** The `Beamlet.Principal` struct,
-   `Beamlet.MCP.Plug` with the 401 teaching body and the principal
-   in assigns, the test client sending a bearer header, and
-   `Beamlet.Case` creating a user and token for every test. Touches
-   every existing MCP test.
+   `Beamlet.MCP.Plug` with the 401 and the principal in assigns, the
+   test client sending a bearer header, and `Beamlet.Case` creating
+   a user and token for every test. *Done 2026-09-15.*
 8. **Management interface** for users and tokens: mix tasks over the
    store functions. The tasks touch only the system database, and
    the migrator runs inside the `Beamlet` supervisor, so a task
@@ -102,3 +100,12 @@ the end.
   sandbox connection on both repos per test. Design § 2 Users,
   tokens and principals records the context shape, the name rule and
   the secret pipeline.
+- **Step 7** (2026-09-15): `Beamlet.Principal`, flat with user and
+  token ids and names and the policy, built from an authenticated
+  token; `Beamlet.MCP.Plug` wrapping the transport plug with the
+  server baked in, a 401 with a `Bearer` challenge otherwise;
+  `Beamlet.MCPClient` as a handle carrying session id and secret,
+  since the bearer goes on every request; `Beamlet.Case` creating
+  `alice` and a token per test. The client's name and version were
+  dropped from the principal and both provenance encodings. Design
+  § 2 Users, tokens and principals, Provenance and MCP record it.

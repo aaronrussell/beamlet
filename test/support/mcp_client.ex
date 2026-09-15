@@ -1,27 +1,34 @@
 defmodule Beamlet.MCPClient do
   @moduledoc """
-  A minimal MCP client for tests: JSON-RPC over the Streamable HTTP
-  plug with `Plug.Test`, no endpoint.
+  A minimal MCP client for tests: JSON-RPC through `Beamlet.MCP.Plug`
+  with `Plug.Test`, no endpoint.
 
-  `initialize/0` does the handshake and returns the session id every
-  later request needs.
+  `initialize/1` takes a token, does the handshake and returns a
+  client carrying the session id and the secret, since every request
+  sends both. `rpc/3` with `nil` sends neither, for tests of the
+  unauthenticated path.
   """
 
   import ExUnit.Assertions
   import Plug.Conn
   import Plug.Test
 
-  alias Anubis.Server.Transport.StreamableHTTP
+  alias Beamlet.Token
 
-  @plug_opts StreamableHTTP.Plug.init(server: Beamlet.MCP.Server)
+  defstruct [:session_id, :secret]
+
+  @typedoc "An initialized client: the session and the secret it authenticates with."
+  @type t :: %__MODULE__{session_id: String.t() | nil, secret: String.t() | nil}
+
+  @plug_opts Beamlet.MCP.Plug.init([])
   @session_header "mcp-session-id"
   @protocol_version "2025-06-18"
 
-  @doc "Initializes a session; returns its id and the initialize result."
-  @spec initialize() :: {String.t(), map()}
-  def initialize do
+  @doc "Initializes a session with the token's secret; returns the client and the initialize result."
+  @spec initialize(Token.t()) :: {t(), map()}
+  def initialize(%Token{secret: secret}) when is_binary(secret) do
     conn =
-      rpc(nil, "initialize", %{
+      rpc(%__MODULE__{secret: secret}, "initialize", %{
         protocolVersion: @protocol_version,
         capabilities: %{},
         clientInfo: %{name: "test", version: "0"}
@@ -29,42 +36,51 @@ defmodule Beamlet.MCPClient do
 
     [session_id] = get_resp_header(conn, @session_header)
     result = result(conn)
-    assert notify(session_id, "notifications/initialized").status == 202
-    {session_id, result}
+    client = %__MODULE__{session_id: session_id, secret: secret}
+    assert notify(client, "notifications/initialized").status == 202
+    {client, result}
   end
 
   @doc "Lists the server's tools."
-  @spec list_tools(String.t()) :: [map()]
-  def list_tools(session_id) do
-    %{"tools" => tools} = session_id |> rpc("tools/list", %{}) |> result()
+  @spec list_tools(t()) :: [map()]
+  def list_tools(%__MODULE__{} = client) do
+    %{"tools" => tools} = client |> rpc("tools/list", %{}) |> result()
     tools
   end
 
   @doc "Calls a tool; returns the tool result."
-  @spec call_tool(String.t(), String.t(), map()) :: map()
-  def call_tool(session_id, name, arguments) do
-    session_id |> rpc("tools/call", %{name: name, arguments: arguments}) |> result()
+  @spec call_tool(t(), String.t(), map()) :: map()
+  def call_tool(%__MODULE__{} = client, name, arguments) do
+    client |> rpc("tools/call", %{name: name, arguments: arguments}) |> result()
   end
 
   @doc "Sends one JSON-RPC request and returns the conn."
-  @spec rpc(String.t() | nil, String.t(), map()) :: Plug.Conn.t()
-  def rpc(session_id, method, params) do
+  @spec rpc(t() | nil, String.t(), map()) :: Plug.Conn.t()
+  def rpc(client, method, params) do
     id = System.unique_integer([:positive])
-    post(session_id, %{jsonrpc: "2.0", id: id, method: method, params: params})
+    post(client, %{jsonrpc: "2.0", id: id, method: method, params: params})
   end
 
-  defp notify(session_id, method), do: post(session_id, %{jsonrpc: "2.0", method: method})
+  defp notify(client, method), do: post(client, %{jsonrpc: "2.0", method: method})
 
-  defp post(session_id, body) do
+  defp post(client, body) do
     conn(:post, "/", JSON.encode!(body))
     |> put_req_header("content-type", "application/json")
     |> put_req_header("accept", "application/json")
-    |> put_session_header(session_id)
-    |> StreamableHTTP.Plug.call(@plug_opts)
+    |> put_client_headers(client)
+    |> Beamlet.MCP.Plug.call(@plug_opts)
   end
 
-  defp put_session_header(conn, nil), do: conn
-  defp put_session_header(conn, session_id), do: put_req_header(conn, @session_header, session_id)
+  defp put_client_headers(conn, nil), do: conn
+
+  defp put_client_headers(conn, %__MODULE__{session_id: session_id, secret: secret}) do
+    conn
+    |> put_optional_header(@session_header, session_id)
+    |> put_optional_header("authorization", secret && "Bearer #{secret}")
+  end
+
+  defp put_optional_header(conn, _name, nil), do: conn
+  defp put_optional_header(conn, name, value), do: put_req_header(conn, name, value)
 
   defp result(conn) do
     assert conn.status == 200, "expected 200, got #{conn.status}: #{conn.resp_body}"

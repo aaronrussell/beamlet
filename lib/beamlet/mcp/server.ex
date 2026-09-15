@@ -4,10 +4,10 @@ defmodule Beamlet.MCP.Server do
   Streamable HTTP, for any MCP client.
 
   Runs as a child of `Beamlet`. A host serves it by mounting the
-  transport plug:
+  authenticating plug, and every request then carries one of the
+  beamlet's tokens (`Beamlet.MCP.Plug`):
 
-      forward "/mcp", Anubis.Server.Transport.StreamableHTTP.Plug,
-        server: Beamlet.MCP.Server
+      forward "/mcp", Beamlet.MCP.Plug
 
   The instructions returned on `initialize` and each tool's
   description are kept under 2,048 bytes: Claude Code truncates both

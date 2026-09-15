@@ -7,6 +7,11 @@ defmodule Beamlet.Case do
   Each test owns a sandbox connection on both repos, shared with
   every process in the VM, so rows written during a test roll back
   when it ends while the schema migrated at boot stays.
+
+  Every test also gets a user, `alice`, and one of her tokens as
+  `user` and `token`, created through `Beamlet.Users` so a test
+  authenticates the way production does. The token still carries its
+  `secret`.
   """
 
   use ExUnit.CaseTemplate
@@ -27,7 +32,10 @@ defmodule Beamlet.Case do
       on_exit(fn -> Sandbox.stop_owner(owner) end)
     end
 
-    %{data_dir: Beamlet.Config.data_dir!()}
+    {:ok, user} = Beamlet.Users.create(name: "alice")
+    {:ok, token} = Beamlet.Users.create_token(user, name: "test")
+
+    %{data_dir: Beamlet.Config.data_dir!(), user: user, token: token}
   end
 
   @doc "Changeset errors as a map of field to messages, with values interpolated."

@@ -6,27 +6,27 @@ defmodule Beamlet.MCP.ServerTest do
   alias Beamlet.MCP.Server
   alias Beamlet.MCPClient
 
-  test "initialize returns the server info and instructions" do
-    {_session_id, result} = MCPClient.initialize()
+  test "initialize returns the server info and instructions", %{token: token} do
+    {_client, result} = MCPClient.initialize(token)
 
     assert result["serverInfo"]["name"] == "beamlet"
     assert result["instructions"] == Server.server_instructions()
   end
 
-  test "lists define and eval with their descriptions" do
-    {session_id, _result} = MCPClient.initialize()
-    tools = MCPClient.list_tools(session_id)
+  test "lists define and eval with their descriptions", %{token: token} do
+    {client, _result} = MCPClient.initialize(token)
+    tools = MCPClient.list_tools(client)
 
     assert Enum.map(tools, & &1["name"]) == ["define", "eval"]
     assert Enum.map(tools, & &1["description"]) == [Define.description(), Eval.description()]
     assert Enum.map(tools, & &1["inputSchema"]["required"]) == [["code"], ["code"]]
   end
 
-  test "the stub tools answer with an error result" do
-    {session_id, _result} = MCPClient.initialize()
+  test "the stub tools answer with an error result", %{token: token} do
+    {client, _result} = MCPClient.initialize(token)
 
     assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
-             MCPClient.call_tool(session_id, "eval", %{code: "1 + 1"})
+             MCPClient.call_tool(client, "eval", %{code: "1 + 1"})
 
     assert text =~ "not available yet"
   end

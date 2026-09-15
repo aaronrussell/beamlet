@@ -7,7 +7,7 @@ defmodule Beamlet.UsersTest do
 
   describe "create/1" do
     test "creates a user with a valid name" do
-      assert {:ok, %User{id: id, name: "alice"}} = Users.create(%{name: "alice"})
+      assert {:ok, %User{id: id, name: "bob"}} = Users.create(%{name: "bob"})
       assert is_integer(id)
       assert {:ok, %User{name: "a-b_1"}} = Users.create(name: "a-b_1")
     end
@@ -36,21 +36,21 @@ defmodule Beamlet.UsersTest do
     end
 
     test "rejects a duplicate name" do
-      assert {:ok, _} = Users.create(name: "alice")
-      assert {:error, changeset} = Users.create(name: "alice")
+      assert {:ok, _} = Users.create(name: "bob")
+      assert {:error, changeset} = Users.create(name: "bob")
       assert %{name: ["has already been taken"]} = errors_on(changeset)
     end
   end
 
   describe "update/2" do
     test "renames a user and keeps the id" do
-      {:ok, %User{id: id} = user} = Users.create(name: "alice")
-      assert {:ok, %User{id: ^id, name: "alice2"}} = Users.update(user, name: "alice2")
-      assert {:ok, %User{name: "alice2"}} = Users.find(id)
+      {:ok, %User{id: id} = user} = Users.create(name: "bob")
+      assert {:ok, %User{id: ^id, name: "bob2"}} = Users.update(user, name: "bob2")
+      assert {:ok, %User{name: "bob2"}} = Users.find(id)
     end
 
     test "applies the same name rules" do
-      {:ok, user} = Users.create(name: "alice")
+      {:ok, user} = Users.create(name: "carol")
       {:ok, _} = Users.create(name: "bob")
       assert {:error, changeset} = Users.update(user, name: "Bob")
       assert %{name: [_]} = errors_on(changeset)
@@ -60,9 +60,8 @@ defmodule Beamlet.UsersTest do
   end
 
   describe "delete/1" do
-    test "deletes the user and their tokens" do
-      {:ok, user} = Users.create(name: "alice")
-      {:ok, token} = Users.create_token(user, name: "laptop")
+    test "deletes the user and their tokens", %{user: user, token: token} do
+      {:ok, _} = Users.create_token(user, name: "laptop")
 
       assert {:ok, %User{}} = Users.delete(user)
       assert {:error, :not_found} = Users.find(user.id)
@@ -72,31 +71,28 @@ defmodule Beamlet.UsersTest do
   end
 
   describe "list/0" do
-    test "lists users oldest first" do
-      assert Users.list() == []
+    test "lists users oldest first", %{user: alice} do
+      assert [^alice] = Users.list()
       {:ok, bob} = Users.create(name: "bob")
-      {:ok, alice} = Users.create(name: "alice")
-      assert [^bob, ^alice] = Users.list()
+      assert [^alice, ^bob] = Users.list()
     end
   end
 
   describe "find/1 and find_by/1" do
     test "find by id" do
-      {:ok, user} = Users.create(name: "alice")
+      {:ok, user} = Users.create(name: "bob")
       assert {:ok, ^user} = Users.find(user.id)
       assert {:error, :not_found} = Users.find(user.id + 1)
     end
 
     test "find_by clauses" do
-      {:ok, user} = Users.create(name: "alice")
-      assert {:ok, ^user} = Users.find_by(name: "alice")
-      assert {:error, :not_found} = Users.find_by(name: "bob")
+      {:ok, user} = Users.create(name: "bob")
+      assert {:ok, ^user} = Users.find_by(name: "bob")
+      assert {:error, :not_found} = Users.find_by(name: "carol")
     end
   end
 
   describe "create_token/2" do
-    setup :alice
-
     test "returns the secret once and stores only its hash", %{user: user} do
       assert {:ok, %Token{id: id, name: "laptop", secret: secret, secret_hash: hash}} =
                Users.create_token(user, name: "laptop")
@@ -105,7 +101,7 @@ defmodule Beamlet.UsersTest do
       assert byte_size(hash) == 32
       assert hash == :crypto.hash(:sha256, secret)
 
-      assert [%Token{id: ^id, secret: nil, secret_hash: ^hash}] = Users.list_tokens(user)
+      assert [_test, %Token{id: ^id, secret: nil, secret_hash: ^hash}] = Users.list_tokens(user)
     end
 
     test "secrets are URL-safe and unique", %{user: user} do
@@ -150,8 +146,6 @@ defmodule Beamlet.UsersTest do
   end
 
   describe "update_token/2" do
-    setup :alice
-
     test "changes the policy or name and keeps the secret", %{user: user} do
       {:ok, %Token{id: id, secret: secret} = token} = Users.create_token(user, name: "laptop")
 
@@ -163,10 +157,7 @@ defmodule Beamlet.UsersTest do
   end
 
   describe "delete_token/1" do
-    setup :alice
-
-    test "removes the token and its secret stops authenticating", %{user: user} do
-      {:ok, token} = Users.create_token(user, name: "laptop")
+    test "removes the token and its secret stops authenticating", %{user: user, token: token} do
       assert {:ok, %Token{}} = Users.delete_token(token)
       assert Users.list_tokens(user) == []
       assert {:error, :unknown_token} = Users.authenticate(token.secret)
@@ -175,21 +166,17 @@ defmodule Beamlet.UsersTest do
   end
 
   describe "list_tokens/1" do
-    setup :alice
-
-    test "lists a user's tokens oldest first", %{user: user} do
+    test "lists a user's tokens oldest first", %{user: user, token: %Token{id: t}} do
       {:ok, bob} = Users.create(name: "bob")
       {:ok, %Token{id: b}} = Users.create_token(user, name: "b")
       {:ok, %Token{id: a}} = Users.create_token(user, name: "a")
       {:ok, _} = Users.create_token(bob, name: "phone")
 
-      assert [%Token{id: ^b}, %Token{id: ^a}] = Users.list_tokens(user)
+      assert [%Token{id: ^t}, %Token{id: ^b}, %Token{id: ^a}] = Users.list_tokens(user)
     end
   end
 
   describe "authenticate/1" do
-    setup :alice
-
     test "turns a secret into its token with the user loaded", %{user: user} do
       {:ok, %Token{id: id, secret: secret}} = Users.create_token(user, name: "laptop")
       user_id = user.id
@@ -218,10 +205,5 @@ defmodule Beamlet.UsersTest do
       assert {:error, :unknown_token} = Users.authenticate(nil)
       assert {:error, :unknown_token} = Users.authenticate(42)
     end
-  end
-
-  defp alice(_context) do
-    {:ok, user} = Users.create(name: "alice")
-    %{user: user}
   end
 end
