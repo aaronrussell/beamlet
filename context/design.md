@@ -5,8 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-14 (users, tokens, principals and
-provenance settled)
+**Last updated:** 2026-09-15 (users and tokens store landed)
 
 ---
 
@@ -152,31 +151,61 @@ nothing here needs the alternative: server instructions never depend
 on the token, so `print_policy` under the request's own token is how
 a client learns what it may call.
 
-**Management is operator-only.** Public store functions
-(`Beamlet.Users`, `Beamlet.Tokens`) are the product; step 8 puts a
-thin CLI over them. Nothing under `Host.*` creates, lists or deletes
+**Management is operator-only.** The public functions of
+`Beamlet.Users` are the product; step 8 puts a thin CLI over them. Nothing under `Host.*` creates, lists or deletes
 users or tokens. Tests create a user and token through the same
 functions, so every test authenticates the way production does.
+
+**One context, structs at the root** (step 6): `Beamlet.Users` owns
+users and their tokens, with `Beamlet.User` and `Beamlet.Token`
+beside it and `Beamlet.Principal` to follow. A token is a
+sub-resource of a user in every way that matters: it belongs to
+one, dies with one, and is created and listed through one. The tell
+was the arguments. Plain `create`, `update`, `delete`, `list`,
+`find` and `find_by` take conventional arguments, attrs and structs,
+so they stay predictable as fields arrive; a token function takes
+the user it belongs to, which is what makes it a user operation
+(`create_token(user, attrs)`, `list_tokens(user)`), and `authenticate`
+turns a secret into its token with the user loaded. A separate
+`Tokens` store was tried first and read wrong for exactly that
+reason. The structs stay at the root rather than under the context
+because `Beamlet.Users.User` stutters, and the root stays clear
+because the code-mode machinery arrives under grouping namespaces of
+its own. Ecto's own shapes throughout: a failed validation returns
+the changeset, a miss returns `{:error, :not_found}`. User and token
+names follow one rule, lowercase letters, digits, underscores and
+hyphens, at most 64 characters, because a user name becomes a git
+author email and both appear as trailer values. A token name is
+unique per user, not per beamlet. The policy default lives on the
+schema, not the column, so the database records no design decision.
+
+The secret is 32 random bytes as unpadded URL-safe base64, the string
+a client keeps. Only its SHA-256 is stored, a raw binary under a
+unique index; a fast hash is right for a secret with that much
+entropy. `Beamlet.Users.authenticate/1` hashes the presented string
+as it is, with no decoding step, so a malformed value simply matches
+nothing. The secret rides on a virtual field of the struct that
+`create_token` returns and is nil on every token loaded afterwards.
 
 ### Provenance
 
 One struct, two encodings. A route row stores the principal as
 JSON in a map column; a commit carries it as git trailers, with the
-user as the author (`aaron <aaron@beamlet>`) so `git log` and
+user as the author (`alice <alice@beamlet>`) so `git log` and
 `git blame` show a proper name. Both come from the same struct, so
 they cannot disagree, and both decode back to it:
 
 ```
 define: Shopping.Item
 
-User: aaron (1)
+User: alice (1)
 Token: laptop (3)
 Policy: default
 Client: claude-code 1.2.3
 ```
 
 ```json
-{"user": {"id": 1, "name": "aaron"}, "token": {"id": 3, "name": "laptop"},
+{"user": {"id": 1, "name": "alice"}, "token": {"id": 3, "name": "laptop"},
  "policy": "default", "client": {"name": "claude-code", "version": "1.2.3"}}
 ```
 

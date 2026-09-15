@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-15
 
 ---
 
@@ -36,6 +36,7 @@ the end.
    changesets, `Beamlet.Users` and `Beamlet.Tokens`, and the
    authenticate function turning a secret into its token and user.
    Tested against the system repo directly; no MCP involved.
+   *Done 2026-09-15.*
 7. **The principal and the plug.** The `Beamlet.Principal` struct,
    `Beamlet.MCP.Plug` with the 401 teaching body and the principal
    in assigns, the test client sending a bearer header, and
@@ -93,3 +94,11 @@ the end.
   implementation was then split into steps 6, 7 and 8, with the
   provenance encodings deferred to their first callers at 12 and 13,
   and everything after renumbered up by one.
+- **Step 6** (2026-09-15): the users and tokens migration,
+  `Beamlet.User` and `Beamlet.Token` at the root beside the one
+  context `Beamlet.Users` that owns both, its conventional user
+  functions and the token functions taking the user, and
+  `Beamlet.Users.authenticate/1`. `Beamlet.Case` now owns a shared
+  sandbox connection on both repos per test. Design § 2 Users,
+  tokens and principals records the context shape, the name rule and
+  the secret pipeline.

@@ -69,9 +69,14 @@ claiming done.
   valid. Policy attaches to the token. Provenance is one struct with
   two encodings: JSON on a route row, git trailers on a commit.
 - **Plain Phoenix and Ecto.** Agents author vanilla Phoenix at
-  runtime, so no DSL layer in the way. Canonical Ecto: root-level
-  stores own their tables and are their only `Repo` callers;
-  schemas with changesets in the store's sub-namespace.
+  runtime, so no DSL layer in the way. Canonical Ecto: a root-level
+  context, plural, owns a resource and its sub-resources and is the
+  only `Repo` caller for their tables; the schemas with their
+  changesets sit beside it at the root, singular (`Beamlet.Users`
+  owns `Beamlet.User` and `Beamlet.Token`). Plain `create`, `update`,
+  `delete`, `list`, `find` and `find_by` take conventional
+  arguments; a function that takes the parent resource is named
+  for the sub-resource (`create_token(user, attrs)`).
 - **No features beyond the task.** No speculative abstractions, no
   "while I'm in here" refactors.
 - **No migration paths for dev data, pre-release.** Wipe it.
