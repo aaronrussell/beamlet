@@ -13,10 +13,9 @@ defmodule Beamlet.Policy.DefaultTest do
   #
   # The coverage test makes the walk provably exhaustive: every
   # documented module of the platform applications must carry exactly
-  # one ruling in Beamlet.Policy.Default, granted, deliberately denied
-  # with signage, or recorded as not granted. A new module arriving
-  # with an Elixir/OTP upgrade fails this test by name and demands a
-  # ruling.
+  # one ruling in Beamlet.Policy.Default, granted or recorded as not
+  # granted. A new module arriving with an Elixir/OTP upgrade fails
+  # this test by name and demands a ruling.
 
   @platform_apps [:elixir, :stdlib, :kernel, :erts, :crypto]
 
@@ -38,48 +37,26 @@ defmodule Beamlet.Policy.DefaultTest do
       assert :lists in universe
 
       ruled =
-        MapSet.union(
-          MapSet.new(Map.keys(Default.grants())),
-          MapSet.union(MapSet.new(Default.signage_modules()), MapSet.new(not_granted()))
-        )
+        MapSet.union(MapSet.new(Map.keys(Default.grants())), MapSet.new(not_granted()))
 
       unruled = Enum.reject(universe, &MapSet.member?(ruled, &1))
 
       assert unruled == [],
              "platform modules without a ruling in Beamlet.Policy.Default " <>
-               "(grant them, or record the denial with signage or under " <>
-               "not-granted): #{inspect(unruled)}"
+               "(grant them, or record the denial under not-granted): #{inspect(unruled)}"
     end
 
-    test "every ruling home is disjoint" do
+    test "granted and not-granted are disjoint" do
       granted = MapSet.new(Map.keys(Default.grants()))
-      signage = MapSet.new(Default.signage_modules())
       buckets = MapSet.new(not_granted())
-
-      assert MapSet.intersection(granted, signage) == MapSet.new(),
-             "granted modules must not carry denial signage"
 
       assert MapSet.intersection(granted, buckets) == MapSet.new(),
              "granted modules must not appear under not-granted"
-
-      assert MapSet.intersection(signage, buckets) == MapSet.new(),
-             "signage modules must not also appear under not-granted"
     end
 
-    test "function-level signage refers to functions the grants actually deny" do
-      policy = Policy.default()
-
-      dangling =
-        Enum.reject(Default.signage_function_keys(), fn {mod, fun} ->
-          Code.ensure_loaded?(mod) and
-            Enum.any?(0..8, fn arity ->
-              exported?(mod, fun, arity) and not Policy.allowed?(policy, mod, fun, arity)
-            end)
-        end)
-
-      assert dangling == [],
-             "signage for functions that exist at no denied arity; the hint would " <>
-               "never fire, or the grant tables drifted: #{inspect(dangling)}"
+    test "not-granted names no module twice" do
+      modules = not_granted()
+      assert Enum.uniq(modules) == modules
     end
 
     test "every partial grant names functions the module exports" do

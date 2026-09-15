@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-15 (policy at the edges, step 11)
+**Last updated:** 2026-09-15 (the scanner and the signage review, step 12)
 
 ---
 
@@ -248,13 +248,37 @@ The vocabulary:
   pool through a module it defines, as a macro does under
   `allow_defmacro`. Accepted once, here, and documented for the
   operator; not a reason to withhold the lever.
-- **Signage** is the teaching copy for the default's deliberate
-  denials, by category. It is Beamlet-wide, not part of any policy:
-  a policy that re-grants `File` silences its signage, a policy that
-  denies `Enum` gets the generic copy.
+- **Signage** is the teaching copy appended to a refusal, for the
+  few names where "not permitted by your policy" would leave an
+  agent guessing (revised at step 12, below). It is Beamlet-wide,
+  not part of any policy, and a lookup takes the policy so the copy
+  stays true for it.
 - The **curation record** is the data behind `default` and the
   coverage walk that proves every documented platform module has a
   ruling, carried over from code mode.
+
+Signage was reviewed clause by clause at step 12, because code
+mode's coverage walk had made it one of three buckets and so the
+home for every deliberate denial, sixty-odd modules across ten
+categories, much of it copy that a custom policy falsified. Two
+kinds earn a place. A **redirect** names the door the agent would
+not guess: `File` is refused, `Host.FS` is where scoped file access
+lives; likewise `Host.KV` for `Agent` and the ETS family, `Host.Repo`
+for `Ecto.Repo`, `Host.Router`, `Host.PubSub`, `Host.Migrator`, and
+the `define` tool for `Code`. A **closure** says a whole family is
+withheld, so the agent stops walking its siblings; it pays for
+itself only over a family the model predictably walks, which is
+process primitives and the environment (with the reason it may hold
+credentials, which changes the agent's plan). The shell and dynamic
+categories were cut, the generic copy doing the same work, and
+every closure lost its members that a model never reaches for as a
+sibling. A policy that grants a signed module never refuses it, so
+its hint never fires; a redirect whose door the policy withholds,
+whether a `Host.*` module it denies or has not yet got, or the
+`define` tool, is dropped, since a pointer at a closed door is the
+one hint that misleads. Each `Host.*` redirect therefore lights up
+exactly when its row lands at step 15. Everything else denied gets
+the generic copy, and the not-granted record carries the reason.
 
 Retired words: *stance* (the rules on the policy), *amendment*
 (there is no host-wide table to amend, only declarations in a
@@ -386,10 +410,14 @@ The shape in code, built at step 10 and completed at 11 and 12:
 `render/1`; public, its moduledoc the operator's reference
 including what each relaxed rule reaches. `Beamlet.Policy.Rules` is
 the rules struct with strict defaults. `Beamlet.Policy.Default` is
-the curation record, grants and signage and the not-granted walk,
-with the moduledoc rendered from the data, package expansion
-private to it, and the golden fixture pinning the composed table.
-`Beamlet.Policies` is a `GenServer`, the first child of `Beamlet`,
+the curation record, grants and the not-granted walk, with the
+moduledoc rendered from the data, package expansion private to it,
+and the golden fixture pinning the composed table.
+`Beamlet.Policy.Signage` is the sparse overlay of teaching copy:
+categories with their copy and door, the module and function maps,
+`hint/2` and `hint/3` taking the policy, and `denials/1` for the
+rendering; a test proves every signed name is denied under the
+default. `Beamlet.Policies` is a `GenServer`, the first child of `Beamlet`,
 that builds `default` and every declared policy in its init and
 loads them into an ETS table it owns, so a bad declaration fails
 the boot, a lookup is one read in the caller with no message to a
@@ -397,9 +425,14 @@ process, and the policies live exactly as long as the beamlet;
 `:persistent_term` was the alternative and lost on lifetime, since
 it outlives the supervisor. `fetch/1` and `names/0` are its whole
 surface, and `Beamlet.Config.policies!/0` reads the declarations.
-`Beamlet.Scanner` scans against a policy (step 12), and the exec
-runner stashes one ambient value, the principal, where code mode
-stashed an agent name and a stance (step 13). A test declares the
+`Beamlet.Scanner` (step 12) is code mode's scanner taking the
+policy struct and nothing else, `scan_eval(code, policy)` and
+`scan_define(code, policy)`, with the rules read from it and the
+hints looked up through it; the effective grants' other half, every
+defined module, is merged into the policy by the caller once the
+code server exists (step 14). The exec runner stashes one ambient
+value, the principal, where code mode stashed an agent name and a
+stance (step 13). A test declares the
 policies its beamlet has with `@tag policies: [...]`, in the shape
 config takes, which `Beamlet.Case` puts into config before the
 beamlet starts and removes after (step 11); a fixed set in the test
@@ -427,10 +460,10 @@ fixture; the rendering. The seven remaining host rows (`Host.Code`,
 `Host.Web`) join the default at step 15 as each module lands, one
 line each; no stub modules were written to carry them early. The
 signage copy that names those modules came across as written, since
-the names are settled. What changes: one cached table becomes a
-table per policy, the stance struct becomes the rules struct,
-`scan_exec` becomes `scan_eval`, and the copy loses "code-mode" and
-"for this agent". Code mode's open question about two re-grant
+the names are settled, and was then slimmed at step 12. What
+changes: one cached table becomes a table per policy, the stance
+struct becomes the rules struct, `scan_exec` becomes `scan_eval`,
+and the copy loses "code-mode" and "for this agent". Code mode's open question about two re-grant
 mechanisms of different scope is resolved by construction:
 everything is per policy, and only the pool is shared.
 

@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-15 (step 11 done)
+**Last updated:** 2026-09-15 (step 12 done)
 
 ---
 
@@ -60,21 +60,31 @@ the end.
     with `policies` and `policies.show`. End to end at the MCP plug
     against the stub tools. *Done 2026-09-15.*
 12. **The scanner.** The port with its tests, scanning against a
-    policy struct, `scan_eval` and `scan_define`. Right before its
-    first caller.
+    policy struct, `scan_eval` and `scan_define`, right before its
+    first caller; the signage reviewed clause by clause and moved
+    into `Beamlet.Policy.Signage`, with the tests that need step 15
+    modules carried across skipped. *Done 2026-09-15.*
 13. **`eval`.** The exec runtime and tool result, with cancel
     linkage, and the ambient principal in place of code mode's
     ambient agent name and stance. No stdlib yet.
 14. **`define`.** Plain modules, the code server, git audit. No
     migrations yet. The provenance trailers land here with the
-    audit, their first caller, along with the round-trip test.
+    audit, their first caller, along with the round-trip test. The
+    defined set is merged into the policy's grants before every
+    scan, the other half of the effective grants, in whatever shape
+    the code server makes natural.
 15. **The stdlib, module by module.** Fs, PubSub, Repo and KV and
     Migrator, Code, then Web and Router. The test endpoint arrives
     with Web and Router. The provenance JSON encoding lands with the
     route table. The seven remaining host rows (`Host.Code`,
     `Host.FS`, `Host.KV`, `Host.Migrator`, `Host.PubSub`,
     `Host.Router`, `Host.Web`) join `Beamlet.Policy.Default` as each
-    module lands, one line and a regenerated golden each; the
+    module lands, one line and a regenerated golden each, and each
+    lights the signage redirect that points at it; the skipped
+    `Host.Web` shape test in the scanner suite comes back with
+    `Host.Web`; the scanner's denied-module copy goes public for
+    `Host.Code`'s discovery surface; `Macro` gets a partial grant for
+    its string helpers (`underscore`, `camelize`, `to_string`); the
     discovery accessors code mode kept on its curation record
     (`framework_modules`, package descriptions) return if the
     listing needs them; and `Host.Code.print_policy` renders through
@@ -188,3 +198,19 @@ the end.
   `Beamlet.prepare!/0` went private again. Tests declare policies
   with `@tag policies`, and the missing-policy case writes the row
   directly. Design § 2 records all of it.
+- **Step 12** (2026-09-15): `Beamlet.Scanner` with `scan_eval/2` and
+  `scan_define/2` taking the policy struct alone, the rules read
+  from it, the mode atom `eval`, one violation helper, and the copy
+  in Beamlet's voice ("not permitted by your policy", "nothing named
+  X exists on your beamlet"). The signage review that the planning
+  pass surfaced: ten categories became eight and 62 signed modules
+  became 33, keeping redirects and the two closures that end a walk,
+  cutting shell and dynamic, and adding `state` for `Host.KV`;
+  `Beamlet.Policy.Signage` holds it with policy-aware `hint/2` and
+  `hint/3` that drop a redirect whose door the policy withholds,
+  `Beamlet.Policy.Default` is grants and the not-granted walk only,
+  and the coverage test has two buckets.
+  `Beamlet.TestPolicies.doors_open/0` grants the absent `Host.*`
+  doors for tests about the join. The reference suite came across
+  whole; the `Host.Web` shape test is skipped until step 15. Design
+  § 2 Policy records the review.

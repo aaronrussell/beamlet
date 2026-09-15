@@ -1,11 +1,13 @@
 defmodule Beamlet.Policy.Default do
   # The curation record: every name-based ruling of the policy Beamlet
   # ships lives in this module's data, and nowhere else. Pure data and
-  # accessors; composition and enforcement live in Beamlet.Policy. The
+  # accessors; composition and enforcement live in Beamlet.Policy, and
+  # the teaching copy for a refusal in Beamlet.Policy.Signage. The
   # coverage test in default_test.exs proves every documented platform
-  # module appears in exactly one of these maps, and the golden fixture
-  # pins the composed table. The moduledoc below is rendered from the
-  # data at compile time, so the printed record cannot drift from it.
+  # module is either granted or recorded as not granted, and the golden
+  # fixture pins the composed table. The moduledoc below is rendered
+  # from the data at compile time, so the printed record cannot drift
+  # from it.
 
   # ── Grants ────────────────────────────────────────────────────────
 
@@ -154,7 +156,8 @@ defmodule Beamlet.Policy.Default do
   # deny-by-default covers everything not named here. Carve-outs are
   # the functions that reach the real filesystem: embed_templates
   # reads template files at compile time, send_download's {:file, _}
-  # flavor and send_file serve arbitrary paths.
+  # flavor and send_file serve arbitrary paths. Phoenix.Token is
+  # absent because it signs with the endpoint secret.
   @web %{
     Phoenix.Component => {:except, [embed_templates: 1, embed_templates: 2]},
     Phoenix.Controller => {:except, [send_download: 2, send_download: 3]},
@@ -173,7 +176,8 @@ defmodule Beamlet.Policy.Default do
   # has no callable functions; it documents the names used inside
   # queries. Ecto.Migration loses execute_file, which reads SQL from a
   # real path. Ecto.Repo itself is not granted: Host.Repo is the one
-  # repo agent code reaches, and the adapters below it carry signage.
+  # repo agent code reaches, and the adapters, the sandbox and Exqlite
+  # beneath it open database files by path.
   @data %{
     Ecto => :all,
     Ecto.Changeset => :all,
@@ -243,158 +247,12 @@ defmodule Beamlet.Policy.Default do
            |> Map.merge(@host)
            |> Map.merge(@language)
 
-  # ── Signage: denials that teach ───────────────────────────────────
+  # ── Not granted ───────────────────────────────────────────────────
   #
-  # One shared teaching message per category, appended to the
-  # scanner's error copy and rendered by Beamlet.Policy.render/1. Two
-  # levels, nothing deeper: a module or function match here, or the
-  # generic denial.
-
-  @categories [
-    :fs,
-    :concurrency,
-    :confidentiality,
-    :shell,
-    :eval,
-    :dynamic,
-    :routing,
-    :pubsub,
-    :data,
-    :migrations
-  ]
-
-  @category_copy %{
-    fs: "Host.FS provides scoped file access",
-    concurrency:
-      "concurrency primitives are not available to agent code yet — " <>
-        "supervised processes are planned",
-    confidentiality:
-      "environment and application config are not readable from agent code — " <>
-        "they may hold credentials",
-    shell: "shell and OS access are not available to agent code",
-    eval:
-      "runtime code loading, evaluation, and macro machinery are not " <>
-        "available to agent code — durable code goes through define",
-    dynamic: "dynamic name construction and dispatch are not permitted",
-    routing: "the URL surface is managed through Host.Router, not router modules",
-    pubsub: "publish/subscribe goes through Host.PubSub",
-    migrations: "migrations are run through Host.Migrator",
-    data: "the agent database is reached through Host.Repo; raw SQL is Host.Repo.query!(sql)"
-  }
-
-  @signage %{
-    # File access: Host.FS is the safe alternative.
-    File => :fs,
-    File.Stream => :fs,
-    File.Stat => :fs,
-    :file => :fs,
-    :filelib => :fs,
-    :file_sorter => :fs,
-    :erl_tar => :fs,
-    :zip => :fs,
-    :disk_log => :fs,
-    # Process primitives and process-owned state: the door supervised
-    # processes will open, not a wall.
-    Process => :concurrency,
-    Task => :concurrency,
-    Task.Supervisor => :concurrency,
-    GenServer => :concurrency,
-    GenEvent => :concurrency,
-    Agent => :concurrency,
-    Node => :concurrency,
-    Port => :concurrency,
-    Supervisor => :concurrency,
-    DynamicSupervisor => :concurrency,
-    PartitionSupervisor => :concurrency,
-    Registry => :concurrency,
-    StringIO => :concurrency,
-    :ets => :concurrency,
-    :dets => :concurrency,
-    :timer => :concurrency,
-    :gen_server => :concurrency,
-    :gen_statem => :concurrency,
-    :gen_event => :concurrency,
-    :gen_fsm => :concurrency,
-    :proc_lib => :concurrency,
-    :sys => :concurrency,
-    :atomics => :concurrency,
-    :counters => :concurrency,
-    :persistent_term => :concurrency,
-    :digraph => :concurrency,
-    :digraph_utils => :concurrency,
-    # Environment and application config carry credentials.
-    Application => :confidentiality,
-    Config => :confidentiality,
-    Config.Provider => :confidentiality,
-    Config.Reader => :confidentiality,
-    :application => :confidentiality,
-    :os => :shell,
-    # Code loading, evaluation, and macro machinery.
-    Code => :eval,
-    Code.Fragment => :eval,
-    Macro => :eval,
-    Module => :eval,
-    :code => :eval,
-    :erl_eval => :eval,
-    # Web machinery around the granted authoring surface: routers and
-    # endpoints belong to the beamlet, PubSub is reached through the
-    # stdlib so agents never name the server, and Phoenix.Token signs
-    # with the endpoint secret.
-    Phoenix.Router => :routing,
-    Phoenix.Endpoint => :routing,
-    Phoenix.LiveView.Router => :routing,
-    Plug.Router => :routing,
-    Phoenix.PubSub => :pubsub,
-    Phoenix.Token => :confidentiality,
-    # The repo behaviour and everything beneath it: a granted
-    # Ecto.Repo would let an agent open any database file, and the
-    # adapters and driver are raw-SQL surfaces. Ecto.Migrator runs
-    # migrations against any repo; Host.Migrator runs the agent's
-    # against the agent database.
-    Ecto.Migrator => :migrations,
-    Ecto.Repo => :data,
-    Ecto.Adapters.SQL => :data,
-    Ecto.Adapters.SQL.Sandbox => :data,
-    Ecto.Adapters.SQLite3 => :data,
-    Exqlite => :data,
-    Exqlite.Basic => :data,
-    Exqlite.Connection => :data,
-    Exqlite.Sqlite3 => :data
-  }
-
-  # Function-level hints for partially granted modules (and Kernel
-  # locals). Keyed by name: the grant tables own arities, the hint
-  # only has to teach.
-  @signage_functions %{
-    {Kernel, :apply} => :dynamic,
-    {Kernel, :spawn} => :concurrency,
-    {Kernel, :spawn_link} => :concurrency,
-    {Kernel, :spawn_monitor} => :concurrency,
-    {Kernel, :send} => :concurrency,
-    {Kernel, :exit} => :concurrency,
-    {String, :to_atom} => :dynamic,
-    {String, :to_existing_atom} => :dynamic,
-    {Function, :capture} => :dynamic,
-    {System, :get_env} => :confidentiality,
-    {System, :fetch_env} => :confidentiality,
-    {System, :fetch_env!} => :confidentiality,
-    {System, :put_env} => :confidentiality,
-    {System, :delete_env} => :confidentiality,
-    {System, :cmd} => :shell,
-    {System, :shell} => :shell,
-    {:erlang, :term_to_binary} => :dynamic,
-    {:erlang, :binary_to_term} => :dynamic,
-    {Phoenix.Component, :embed_templates} => :fs,
-    {Phoenix.Controller, :send_download} => :fs,
-    {Plug.Conn, :send_file} => :fs,
-    {Ecto.Migration, :execute_file} => :fs
-  }
-
-  # ── Not granted: denials with nothing to teach ────────────────────
-  #
-  # The rest of the walk: denied by absence with the generic error
-  # copy, the reason recorded here so the coverage test can prove the
-  # walk exhaustive and future revisits can read why.
+  # The rest of the walk: denied by absence, the reason recorded here
+  # so the coverage test can prove the walk exhaustive and future
+  # revisits can read why. Whether a refusal carries teaching copy is
+  # Beamlet.Policy.Signage's business, not this record's.
 
   @not_granted [
     {"an Elixir module covers the same ground",
@@ -419,13 +277,39 @@ defmodule Beamlet.Policy.Default do
      ]},
     {"functional collections declined until reached for",
      [:array, :gb_sets, :gb_trees, :ordsets, :sets, :sofs]},
-    {"reads or writes the real filesystem", [:beam_lib, :wrap_log_reader]},
+    {"reads or writes the real filesystem; Host.FS is the scoped door",
+     [
+       File,
+       File.Stat,
+       File.Stream,
+       :beam_lib,
+       :disk_log,
+       :erl_tar,
+       :file,
+       :file_sorter,
+       :filelib,
+       :wrap_log_reader,
+       :zip
+     ]},
     {"process machinery, distribution, and node management, until supervised processes arrive",
      [
+       DynamicSupervisor,
+       GenServer,
+       Node,
+       PartitionSupervisor,
+       Process,
+       Registry,
+       StringIO,
+       Supervisor,
+       Task,
+       Task.Supervisor,
        :auth,
        :data_publisher,
        :erl_epmd,
        :erpc,
+       :gen_event,
+       :gen_server,
+       :gen_statem,
        :global,
        :global_group,
        :heart,
@@ -434,19 +318,33 @@ defmodule Beamlet.Policy.Default do
        :peer,
        :pg,
        :pool,
+       :proc_lib,
        :rpc,
        :seq_trace,
        :slave,
        :supervisor,
        :supervisor_bridge,
+       :sys,
+       :timer,
        :trace
      ]},
+    {"process-owned state; Host.KV is the durable home",
+     [Agent, :atomics, :counters, :dets, :digraph, :digraph_utils, :ets, :persistent_term]},
+    {"environment and application config may hold credentials",
+     [Application, Config, Config.Provider, Config.Reader, :application]},
+    {"shell and OS access", [Port, :os]},
     {"raw network access; Req carries the HTTP story",
      [:gen_sctp, :gen_tcp, :gen_udp, :inet, :inet_res, :net, :socket]},
     {"parsing, evaluation, and compilation of code",
      [
+       Code,
+       Code.Fragment,
+       Macro,
+       Module,
        :c,
+       :code,
        :epp,
+       :erl_eval,
        :erl_boot_server,
        :erl_ddll,
        :erl_expand_records,
@@ -460,7 +358,8 @@ defmodule Beamlet.Policy.Default do
        Macro.Env,
        Protocol
      ]},
-    {"deprecated Elixir modules", [Behaviour, Dict, HashDict, HashSet, Set, Supervisor.Spec]},
+    {"deprecated modules",
+     [Behaviour, Dict, GenEvent, HashDict, HashSet, Set, Supervisor.Spec, :gen_fsm]},
     {"shell/tooling internals, or nothing to offer prelude-free agent code",
      [
        :edlin,
@@ -513,21 +412,6 @@ defmodule Beamlet.Policy.Default do
     end)
   end
 
-  @rendered_signage Enum.map_join(
-                      @categories,
-                      "\n",
-                      fn category ->
-                        modules = for {mod, ^category} <- @signage, do: inspect(mod)
-
-                        functions =
-                          for {{mod, fun}, ^category} <- @signage_functions,
-                              do: "#{inspect(mod)}.#{fun}"
-
-                        names = Enum.sort(modules) ++ Enum.sort(functions)
-                        "  * #{@category_copy[category]}:\n    #{Enum.join(names, ", ")}"
-                      end
-                    )
-
   @rendered_not_granted Enum.map_join(@not_granted, "\n", fn {reason, modules} ->
                           "  * #{reason}:\n    #{@join_names.(modules)}"
                         end)
@@ -540,10 +424,10 @@ defmodule Beamlet.Policy.Default do
   the base every declared policy builds on (`Beamlet.Policy`). This
   module is deliberately logic-free: `Beamlet.Policy` composes and
   enforces the rulings, the coverage test proves every documented
-  platform module appears in exactly one map here, and the golden
-  fixture pins the composed table. Everything below this paragraph
-  is rendered from the data at compile time and cannot drift from
-  it.
+  platform module is either granted here or recorded as not granted,
+  and the golden fixture pins the composed table. Everything below
+  this paragraph is rendered from the data at compile time and cannot
+  drift from it.
 
   ## Granted: Elixir
 
@@ -614,32 +498,16 @@ defmodule Beamlet.Policy.Default do
 
   #{@join_names.(@packages)}
 
-  ## Denied with teaching signage
-
-  #{@rendered_signage}
-
   ## Not granted
 
-  Denied by absence with the generic error copy; the reason is
-  recorded for the walk record only.
+  Denied by absence; the reason is recorded for the walk record only.
+  The few refusals that carry teaching copy are listed in
+  `Beamlet.Policy.Signage`.
 
   #{@rendered_not_granted}
   """
 
   alias Beamlet.Policy
-
-  @typedoc "A signage category; one shared teaching message each."
-  @type category ::
-          :fs
-          | :concurrency
-          | :confidentiality
-          | :shell
-          | :eval
-          | :dynamic
-          | :routing
-          | :pubsub
-          | :data
-          | :migrations
 
   @doc """
   The default's grants: the curated table plus every shipped package
@@ -660,27 +528,6 @@ defmodule Beamlet.Policy.Default do
   @doc "The packages granted whole, by OTP application name."
   @spec packages() :: [atom()]
   def packages, do: @packages
-
-  @doc "Every module with a deliberate-denial hint, grouped by category with its copy."
-  @spec denials_by_category() :: [{category(), String.t(), [module()]}]
-  def denials_by_category do
-    grouped = Enum.group_by(@signage, fn {_mod, category} -> category end)
-
-    for category <- @categories,
-        entries = grouped[category] || [],
-        entries != [] do
-      modules = entries |> Enum.map(fn {mod, _} -> mod end) |> Enum.sort_by(&inspect/1)
-      {category, @category_copy[category], modules}
-    end
-  end
-
-  @doc "The modules carrying deliberate-denial signage."
-  @spec signage_modules() :: [module()]
-  def signage_modules, do: Map.keys(@signage)
-
-  @doc "The `{module, function}` pairs carrying function-level signage."
-  @spec signage_function_keys() :: [{module(), atom()}]
-  def signage_function_keys, do: Map.keys(@signage_functions)
 
   @doc "The recorded non-grants: reason copy and the modules it covers."
   @spec not_granted() :: [{String.t(), [module()]}]

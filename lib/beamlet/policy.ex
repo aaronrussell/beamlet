@@ -64,6 +64,7 @@ defmodule Beamlet.Policy do
 
   alias Beamlet.Policy.Default
   alias Beamlet.Policy.Rules
+  alias Beamlet.Policy.Signage
 
   defstruct [:name, tools: [:define, :eval], rules: %Rules{}, grants: %{}]
 
@@ -157,16 +158,14 @@ defmodule Beamlet.Policy do
 
   The only listable answer to "what is disallowed", since everything
   absent from the grants is denied: the rendering covers the denials
-  that are deliberate (`Beamlet.Policy.Default`'s signage) rather
-  than the unbounded rest.
+  that carry teaching copy (`Beamlet.Policy.Signage`) rather than the
+  unbounded rest.
   """
   @spec render(t()) :: String.t()
   def render(%__MODULE__{} = policy) do
     denial_lines =
-      for {_category, copy, modules} <- Default.denials_by_category(),
-          denied = Enum.reject(modules, &allowed?(policy, &1)),
-          denied != [] do
-        "  #{Enum.map_join(denied, ", ", &inspect/1)}\n    — #{copy}"
+      for {copy, modules} <- Signage.denials(policy) do
+        "  #{Enum.map_join(modules, ", ", &inspect/1)}\n    — #{copy}"
       end
 
     partial_lines =

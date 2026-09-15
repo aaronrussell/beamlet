@@ -4,6 +4,8 @@ defmodule Beamlet.PolicyTest do
   alias Beamlet.Policy
   alias Beamlet.Policy.Default
   alias Beamlet.Policy.Rules
+  alias Beamlet.Policy.Signage
+  alias Beamlet.TestPolicies
 
   describe "default/0" do
     test "is named default with both tools, strict rules and the curated grants" do
@@ -234,10 +236,16 @@ defmodule Beamlet.PolicyTest do
     test "renders the deliberate denials with their reasons" do
       text = Policy.render(Policy.default())
 
-      assert text =~ ~r/File.*\n.*Host\.FS provides scoped file access/
-      assert text =~ "concurrency primitives are not available to agent code yet"
-      assert text =~ "environment and application config are not readable"
+      assert text =~ ~r/Task.*\n.*process primitives are withheld as a family/
+      assert text =~ ~r/Application\n.*environment and application config may hold credentials/
       assert text =~ ~r/Ecto\.Repo.*\n.*the agent database is reached through Host\.Repo/
+    end
+
+    test "a redirect renders only once its door is granted" do
+      refute Policy.render(Policy.default()) =~ "Host.FS"
+
+      assert Policy.render(TestPolicies.doors_open()) =~
+               ~r/File.*\n.*Host\.FS provides scoped file access/
     end
 
     test "renders the partial grants' carve-outs" do
@@ -250,8 +258,8 @@ defmodule Beamlet.PolicyTest do
     end
 
     test "a re-granted module drops off the denial list" do
-      {:ok, policy} = Policy.build(:x, allow: [File])
-      text = Policy.render(policy)
+      policy = TestPolicies.doors_open()
+      text = Policy.render(%{policy | grants: Map.put(policy.grants, File, :all)})
 
       refute text =~ ~r/^  .*\bFile,/m
       assert text =~ "File.Stat"
@@ -280,7 +288,7 @@ defmodule Beamlet.PolicyTest do
     end
 
     test "a policy withholding nothing says so" do
-      policy = %Policy{name: "open", grants: Map.new(Default.signage_modules(), &{&1, :all})}
+      policy = %Policy{name: "open", grants: Map.new(Signage.modules(), &{&1, :all})}
       assert Policy.render(policy) =~ "Not available:\n  (nothing withheld)"
     end
   end
