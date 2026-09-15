@@ -20,7 +20,9 @@ defmodule Beamlet.Users do
   it names none.
 
   Operator-only. Nothing under `Host.*` reaches these functions, and
-  deleting a user deletes their tokens with them.
+  deleting a user deletes their tokens with them. The command line
+  over these functions is `Beamlet.CLI`, reached as `mix beamlet` in
+  development.
   """
 
   import Ecto.Query
@@ -97,6 +99,12 @@ defmodule Beamlet.Users do
     Repo.all(from(t in Token, where: t.user_id == ^user_id, order_by: t.id))
   end
 
+  @doc "Finds the one token of a user matching the clauses, such as `name: \"laptop\"`."
+  @spec find_token_by(User.t(), keyword()) :: {:ok, Token.t()} | {:error, :not_found}
+  def find_token_by(%User{id: user_id}, clauses) do
+    wrap(Repo.get_by(Token, [user_id: user_id] ++ clauses))
+  end
+
   @doc """
   Turns a presented secret into its token, with the user loaded.
 
@@ -124,4 +132,5 @@ defmodule Beamlet.Users do
 
   defp wrap(nil), do: {:error, :not_found}
   defp wrap(%User{} = user), do: {:ok, user}
+  defp wrap(%Token{} = token), do: {:ok, token}
 end

@@ -23,6 +23,7 @@ lib/host/            Host.*          the stdlib agent code calls
 lib/beamlet/         Beamlet.*       everything else: tools, policy, code
                                      server, databases, users, web pieces
 lib/beamlet/mcp/     Beamlet.MCP.*   the Anubis MCP server and tool components
+lib/mix/tasks/       mix beamlet     the dev entry to `Beamlet.CLI`
 server/              beamlet_server  separate mix project: the standalone
                                      Phoenix app, path dep on `..`
 data/                dev data dir (gitignored)

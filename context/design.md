@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-15 (the principal and the plug landed)
+**Last updated:** 2026-09-15 (the management CLI landed)
 
 ---
 
@@ -155,11 +155,28 @@ on the token, so `print_policy` under the request's own token is how
 a client learns what it may call.
 
 **Management is operator-only.** The public functions of
-`Beamlet.Users` are the product; step 8 puts a thin CLI over them.
-Nothing under `Host.*` creates, lists or deletes users or tokens.
-`Beamlet.Case` creates a user, `alice`, and one token for every test
-through the same functions, so every test authenticates the way
-production does.
+`Beamlet.Users` are the product; `Beamlet.CLI` is a thin shell over
+them (step 8). Nothing under `Host.*` creates, lists or deletes users
+or tokens. `Beamlet.Case` creates a user, `alice`, and one token for
+every test through the same functions, so every test authenticates
+the way production does.
+
+The CLI is one function, `Beamlet.CLI.main/1` over argv, printing
+plain text and returning `:ok` or `:error`, and each environment
+gets a thin entry that calls it: `mix beamlet` in development, a
+`bin/beamlet` script in the release (step 15). Mix tasks were the
+first idea and lost to the release, which has no Mix; the module is
+the one implementation and the entries stay a few lines. Commands
+are dotted, `users.create USER`, `tokens.create USER TOKEN`, and
+address everything by name; a token name is unique per user, so
+every token command names the user first. Delete asks nothing and
+says what it removed. The CLI touches only the system database: when
+no beamlet runs in the VM it calls `Beamlet.prepare!/0`, starts
+`Beamlet.Repo`, migrates, runs and stops it, so it works beside a
+beamlet in another VM or with none at all; a beamlet in the same VM
+lends its repo as it is, because `Ecto.Migrator.with_repo` would
+restart a running repo's pool afterwards. There is no `--policy`
+option until step 9 says how a policy is validated.
 
 **One context, structs at the root** (step 6): `Beamlet.Users` owns
 users and their tokens, with `Beamlet.User` and `Beamlet.Token`

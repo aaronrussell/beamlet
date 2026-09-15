@@ -40,11 +40,10 @@ the end.
    `Beamlet.MCP.Plug` with the 401 and the principal in assigns, the
    test client sending a bearer header, and `Beamlet.Case` creating
    a user and token for every test. *Done 2026-09-15.*
-8. **Management interface** for users and tokens: mix tasks over the
-   store functions. The tasks touch only the system database, and
-   the migrator runs inside the `Beamlet` supervisor, so a task
-   starts the repo and migrates on its own rather than booting a
-   whole beamlet.
+8. **Management interface** for users and tokens: `Beamlet.CLI`
+   over the store functions, with `mix beamlet` as the dev entry. It
+   touches only the system database and starts the repo and migrates
+   on its own rather than booting a whole beamlet. *Done 2026-09-15.*
 9. **DESIGN: policy and stance review.** What migrates, what changes,
    and how an operator declares a named policy. Policy attaches to
    the token (step 5).
@@ -61,6 +60,7 @@ the end.
 14. **Descriptions and instructions pass** against the 2KB budget,
     with tests that fail past it.
 15. **Server app and Docker image.** Deployment model decided here.
+    The release ships `bin/beamlet` calling `Beamlet.CLI.main/1`.
 16. **Verify** against the M14 walkthrough over MCP.
 17. **Beyond the port:** supervised processes, agent-installed
     dependencies, static assets, the admin UI.
@@ -109,3 +109,14 @@ the end.
   `alice` and a token per test. The client's name and version were
   dropped from the principal and both provenance encodings. Design
   § 2 Users, tokens and principals, Provenance and MCP record it.
+- **Step 8** (2026-09-15): `Beamlet.CLI.main/1` over argv, printing
+  plain text and returning `:ok` or `:error`, with dotted commands
+  (`users.create USER`, `tokens.create USER TOKEN`) that address
+  everything by name and take the user first on every token command.
+  The entry was revised from mix tasks: a release has no Mix, so the
+  module is the implementation and each environment gets a thin
+  entry, `mix beamlet` now and a release script at step 15. The CLI
+  borrows a running beamlet's repo or starts, migrates and stops its
+  own. `Beamlet.prepare!/0` and `Beamlet.Users.find_token_by/2` came
+  with it. No policy option until step 9. Design § 2 Users, tokens
+  and principals records it.

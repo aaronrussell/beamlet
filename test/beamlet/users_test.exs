@@ -176,6 +176,22 @@ defmodule Beamlet.UsersTest do
     end
   end
 
+  describe "find_token_by/2" do
+    test "finds a user's token by name", %{user: user, token: %Token{id: id}} do
+      assert {:ok, %Token{id: ^id, secret: nil}} = Users.find_token_by(user, name: "test")
+      assert {:error, :not_found} = Users.find_token_by(user, name: "laptop")
+    end
+
+    test "does not see another user's token of the same name", %{user: user} do
+      {:ok, bob} = Users.create(name: "bob")
+      {:ok, phone} = Users.create_token(bob, name: "phone")
+
+      assert {:error, :not_found} = Users.find_token_by(user, name: "phone")
+      assert {:ok, %Token{id: id}} = Users.find_token_by(bob, name: "phone")
+      assert id == phone.id
+    end
+  end
+
   describe "authenticate/1" do
     test "turns a secret into its token with the user loaded", %{user: user} do
       {:ok, %Token{id: id, secret: secret}} = Users.create_token(user, name: "laptop")

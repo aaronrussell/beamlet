@@ -17,6 +17,11 @@ defmodule Beamlet do
   options carry nothing yet. Starting checks the configured data dir
   exists and fails the boot loudly when it does not. One beamlet runs
   per VM.
+
+  `prepare!/0` is the part of starting that happens before any child
+  runs: the data dir check and the database files. It is public so the
+  operator CLI (`Beamlet.CLI`) can bring up the system database on its
+  own without starting a beamlet.
   """
 
   use Supervisor
@@ -32,10 +37,23 @@ defmodule Beamlet do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @impl true
-  def init(_opts) do
+  @doc """
+  Checks the data dir exists and creates both database files in WAL
+  mode, without starting anything.
+
+  `start_link/1` calls this before the children start; `Beamlet.CLI`
+  calls it before starting the system repo alone. Raises when the
+  data dir is missing.
+  """
+  @spec prepare!() :: :ok
+  def prepare! do
     ensure_data_dir!()
     Enum.each([Beamlet.Repo, Host.Repo], &ensure_database!/1)
+  end
+
+  @impl true
+  def init(_opts) do
+    prepare!()
 
     children = [
       Beamlet.Repo,
