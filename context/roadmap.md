@@ -46,24 +46,45 @@ the end.
    on its own rather than booting a whole beamlet. *Done 2026-09-15.*
 9. **DESIGN: policy and stance review.** What migrates, what changes,
    and how an operator declares a named policy. Policy attaches to
-   the token (step 5).
-10. **Port scanner, rules, policy** under the new declaration story.
-11. **`code_exec`.** The exec runtime and tool result, with cancel
-    linkage. No stdlib yet.
-12. **`code_define`.** Plain modules, the code server, git audit. No
+   the token (step 5). *Done 2026-09-15.*
+10. **Policy and the default.** `Beamlet.Policy` with the document
+    validation and the rendering, `Beamlet.Policy.Rules`,
+    `Beamlet.Policy.Default` with the platform rulings, the golden
+    fixture and the coverage test, and `Beamlet.Policies` built at
+    boot as a child of `Beamlet`, failing the boot on a bad
+    declaration. Tested directly, no MCP.
+11. **Policy at the edges.** The token changeset validating the
+    policy name, the plug's 403 for a token naming an undeclared
+    policy, the server's `handle_request` override filtering the
+    listing and refusing an ungranted call, and the CLI's `--policy`
+    with `policies` and `policies.show`. End to end at the MCP plug
+    against the stub tools.
+12. **The scanner.** The port with its tests, scanning against a
+    policy struct, `scan_eval` and `scan_define`. Right before its
+    first caller.
+13. **`eval`.** The exec runtime and tool result, with cancel
+    linkage, and the ambient principal in place of code mode's
+    ambient agent name and stance. No stdlib yet.
+14. **`define`.** Plain modules, the code server, git audit. No
     migrations yet. The provenance trailers land here with the
     audit, their first caller, along with the round-trip test.
-13. **The stdlib, module by module.** Fs, PubSub, Repo and KV and
+15. **The stdlib, module by module.** Fs, PubSub, Repo and KV and
     Migrator, Code, then Web and Router. The test endpoint arrives
     with Web and Router. The provenance JSON encoding lands with the
-    route table.
-14. **Descriptions and instructions pass** against the 2KB budget,
-    with tests that fail past it.
-15. **Server app and Docker image.** Deployment model decided here.
-    The release ships `bin/beamlet` calling `Beamlet.CLI.main/1`.
-16. **Verify** against the M14 walkthrough over MCP.
-17. **Beyond the port:** supervised processes, agent-installed
-    dependencies, static assets, the admin UI.
+    route table. The host, web and data rulings join the default as
+    each module lands, and `Host.Code.print_policy` renders through
+    step 10's rendering.
+16. **Descriptions and instructions pass** against the 2KB budget,
+    with tests that fail past it. The instructions are phrased to
+    survive an eval-only token, since they stay static while the
+    listing does not.
+17. **Server app and Docker image.** Deployment model decided here.
+    The release ships `bin/beamlet` calling `Beamlet.CLI.main/1` and
+    a config provider merging an optional operator config file from
+    the data dir.
+18. **Verify** against the M14 walkthrough over MCP.
+19. **Beyond the port:** supervised processes, agent-installed
+    dependencies and who grants them, static assets, the admin UI.
 
 ## Done
 
@@ -120,3 +141,16 @@ the end.
   own. `Beamlet.prepare!/0` and `Beamlet.Users.find_token_by/2` came
   with it. No policy option until step 9. Design § 2 Users, tokens
   and principals records it.
+- **Step 9** (2026-09-15): the policy as one document of tools,
+  rules and grants, declared as data in application config,
+  validated and resolved at boot and never stored; `default` fixed
+  and the base of every other policy, with `extends` and
+  `allow_app` considered and left out; the listing filtered per
+  token and an ungranted call a JSON-RPC error; a missing policy a
+  403 at the plug; the policy name validated in the token
+  changeset; `--policy`, `policies` and `policies.show` for the
+  CLI; "stance" retired. Design § 2 Policy records it, § 3 carries
+  the container's config-provider decision to step 17, and § 4
+  defers `deny_app` and reload. The implementation was split into
+  steps 10, 11 and 12 (the document and default, the edges, the
+  scanner), and everything after was renumbered up by two.

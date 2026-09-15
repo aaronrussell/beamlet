@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-15 (the management CLI landed)
+**Last updated:** 2026-09-15 (policy designed, step 9)
 
 ---
 
@@ -141,7 +141,7 @@ words do the work:
   principal covers it.
 
 **Policy attaches to the token, not the user.** A policy is a
-named document (step 9 says what it contains); Beamlet ships
+named document (§ 2 Policy says what it contains); Beamlet ships
 `default`, a token names one and has `default` when it names none.
 Two policies for one person means two tokens, and the history names
 both the user and the token, so nothing is lost. A request whose
@@ -164,7 +164,7 @@ the way production does.
 The CLI is one function, `Beamlet.CLI.main/1` over argv, printing
 plain text and returning `:ok` or `:error`, and each environment
 gets a thin entry that calls it: `mix beamlet` in development, a
-`bin/beamlet` script in the release (step 15). Mix tasks were the
+`bin/beamlet` script in the release (step 17). Mix tasks were the
 first idea and lost to the release, which has no Mix; the module is
 the one implementation and the entries stay a few lines. Commands
 are dotted, `users.create USER`, `tokens.create USER TOKEN`, and
@@ -175,8 +175,9 @@ no beamlet runs in the VM it calls `Beamlet.prepare!/0`, starts
 `Beamlet.Repo`, migrates, runs and stops it, so it works beside a
 beamlet in another VM or with none at all; a beamlet in the same VM
 lends its repo as it is, because `Ecto.Migrator.with_repo` would
-restart a running repo's pool afterwards. There is no `--policy`
-option until step 9 says how a policy is validated.
+restart a running repo's pool afterwards. The `--policy` option
+and the `policies` commands arrive at step 11, once the policies
+exist to validate against (§ 2 Policy).
 
 **One context, structs at the root** (step 6): `Beamlet.Users` owns
 users and their tokens, with `Beamlet.User` and `Beamlet.Token`
@@ -208,6 +209,188 @@ entropy. `Beamlet.Users.authenticate/1` hashes the presented string
 as it is, with no decoding step, so a malformed value simply matches
 nothing. The secret rides on a virtual field of the struct that
 `create_token` returns and is nil on every token loaded afterwards.
+
+### Policy
+
+Settled 2026-09-15 (step 9). Code mode had three mechanisms at three
+scopes: grants were host-wide config from a DSL file with reload,
+the two shape rules sat per agent on its definition, and tool access
+was per agent as `code_mode: true`. Its own record left the mismatch
+open. In Beamlet all of it is one document, and a token names one.
+
+The vocabulary:
+
+- A **policy** is a named document saying what a token's requests
+  may do on a beamlet. Three parts: tools, rules, grants. One name
+  answers the question.
+- **Tools** are which of the beamlet's MCP tools the token may use,
+  `eval` and `define` today.
+- **Rules** are the shape rules on submitted code, `allow_defmacro`
+  and `allow_dynamic_dispatch`, strict by default. They are
+  submission rules, not execution rules: they govern what a token
+  may author into the shared pool, never what it may call.
+- **Grants** are the name table: a module maps to `:all`, `only` or
+  `except` at function/arity granularity, and absence is denial.
+  The verbs are `allow` and `deny`.
+- **`default`** is the policy Beamlet ships: the curated grants,
+  strict rules, both tools. It cannot be declared or changed, every
+  other policy builds on it, and a token has it when it names none.
+- The **effective grants** are a policy's grants plus every defined
+  module, granted by existence. The shared pool is the one thing
+  that is not per policy: anything one token is granted reaches the
+  pool through a module it defines, as a macro does under
+  `allow_defmacro`. Accepted once, here, and documented for the
+  operator; not a reason to withhold the lever.
+- **Signage** is the teaching copy for the default's deliberate
+  denials, by category. It is Beamlet-wide, not part of any policy:
+  a policy that re-grants `File` silences its signage, a policy that
+  denies `Enum` gets the generic copy.
+- The **curation record** is the data behind `default` and the
+  coverage walk that proves every documented platform module has a
+  ruling, carried over from code mode.
+
+Retired words: *stance* (the rules on the policy), *amendment*
+(there is no host-wide table to amend, only declarations in a
+policy), *whitelist* and *name policy* (grants), and *code mode* in
+anything an agent reads, where a refusal now says "not permitted by
+your policy".
+
+**A policy is data, declared in application config, validated and
+resolved at boot, never stored.** Not a file the library reads, not
+a module, not a row:
+
+```elixir
+config :beamlet,
+  policies: [
+    explorer: [
+      tools: [:eval],                          # replaces the default's list
+      rules: [allow_dynamic_dispatch: true],   # merges into the default's rules
+      allow: [Task, {File, only: [read: 1]}],  # replaces the module's entry
+      deny: [Host.Repo, Req, Req.Request]      # removes the entry
+    ]
+  ]
+```
+
+Config is already the one surface, read at runtime, so an embedder
+writes this in their own config and a release sets it from
+`runtime.exs` with nothing new to learn. Validation is a function
+over data: a teaching error names the policy and the key and fails
+the boot. Code mode's DSL, reader, reloader and diff do not
+migrate; the verbs survive as keys. The alternatives each lost on
+one point. A DSL file in the data dir reads a little nicer but is a
+second declaration surface that evaluates code at boot for what is
+a document. Rows in the system database suit things the product
+creates at runtime, and a policy is authored; a dozen entries
+through CLI flags ends in an import command, at which point the file
+is the truth and the row a stale copy. A module suits an embedder
+and is unreachable from a container.
+
+The document, applied as `default`, then `allow`, then `deny`:
+
+- `tools` replaces the default's list when given.
+- `rules` merges: a key given overrides, a key absent stays strict,
+  an unknown key fails the boot. New shape rules get a home here
+  without widening the top level.
+- `allow` replaces the module's entry wholesale, the default's
+  included, so `allow: [Kernel]` re-enables `apply`, the operator's
+  deliberate call. `only:` and `except:` are relative to the
+  module's full surface.
+- `deny` removes the module's entry; denying a module nothing
+  grants is a no-op.
+- Order inside a key does not matter, a module named twice in one
+  key is an error, and every module named must be loadable on the
+  beamlet, so a typo fails the boot rather than granting nothing.
+- Policy names follow the user and token name rule; `default` is
+  reserved.
+- Declare and restart. No reload.
+
+Two keys were considered and left out. `extends` between custom
+policies: every policy extends `default`, and chains are a
+speculative need. `allow_app`: which packages exist is a property
+of the runtime, not of a policy. The default grants the packages
+the beamlet ships, each expanded at boot into per-module entries
+with `@moduledoc false` modules excluded, exactly as code mode
+expanded its bundled dependencies, so it always expands. A custom
+policy speaks only in modules; an embedder granting their own
+package lists its modules under `allow`, and agent-installed
+dependencies (§ 4) will decide who grants those. `deny` is per
+module, so closing HTTP for a policy names the package's entry
+points, `Req` and `Req.Request`, which is short for any package; a
+`deny_app` can arrive when a policy needs it.
+
+**Enforcement** sits at three edges and one gate:
+
+- **Tools.** The listing is per request: `Beamlet.MCP.Server`
+  overrides `handle_request/2` to filter the `tools/list` reply by
+  the principal's policy and to refuse a `tools/call` for an
+  ungranted tool before dispatch, delegating everything else to
+  Anubis. A listed tool is a promise, and a model that never sees
+  `define` never reaches for it. The refusal is a JSON-RPC error
+  saying the tool is not in the token's policy, which is what
+  Anubis returns for an unknown tool and for insufficient scope; an
+  HTTP error on a `tools/call` POST reads as a transport failure to
+  a client. Anubis's own per-component `scopes` does exactly this
+  but reads only its OAuth claims, which step 5 rejected, so under
+  Beamlet's plug they are always empty. No list-changed
+  notifications: a policy change is a restart.
+- **A missing policy.** A token naming a policy the config no
+  longer declares is a 403 from `Beamlet.MCP.Plug` on every
+  request, with a one-line body naming the token and the policy,
+  the shape of the 401 beside it. The token authenticated and the
+  server considers the credential insufficient, which is what 403
+  means; 400 would send a client developer to their JSON. Failing
+  at `initialize` is what makes it visible to the person connecting
+  the client.
+- **The token.** `Beamlet.Token`'s changeset validates the policy
+  name against the declared names, so the store refuses a token for
+  a policy that does not exist and the CLI's error comes from the
+  changeset. The principal is unchanged, five flat fields with the
+  policy name; the components fetch the resolved policy by name.
+- **The scanner** is the gate for rules and grants, as in code
+  mode, taking the policy struct in place of a table and a stance.
+  Boot compiles carry no gate, and tightening a policy never evicts
+  a module: adjudication is submission-time only.
+
+`Host.Code.print_policy/0` renders the calling token's policy, by
+name: tools, rules in force, the deliberate denials it has not
+re-granted, partial grants. Tool descriptions and server
+instructions stay static, as step 5 settled, so code mode's
+per-stance line in the exec description goes and an eval-only
+token reads a sentence about `define` in the instructions while its
+listing omits the tool; the step 16 copy pass phrases the
+instructions to survive that. The same rendering serves the
+operator as `beamlet policies.show NAME`, beside `beamlet policies`
+listing the declared names and `--policy` on `tokens.create` and
+`tokens.update`.
+
+The shape in code, decided in outline here and pinned at steps 10
+to 12: `Beamlet.Policy` holds the struct with the document
+validation and the rendering, public, its moduledoc the operator's
+reference including each rule's blast radius; `Beamlet.Policy.Rules`
+is the rules struct with strict defaults; `Beamlet.Policy.Default`
+is the curation record, grants and signage and the not-granted walk
+with the moduledoc rendered from the data and the golden fixture
+pinning the composed default; `Beamlet.Policies` builds every
+declared policy at boot as a child of `Beamlet`, fails the boot on
+a bad one, and answers `fetch/1` and `names/0`; `Beamlet.Scanner`
+scans against a policy. The exec runner stashes one ambient value,
+the principal, where code mode stashed an agent name and a stance.
+
+What migrates straight across: the grant maps for Elixir, Erlang,
+the exception families and `__MODULE__`, with the host, web and
+data rows joining the default as their stdlib modules land; the
+table type and the app expansion; the scanner with its tests; the
+curation coverage tests and golden fixture; the discovery
+rendering. What changes: one cached table becomes a cache per
+policy, the stance struct becomes the rules struct, `scan_exec`
+becomes `scan_eval`, and the copy loses "code-mode" and "for this
+agent". Code mode's open question about two re-grant mechanisms of
+different scope is resolved by construction: everything is per
+policy, and only the pool is shared.
+
+Deliberately out: exec limits per policy, since they are how much
+rather than what and stay ordinary config; reload; operator-added
+signage; a policy built on an empty table rather than on `default`.
 
 ### Provenance
 
@@ -309,38 +492,18 @@ server copies it.
 Decided as each step arrives, not before:
 
 - The data dir layout, one path at a time as its owners land.
-- Policy: what carries over from code mode and how named policies
-  are declared (step 9).
-- The exact stdlib surface, module by module (step 13).
+- The exact stdlib surface, module by module (step 15).
 - What the server instructions and tool descriptions say within a
-  2KB budget per item (step 14).
-- Deployment model, source-run or release (step 15).
-
-### Direction for policy (2026-09-13, revised 2026-09-14)
-
-Recorded so step 9 starts here rather than rediscover it; it may
-revise it. Where policy attaches was settled at step 5 (§ 2, Users,
-tokens and principals): on the token.
-
-- **A policy is everything a principal may do:** the allow and deny
-  lists, the stance options (`allow_defmacro`,
-  `allow_dynamic_dispatch`), and capabilities (define, or exec
-  only). One name answers "what may this principal do on my
-  beamlet".
-- **Beamlet ships `default`,** which cannot be changed: today's
-  curated table, strict stance, both tools. A token naming no policy
-  has it. Most beamlets never define another.
-- **Policies are per token, not per beamlet.** The name policy is a
-  check on the code a client submits, not an isolation boundary:
-  anything one token is granted reaches the shared pool through a
-  module it defines, exactly as a macro does under `allow_defmacro`
-  today. That leak is accepted once and documented; it is not a
-  reason to withhold the lever.
-- **Named policies are application config, boot time.** Inert data,
-  validated when app grants expand at boot, a bad one fails the boot.
-  Set and restart, not reloaded. A prebuilt image will need an
-  optional policies file merged at boot (step 15). How an operator
-  declares one is step 9.
+  2KB budget per item (step 16).
+- Deployment model, source-run or release (step 17). Decided in
+  principle at step 9: the library's only declaration surface is
+  application config, and the server's release merges an optional
+  operator config file from the data dir into it at boot through a
+  config provider, a plain `import Config` file. An operator with a
+  mounted data dir writes the file, restarts the container and
+  creates the token with `--policy`; the release's `eval` entry
+  runs config providers, so the CLI in the container sees the same
+  policies.
 
 ## 4. Deferred
 
@@ -352,7 +515,10 @@ tokens and principals): on the token.
   shared ones. The user id on every principal is what it would key
   on.
 - Supervised processes for agent code.
-- Agent-installed dependencies.
+- Agent-installed dependencies, and with them who grants an
+  installed package to agent code.
+- Package-level denial in a policy (`deny_app`) and reloading
+  policies without a restart, each when a policy needs it.
 - Static assets.
 - The modern-era MCP protocol (2026-07-28); Anubis 2.0 is
   legacy-era and current clients negotiate it.
