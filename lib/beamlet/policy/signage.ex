@@ -4,7 +4,7 @@ defmodule Beamlet.Policy.Signage do
   "not permitted by your policy" would leave an agent guessing.
 
   A hint is one of two kinds. A **redirect** names the door the agent
-  would not guess: `File` is refused, `Host.FS` is where scoped file
+  would not guess: `File` is refused, `Host.File` is where scoped file
   access lives. A **closure** says a whole family is withheld, so
   the agent stops walking its siblings: refusing `Task` with no hint
   invites `spawn`, then `GenServer`, then `:timer`. Everything else
@@ -27,7 +27,7 @@ defmodule Beamlet.Policy.Signage do
   # Copy follows "X is not permitted by your policy: ", one line, no
   # promises about what is planned.
   @categories [
-    fs: {"Host.FS provides scoped file access", Host.FS},
+    fs: {"Host.File provides scoped file access", Host.File},
     state: {"state that outlives an eval is kept in Host.KV", Host.KV},
     concurrency:
       {"process primitives are withheld as a family; there is no sibling to reach for", nil},

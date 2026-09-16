@@ -90,10 +90,11 @@ defmodule Beamlet do
           "Beamlet.start_link only: accepts :system, got: #{inspect(other)}"
   end
 
-  # The world the checked config points at: the data dir exists and
-  # the database files do, before any child runs.
+  # The world the checked config points at: the data dir exists, the
+  # files dir and the database files do, before any child runs.
   defp prepare! do
     ensure_data_dir!()
+    File.mkdir_p!(Config.files_dir())
     Enum.each([Beamlet.Repo, Host.Repo], &ensure_database!/1)
   end
 

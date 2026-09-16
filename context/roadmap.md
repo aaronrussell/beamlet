@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-16 (step 15a done)
+**Last updated:** 2026-09-16 (step 15b done)
 
 ---
 
@@ -94,10 +94,10 @@ the end.
       the pass: where code mode's conventions text goes, here as a
       `print_*` or at step 16. The routes section of the listing and
       remove's mounted-route check wait for 15d. *Done 2026-09-16.*
-    - **15b. `Host.FS`**, with a design and API review of the scoped
-      filesystem before it comes across. The review also takes the
-      idea of agent documentation served as read-only files under a
-      virtual path (design § 4).
+    - **15b. `Host.File`**, with a design and API review of the
+      scoped filesystem before it comes across. The review also takes
+      the idea of agent documentation served as read-only files under
+      a virtual path (design § 4). *Done 2026-09-16.*
     - **15c. `Host.Repo`, `Host.KV` and `Host.Migrator`.** The repo
       is there; KV is the table created at boot outside the agent's
       migrations; migration placement, the `code/migrations` layout
@@ -113,7 +113,9 @@ the end.
 16. **Descriptions and instructions pass** against the 2KB budget,
     with tests that fail past it. The instructions are phrased to
     survive an eval-only token, since they stay static while the
-    listing does not.
+    listing does not. Reviews whether `~docs/`, documentation served
+    as read-only files through `Host.File` (design § 4), is needed
+    yet.
 17. **Server app and Docker image.** Deployment model decided here.
     The release ships `bin/beamlet` calling `Beamlet.CLI.main/1` and
     a config provider merging an optional operator config file from
@@ -288,3 +290,18 @@ the end.
   `except: [remove: 1]` recipe. Conventions direction recorded for
   step 16 and the docs-in-FS idea for 15b. Design § 2 Discovery and
   PubSub record it.
+- **Step 15b** (2026-09-16): `Host.File`, the scoped filesystem
+  renamed for the module it stands in for and reshaped to mirror
+  `File`: tuple returns with posix reasons, bang variants raising
+  `File.Error`, `File.CopyError` and `File.RenameError` with the
+  agent's path, `ls_r` for the recursive listing, `ArgumentError`
+  for escapes and non-strings, parents created on write, copy and
+  rename. One module with no `Beamlet.File`; the root at
+  `Beamlet.Config.files_dir/0`, created at boot and wiped per test
+  by `Beamlet.Case`. The row joined the default and lit the `File`
+  redirect, so the tests that relied on the door being absent moved
+  to `Host.KV` or to a policy denying `Host.File`. The reference FS
+  suite came across against `Host.File` directly, and the eval suite
+  gained the three `Host.FS` cases step 13 left out. Virtual paths
+  recorded in design § 4, `~docs/` to be reviewed at step 16. Design
+  § 2 Files records it.

@@ -49,13 +49,12 @@ defmodule Beamlet.Policy.SignageTest do
   describe "hint/2" do
     test "a redirect fires when the policy grants its door" do
       assert Signage.hint(TestPolicies.doors_open(), File) ==
-               "Host.FS provides scoped file access"
+               "Host.File provides scoped file access"
     end
 
     test "a redirect is dropped when the policy withholds its door" do
-      assert Signage.hint(Policy.default(), File) == nil
-
-      {:ok, policy} = Policy.build(:x, deny: [Host.Repo])
+      {:ok, policy} = Policy.build(:x, deny: [Host.File, Host.Repo])
+      assert Signage.hint(policy, File) == nil
       assert Signage.hint(policy, Ecto.Repo) == nil
     end
 
@@ -81,9 +80,10 @@ defmodule Beamlet.Policy.SignageTest do
   describe "hint/3" do
     test "a carve-out carries its copy under the same door rule" do
       assert Signage.hint(TestPolicies.doors_open(), Plug.Conn, :send_file) ==
-               "Host.FS provides scoped file access"
+               "Host.File provides scoped file access"
 
-      assert Signage.hint(Policy.default(), Plug.Conn, :send_file) == nil
+      {:ok, policy} = Policy.build(:x, deny: [Host.File])
+      assert Signage.hint(policy, Plug.Conn, :send_file) == nil
     end
 
     test "a Kernel local carries the closure" do
@@ -96,7 +96,7 @@ defmodule Beamlet.Policy.SignageTest do
     test "lists open-door categories with the members the policy denies" do
       denials = TestPolicies.doors_open() |> Signage.denials() |> Map.new()
 
-      assert denials["Host.FS provides scoped file access"] ==
+      assert denials["Host.File provides scoped file access"] ==
                [:file, :filelib, File, File.Stat, File.Stream]
 
       assert [Ecto.Adapters.SQL, Ecto.Repo] =
@@ -106,7 +106,7 @@ defmodule Beamlet.Policy.SignageTest do
     end
 
     test "a re-granted member drops out and a closed door drops the category" do
-      {:ok, policy} = Policy.build(:x, allow: [Task], deny: [Host.Repo])
+      {:ok, policy} = Policy.build(:x, allow: [Task], deny: [Host.Repo, Host.File])
       denials = Signage.denials(policy)
 
       {_copy, concurrency} =
@@ -115,7 +115,7 @@ defmodule Beamlet.Policy.SignageTest do
       refute Task in concurrency
       assert Process in concurrency
       refute Enum.any?(denials, fn {copy, _} -> copy =~ "Host.Repo" end)
-      refute Enum.any?(denials, fn {copy, _} -> copy =~ "Host.FS" end)
+      refute Enum.any?(denials, fn {copy, _} -> copy =~ "Host.File" end)
     end
   end
 

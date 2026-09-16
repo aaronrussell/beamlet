@@ -6,10 +6,10 @@ defmodule Beamlet.Case do
   per-run data dir and hands the path to the test as `data_dir`.
   Each test owns a sandbox connection on both repos, shared with
   every process in the VM, so rows written during a test roll back
-  when it ends while the schema migrated at boot stays. The code dir
-  is wiped before the beamlet starts, so every test boots with no
-  defined modules and a fresh history, and the last test's code dir
-  stays inspectable after the run.
+  when it ends while the schema migrated at boot stays. The code and
+  files dirs are wiped before the beamlet starts, so every test boots
+  with no defined modules, a fresh history and no files, and the
+  last test's dirs stay inspectable after the run.
 
   Every test also gets a user, `alice`, and one of her tokens as
   `user` and `token`, created through `Beamlet.Users` so a test
@@ -50,6 +50,7 @@ defmodule Beamlet.Case do
     end
 
     File.rm_rf!(Beamlet.Config.code_dir())
+    File.rm_rf!(Beamlet.Config.files_dir())
     preserve_compiler_tracers()
     start_supervised!({Beamlet, []})
 

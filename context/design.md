@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-16 (Host.Code and Host.PubSub, step 15a)
+**Last updated:** 2026-09-16 (Host.File, step 15b)
 
 ---
 
@@ -298,7 +298,7 @@ mode's coverage walk had made it one of three buckets and so the
 home for every deliberate denial, sixty-odd modules across ten
 categories, much of it copy that a custom policy falsified. Two
 kinds earn a place. A **redirect** names the door the agent would
-not guess: `File` is refused, `Host.FS` is where scoped file access
+not guess: `File` is refused, `Host.File` is where scoped file access
 lives; likewise `Host.KV` for `Agent` and the ETS family, `Host.Repo`
 for `Ecto.Repo`, `Host.Router`, `Host.PubSub`, `Host.Migrator`, and
 the `define` tool for `Code`. A **closure** says a whole family is
@@ -497,7 +497,7 @@ and data rows and Ecto's exception family, since `phoenix`,
 dependencies at the same time; `Host.Repo`'s row; the table type
 and the package expansion; the curation coverage tests and golden
 fixture; the rendering. The seven remaining host rows (`Host.Code`,
-`Host.FS`, `Host.KV`, `Host.Migrator`, `Host.PubSub`, `Host.Router`,
+`Host.File`, `Host.KV`, `Host.Migrator`, `Host.PubSub`, `Host.Router`,
 `Host.Web`) join the default at step 15 as each module lands, one
 line each; no stub modules were written to carry them early. The
 signage copy that names those modules came across as written, since
@@ -761,6 +761,59 @@ on, is in the `Beamlet` moduledoc beside the child list.
 with topics one shared namespace the moduledoc tells agents to
 prefix. `broadcast_from` waits for something to ask.
 
+### Files
+
+Settled 2026-09-16 (step 15b). `Host.File` is `File`, scoped to
+`<data_dir>/files`, the root `Beamlet.Config.files_dir/0` names and
+the boot creates. The name follows `Host.Repo` for `Ecto.Repo` and
+`Host.PubSub` for `Phoenix.PubSub`: the leaf name of the module it
+stands in for. Code mode's `Host.FS` was named when its API was its
+own; the review made it mirror `File`'s names, arguments and
+semantics for the subset it provides, so an agent's `File` priors
+are right rather than corrected by an index. The functions are
+`read`, `write` with modes, `ls`, `mkdir`, `mkdir_p`, `rm`, `rmdir`,
+`cp`, `cp_r`, `rename`, `exists?`, `dir?` and `regular?`, each
+returning what `File`'s does, `{:error, posix}` included, with a
+bang variant raising what `File`'s raises, `File.Error`,
+`File.CopyError` or `File.RenameError`, naming the path as the agent
+wrote it. All three are in the granted exception family, so a
+`rescue File.Error` written from priors works. `ls_r` is the one
+function `File` lacks: the reference's recursive listing as sorted
+root-relative paths, the thing agents most often want. Two
+deviations from `File`, each documented once: writing, copying and
+renaming create the parent directories they need, saving an eval
+round trip, and `rm` answers `:eisdir` for a directory where
+`File.rm` says `:eperm`. Left out: `stat`, since `File.Stat` is
+denied and nothing asks for size or mtime yet; `rm_rf`, since on a
+shared root file-only removal bounds cross-user accidents; `cp`'s
+options, whose `on_conflict` callback would see host paths;
+`wildcard`.
+
+The reference's raise-only stance went. It fitted an eval, where a
+raise keeps everything printed before it, but the same module runs
+in controllers and LiveViews, where a missing file is a 404 to
+handle, not a 500. What stayed: one shared root, stateless
+resolution that needs no principal and so works the same from an
+eval, a web request or a LiveView, a leading `/` meaning the root,
+every path containment-checked, error copy that never shows a host
+path, no git audit and no size caps. An escape or a non-string path
+raises `ArgumentError` from tuple and bang alike: misuse of the API,
+not a condition to handle. Containment is lexical through
+`Path.expand`; only an operator can plant a symlink under `files/`,
+and that is accepted rather than resolved on every call.
+
+One module. The reference split a thin `Host.FS` from
+`Omni.Host.Code.FS`, which took the root as an argument for a
+`tmp_dir` suite; the Two surfaces rule rejects that reason, nothing
+else in Beamlet calls it, and the root comes from config, so
+`Host.File` holds the containment and the operations and is tested
+directly under `Beamlet.Case`, which wipes `files/` per test. The
+scanner expands aliases before its check, so `alias Host.File` lets
+agent code read exactly as `File` code: allowed and not advertised,
+since the visible `Host.` prefix is what tells a reader of
+`print_source` that the scoped door is in use. The `File` redirect
+in the signage lit with the row.
+
 ### Config
 
 One surface: `:beamlet` application config, read at runtime through
@@ -838,7 +891,8 @@ server copies it.
 
 Decided as each step arrives, not before:
 
-- The data dir layout, one path at a time as its owners land.
+- The data dir layout, one path at a time as its owners land:
+  `db/`, `code/` and `files/` so far.
 - The exact stdlib surface, module by module (step 15).
 - What the server instructions and tool descriptions say within a
   2KB budget per item (step 16), and whether `eval` declares its
@@ -869,12 +923,20 @@ Decided as each step arrives, not before:
 - User-scoped modules, routes, files and KV entries beside the
   shared ones, and with them per-module ownership, so that alice's
   module is not bob's to remove. The user id on every principal is
-  what it would key on.
-- Documentation for agents served as read-only files through
-  `Host.FS` under a virtual path, a wiki the model lists and reads
-  when it needs more than the instructions carry. To be looked at
-  with the 15b design review, since a read-only virtual path is a
-  property of the scoped filesystem.
+  what it would key on. A private file area would be a `~home/`
+  mount on `Host.File` (next item), eval-only, since a served route
+  has no principal to be, the rule `Host.Code` already takes.
+- Virtual paths on `Host.File`, shaped at the 15b review: a
+  `~name/` prefix, which cannot collide with an agent's directories
+  and which `Path.expand` leaves alone, resolved through a mount
+  table from prefix to directory and mode; a read-only mount refuses
+  writes with a teaching error and lists beside ordinary entries.
+  The first candidate is `~docs/` over the package's `priv/docs`:
+  documentation for agents served as read-only files, a wiki the
+  model lists and reads when it needs more than the instructions
+  carry, each page under eval's output cap. Reviewed at step 16,
+  once the instructions pass shows what overflows; nothing is built
+  until there is content to serve.
 - Supervised processes for agent code.
 - Agent-installed dependencies, and with them who grants an
   installed package to agent code.

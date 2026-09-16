@@ -161,10 +161,11 @@ defmodule Beamlet.ScannerTest do
 
   describe "signage" do
     test "a redirect fires once the policy grants its door" do
-      assert scan_error("File.read!(\"x\")") =~ ~r/File is not permitted by your policy$/
+      {:ok, closed} = Policy.build(:closed, deny: [Host.File])
+      assert scan_error("File.read!(\"x\")", closed) =~ ~r/File is not permitted by your policy$/
 
-      assert scan_error("File.read!(\"x\")", @doors_open) =~
-               "File is not permitted by your policy — Host.FS provides scoped file access"
+      assert scan_error("File.read!(\"x\")") =~
+               "File is not permitted by your policy — Host.File provides scoped file access"
     end
 
     test "a redirect is dropped when the policy denies its door" do
@@ -425,7 +426,7 @@ defmodule Beamlet.ScannerTest do
                end
                """,
                @doors_open
-             ) =~ "Plug.Conn.send_file/3 is not permitted by your policy — Host.FS provides"
+             ) =~ "Plug.Conn.send_file/3 is not permitted by your policy — Host.File provides"
     end
 
     test "a buffer-local function may shadow a denied Kernel import" do
@@ -489,7 +490,7 @@ defmodule Beamlet.ScannerTest do
         )
 
       assert message =~ "line 4: File.rm/1 — File is not permitted"
-      assert message =~ "Host.FS provides scoped file access"
+      assert message =~ "Host.File provides scoped file access"
     end
 
     test "defdelegate honors as: when resolving the target function" do
@@ -779,7 +780,7 @@ defmodule Beamlet.ScannerTest do
 
       assert scan_error(~s|Ecto.Migration.execute_file("x.sql")|, @doors_open) =~
                "Ecto.Migration.execute_file/1 is not permitted by your policy — " <>
-                 "Host.FS provides scoped file access"
+                 "Host.File provides scoped file access"
     end
   end
 

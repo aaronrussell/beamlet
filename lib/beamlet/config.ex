@@ -10,8 +10,9 @@ defmodule Beamlet.Config do
   defaults merged in, and never raise. A change is a restart.
 
   The data dir is the root everything a beamlet persists lives under:
-  the databases under `db/` and the defined modules under `code/`
-  (`Beamlet.Code`). Policies are declared here too (`Beamlet.Policy`),
+  the databases under `db/`, the defined modules under `code/`
+  (`Beamlet.Code`) and the files agent code keeps under `files/`
+  (`Host.File`). Policies are declared here too (`Beamlet.Policy`),
   and the limits on the two tools (`Beamlet.Eval`, `Beamlet.Define`).
 
       config :beamlet,
@@ -53,6 +54,10 @@ defmodule Beamlet.Config do
   @doc "Directory holding the defined modules: their sources, beams and git history."
   @spec code_dir() :: Path.t()
   def code_dir, do: Path.join(data_dir(), "code")
+
+  @doc "Directory holding the files agent code keeps through `Host.File`."
+  @spec files_dir() :: Path.t()
+  def files_dir, do: Path.join(data_dir(), "files")
 
   @doc "The policies declared beside `default`, as a keyword list of name to document (`Beamlet.Policy`). Empty when unset."
   @spec policies() :: keyword()

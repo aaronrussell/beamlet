@@ -55,6 +55,7 @@ defmodule Beamlet.EvalTest do
 
       assert message =~ "File.read!/1"
       assert message =~ "not permitted by your policy"
+      assert message =~ "Host.File provides scoped file access"
     end
 
     test "an exception is formatted after the output before it", %{principal: principal} do
@@ -108,6 +109,23 @@ defmodule Beamlet.EvalTest do
       {:ok, token} = Users.create_token(user, name: "phone", policy: "relaxed")
 
       assert {:ok, "=> 1"} = Eval.run("mod = Enum\nmod.count([1])", principal(token))
+    end
+  end
+
+  describe "Host.File" do
+    test "write and read round-trip through the shared root", %{principal: principal} do
+      assert {:ok, "=> :ok"} = Eval.run(~s|Host.File.write!("notes.md", "hello")|, principal)
+      assert {:ok, ~s|=> "hello"|} = Eval.run(~s|Host.File.read!("notes.md")|, principal)
+    end
+
+    test "a non-string path raises the teaching error", %{principal: principal} do
+      assert run_error("Host.File.read(:notes)", principal) =~
+               "Host.File paths are strings, got: :notes"
+    end
+
+    test "Path is granted but wildcard is not", %{principal: principal} do
+      assert {:ok, ~s|=> "a/b"|} = Eval.run(~s|Path.join("a", "b")|, principal)
+      assert run_error(~s|Path.wildcard("*")|, principal) =~ "Path.wildcard/1 is not permitted"
     end
   end
 

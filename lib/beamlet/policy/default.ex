@@ -16,7 +16,7 @@ defmodule Beamlet.Policy.Default do
   # output only (device-directed IO reaches arbitrary processes);
   # Macro keeps its string helpers, which name tables and files from
   # module names, and loses everything that builds or expands code;
-  # Path is pure string manipulation, safe because Host.FS re-checks
+  # Path is pure string manipulation, safe because Host.File re-checks
   # every path it receives, except wildcard, which touches the real
   # filesystem; System keeps its clock/VM introspection and loses
   # shell, env, and lifecycle control.
@@ -206,10 +206,10 @@ defmodule Beamlet.Policy.Default do
                        match?(%{__exception__: true}, mod.__struct__()),
                        do: mod
 
-  # The host stdlib, one row per module as each lands. Host.Code and
-  # Host.PubSub are granted whole: every function is meant for agent
-  # code, and remove stays in step with the tools by the operator's
-  # choice (Beamlet.Policy). Host.Repo: denied are the repo's process
+  # The host stdlib, one row per module as each lands. Host.Code,
+  # Host.File and Host.PubSub are granted whole: every function is
+  # meant for agent code, and remove stays in step with the tools by
+  # the operator's choice (Beamlet.Policy). Host.Repo: denied are the repo's process
   # controls (put_dynamic_repo redirects every call to any running
   # repo by name, the system repo included; start_link, stop and
   # disconnect_all touch the pool). Raw SQL is granted: the agent
@@ -218,6 +218,7 @@ defmodule Beamlet.Policy.Default do
   # authorizer on every connection (Beamlet.SQLiteAuthorizer).
   @host %{
     Host.Code => :all,
+    Host.File => :all,
     Host.PubSub => :all,
     Host.Repo =>
       {:except,
@@ -297,7 +298,7 @@ defmodule Beamlet.Policy.Default do
      ]},
     {"functional collections declined until reached for",
      [:array, :gb_sets, :gb_trees, :ordsets, :sets, :sofs]},
-    {"reads or writes the real filesystem; Host.FS is the scoped door",
+    {"reads or writes the real filesystem; Host.File is the scoped door",
      [
        File,
        File.Stat,

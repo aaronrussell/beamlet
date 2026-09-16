@@ -626,7 +626,7 @@ defmodule Beamlet.Scanner do
 
   @doc """
   The copy for a module the policy denies, with its signage hint:
-  `File is not permitted by your policy — Host.FS provides scoped
+  `File is not permitted by your policy — Host.File provides scoped
   file access`. A name nothing answers to is not a policy matter, so
   it reads `nothing named X exists on your beamlet` instead, since
   "not permitted" for a module that was never defined teaches the
