@@ -288,10 +288,14 @@ defmodule Beamlet.Code do
     end
   end
 
+  # The task's ref is opaque, so once the reply is in hand the monitor
+  # is dropped through the Task API rather than Process.demonitor:
+  # ignore/1 demonitors with flush and returns nil, since the reply has
+  # already been consumed here.
   defp await(%Task{ref: task_ref} = task, caller_ref, timeout) do
     receive do
       {^task_ref, result} ->
-        Process.demonitor(task_ref, [:flush])
+        Task.ignore(task)
         {:ok, result}
 
       {:DOWN, ^task_ref, :process, _pid, reason} ->
