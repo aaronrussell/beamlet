@@ -14,9 +14,10 @@ defmodule Beamlet do
       ]
 
   Configuration is application config (`Beamlet.Config`). Starting
-  checks the configured data dir exists and builds the declared
-  policies, and fails the boot loudly when the dir is missing or a
-  policy is bad. One beamlet runs per VM.
+  checks the configured data dir exists, builds the declared policies
+  and loads the modules defined before (`Beamlet.Code`), and fails
+  the boot loudly when the dir is missing, a policy is bad or git is
+  not installed. One beamlet runs per VM.
 
   `only: :system` starts the system half alone: the policies and the
   system database, migrated. Nothing an agent reaches, no agent
@@ -57,17 +58,22 @@ defmodule Beamlet do
   end
 
   # The transport's request timeout answers "Server unavailable" and
-  # leaves the request running, so eval's own timeout must fire first.
+  # leaves the request running, so a tool's own timeout must fire
+  # first: eval's, or define's, which may wait a full compile behind
+  # another define before its own (Beamlet.Code.define/5).
   defp children(nil) do
+    define_timeout = Config.define()[:timeout]
+
     [
       Beamlet.Policies,
       Beamlet.Repo,
       {Ecto.Migrator, repos: [Beamlet.Repo]},
       Host.Repo,
       {Task.Supervisor, name: Beamlet.TaskSupervisor},
+      Beamlet.Code,
       {Beamlet.MCP.Server,
        transport: {:streamable_http, start: true},
-       request_timeout: Config.eval()[:timeout] + 5_000}
+       request_timeout: max(Config.eval()[:timeout], 2 * define_timeout + 5_000) + 5_000}
     ]
   end
 

@@ -17,6 +17,16 @@ defmodule Beamlet.Principal do
   Names and ids both, since a reader wants the name and a program
   wants the id after a rename.
 
+  Provenance is this struct written down. A commit the code server
+  makes carries it as git trailers (`to_trailers/1`), which git parses
+  natively, so `git log` can filter the history by token or policy
+  with no code of Beamlet's; a route row will carry it as JSON. Both
+  encodings decode back to the struct.
+
+      User: alice (1)
+      Token: laptop (3)
+      Policy: default
+
   Code an agent runs through `eval` takes no arguments, so it cannot
   be handed the principal, and the stdlib functions it calls must
   still know who is acting when they record it. The runtime puts the
@@ -53,6 +63,33 @@ defmodule Beamlet.Principal do
       token_name: token.name,
       policy: token.policy
     }
+  end
+
+  @doc "Encodes the principal as git trailers, one `Key: name (id)` line each, for a commit message."
+  @spec to_trailers(t()) :: String.t()
+  def to_trailers(%__MODULE__{} = principal) do
+    "User: #{principal.user_name} (#{principal.user_id})\n" <>
+      "Token: #{principal.token_name} (#{principal.token_id})\n" <>
+      "Policy: #{principal.policy}\n"
+  end
+
+  @doc "Decodes the trailers back to the principal, from a commit message or the trailer block alone."
+  @spec from_trailers(String.t()) :: {:ok, t()} | :error
+  def from_trailers(text) when is_binary(text) do
+    with [_, user_name, user_id] <- Regex.run(~r/^User: (\S+) \((\d+)\)$/m, text),
+         [_, token_name, token_id] <- Regex.run(~r/^Token: (\S+) \((\d+)\)$/m, text),
+         [_, policy] <- Regex.run(~r/^Policy: (\S+)$/m, text) do
+      {:ok,
+       %__MODULE__{
+         user_id: String.to_integer(user_id),
+         user_name: user_name,
+         token_id: String.to_integer(token_id),
+         token_name: token_name,
+         policy: policy
+       }}
+    else
+      nil -> :error
+    end
   end
 
   @doc "Makes `principal` the one the current process acts as; eval's runtime calls it before evaluating."

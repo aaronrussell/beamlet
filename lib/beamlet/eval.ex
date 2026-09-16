@@ -5,10 +5,12 @@ defmodule Beamlet.Eval do
 
   Each run is a fresh evaluation inside the beamlet's own VM, with
   empty bindings and no prelude, so the code can call everything the
-  beamlet has and nothing carries over from one run to the next. The
-  code is scanned against the principal's policy first
-  (`Beamlet.Scanner`), then evaluated in a process of its own with its
-  output captured, as that principal (`Beamlet.Principal.current/0`).
+  beamlet has, every module defined on it included, and nothing
+  carries over from one run to the next. The code is scanned against
+  the principal's policy first (`Beamlet.Scanner`), with the defined
+  modules granted by existence, then evaluated in a process of its
+  own with its output captured, as that principal
+  (`Beamlet.Principal.current/0`).
 
   The result is text: whatever the code printed, then `=> ` and the
   inspected value of the last expression. Anything that goes wrong is
@@ -39,9 +41,11 @@ defmodule Beamlet.Eval do
     the point where clients start warning about large tool results.
   """
 
+  alias Beamlet.Code
   alias Beamlet.Config
   alias Beamlet.Eval.Runner
   alias Beamlet.Policies
+  alias Beamlet.Policy
   alias Beamlet.Principal
   alias Beamlet.Scanner
 
@@ -56,6 +60,7 @@ defmodule Beamlet.Eval do
   @spec run(String.t(), Principal.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def run(code, %Principal{} = principal, opts \\ []) when is_binary(code) do
     {:ok, policy} = Policies.fetch(principal.policy)
+    policy = Policy.grant(policy, Code.defined())
     limits = Keyword.merge(Config.eval(), opts)
 
     with :ok <- Scanner.scan_eval(code, policy) do

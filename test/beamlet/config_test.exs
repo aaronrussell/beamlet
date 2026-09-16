@@ -9,6 +9,7 @@ defmodule Beamlet.ConfigTest do
       Application.put_env(:beamlet, :data_dir, previous)
       Application.delete_env(:beamlet, :policies)
       Application.delete_env(:beamlet, :eval)
+      Application.delete_env(:beamlet, :define)
     end)
 
     %{configured: previous}
@@ -67,6 +68,14 @@ defmodule Beamlet.ConfigTest do
       assert_raise ArgumentError, ~r/each a positive integer/, fn -> Config.validate!() end
     end
 
+    test "raises on an unknown define limit, naming the one there is" do
+      Application.put_env(:beamlet, :define, max_output: 100)
+
+      assert_raise ArgumentError, ~r/:define: the limits are timeout, each a positive/, fn ->
+        Config.validate!()
+      end
+    end
+
     @tag :capture_log
     test "a bad key fails the boot" do
       Application.put_env(:beamlet, :data_dir, "data")
@@ -112,6 +121,17 @@ defmodule Beamlet.ConfigTest do
       Application.put_env(:beamlet, :eval, timeout: 100)
 
       assert Config.eval() == [timeout: 100, max_heap_bytes: 268_435_456, max_output: 16_384]
+    end
+
+    test "define/0 is the default timeout when unset, the configured one otherwise" do
+      assert Config.define() == [timeout: 30_000]
+
+      Application.put_env(:beamlet, :define, timeout: 100)
+      assert Config.define() == [timeout: 100]
+    end
+
+    test "code_dir/0 is the code directory under the data dir", %{configured: configured} do
+      assert Config.code_dir() == Path.join(configured, "code")
     end
   end
 end

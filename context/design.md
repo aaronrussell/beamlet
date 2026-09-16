@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-16 (eval, step 13)
+**Last updated:** 2026-09-16 (define, step 14)
 
 ---
 
@@ -501,7 +501,9 @@ database, a different file from users and tokens, so there is no
 foreign key to keep and no discrete columns: the set is small enough
 to load and filter in memory. What carries provenance is exactly
 what did in code mode, every commit the code server makes and every
-route row. Not KV entries, not files, and there is no eval log.
+route row. Not KV entries, not files, and there is no eval log. The
+trailers landed at step 14 with the audit (§ 2 Define); the JSON
+lands with the route table.
 
 ### Eval
 
@@ -560,6 +562,90 @@ where code mode stashed an agent name and a stance, and the policy
 is fetched by name. A tool that holds the principal passes it
 explicitly. No separate module: two functions on the struct's own.
 
+### Define
+
+Settled 2026-09-16 (step 14). `Beamlet.Define` is the runtime behind
+the `define` tool, the shape eval set: `run(code, principal, opts)`
+fetches the policy, scans (`Beamlet.Scanner.scan_define/2`), runs the
+docs gate (`Beamlet.Code.Docs`) and hands the buffer to the code
+server; `Beamlet.MCP.Define` maps the tuple to a tool result. Code
+mode's tool layer with its option merging and test seam went the
+way eval's did. The define semantics migrated whole: modules not
+files, one canonical file per module under `code/lib`, docs enforced
+because they are the discovery surface, the two collision tiers with
+`replace: true` as permission rather than assertion, dependents
+recompiled on a replace and provable breakage refused with nothing
+changed. The reserved prefixes are `Beamlet.*` and `Host.*`.
+
+**The code server is `Beamlet.Code`**, a GenServer child of
+`Beamlet` owning `<data_dir>/code` (`lib/`, `ebin/`, `.staging/`,
+`.git`), with `Beamlet.Code.Tracer`, `Beamlet.Code.Docs` and
+`Beamlet.Code.Audit` beneath it as internals. It is the reference
+server minus what has no consumer yet: migration placement, the
+applied-version check and the migration field on the manifest wait
+for `Host.Migrator`, `compile_artifact` for the dynamic router, and
+`manifest` for discovery (step 15). Remove came across now, ahead of
+`Host.Code.remove`, because it is the server's own second operation,
+the audit's second commit kind, and the call records it reads exist
+for replace's dropped-function check anyway; its errors name
+`Host.Code` one step early. The port's steps break the work into an
+order, not into what may be referenced.
+
+**One table.** The server records everything it collects in a named
+public ETS table it owns: the compile context the tracer reads, the
+compiled beams, the edges and call records of the compile in
+flight, and the defined set. Code mode's `:persistent_term` for the
+tracer context went with it, since the value lives for one compile
+and every erase scanned the heaps. The defined set is the effective
+grants' other half: `Beamlet.Code.defined/0` is a table read, so an
+eval's scan never queues behind a thirty-second compile, and both
+runtimes merge it into the policy with `Beamlet.Policy.grant/2`, the
+same function the scanner uses to grant a buffer's own modules to
+each other, before scanning. Rows are added before stale ones go,
+so a scan in flight never sees a defined module missing.
+
+**Cancel is an abort.** The tool process is Anubis's and a client
+cancel kills it, so the server monitors the caller for the life of
+the define: a define still queued behind another never starts, a
+compiling one is stopped and rolled back to the previous beams, and
+one past the commit point completes. Eval needed a watcher process
+because its caller must survive the kill of its child; here the
+server is long-lived and holds the monitor itself. The parallel
+compiler monitors its workers rather than linking them, so stopping
+the compile kills the task and the workers it is watching, on
+cancel and on timeout alike; the reference left a module body
+running on after its timeout.
+
+**Git is a requirement, not a mode.** The history is the provenance
+record, and code mode's enable flag existed so tests and hosts
+without git could skip it, which is a mode where defines leave no
+trace. The flag went: a beamlet whose PATH has no git fails to boot
+with a teaching error, the repo is initialised at boot with the
+initial snapshot and hand edits swept into a commit of their own,
+exactly as before, and step 17's image installs git. The repo
+carries no configuration: every commit names the user as author
+(`alice <alice@beamlet>`) and `beamlet` as committer through
+environment variables on the command, with the principal as trailers
+in the body, and the sweep commits are authored by `beamlet`. Empty
+commits are allowed so a replace with the same source is still on
+the record. The provenance trailers are `Beamlet.Principal.to_trailers/1`
+and `from_trailers/1`, their first encoding; a test round-trips the
+principal through a real commit and another filters `git log` by
+trailer. A test's suite boots a beamlet ninety-odd times and each
+boot pays git's forty milliseconds; a couple of seconds is not a
+reason to shape the design.
+
+One limit, `config :beamlet, define: [timeout: 30_000]`, the time
+one compile may take; the transport's request timeout is derived
+from the larger of eval's timeout and define's call timeout, since
+a define may wait a full compile behind another before its own. The
+principal is required on `define` and `remove`; what
+`Host.Code.remove` does from a process with no ambient principal is
+step 15's question. `Beamlet.Case` wipes the code dir before each
+beamlet starts, so every test boots with no defined modules and a
+fresh history; the reference's private servers on tmp dirs would
+have fought the registered name and the table.
+
 ### Config
 
 One surface: `:beamlet` application config, read at runtime through
@@ -577,7 +663,8 @@ restart, as it already was for policies. `data_dir` is the root
 everything a beamlet persists lives under; after the document
 check, starting checks the dir exists and fails the boot otherwise,
 and the modules owning paths beneath it add their accessors as they
-arrive.
+arrive: `db/` for the two databases (`db_dir/0`) and `code/` for the
+defined modules (`code_dir/0`, step 14).
 Tests use one data dir per run, `tmp/test_data` in the repo, wiped
 at the start of each run; a test that needs its own directory gives
 it to the component directly rather than through config.

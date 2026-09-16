@@ -25,6 +25,34 @@ defmodule Beamlet.PrincipalTest do
              Principal.from_token(authenticated)
   end
 
+  describe "trailers" do
+    test "round-trip the principal", %{token: token} do
+      principal = principal(token)
+
+      assert Principal.to_trailers(principal) ==
+               "User: alice (#{principal.user_id})\n" <>
+                 "Token: test (#{principal.token_id})\n" <>
+                 "Policy: default\n"
+
+      assert {:ok, ^principal} = Principal.from_trailers(Principal.to_trailers(principal))
+    end
+
+    test "decode from a whole commit message, in any order", %{token: token} do
+      principal = principal(token)
+
+      message =
+        "define: Shopping.List (new)\n\nPolicy: default\nUser: alice (#{principal.user_id})\n" <>
+          "Token: test (#{principal.token_id})\n"
+
+      assert {:ok, ^principal} = Principal.from_trailers(message)
+    end
+
+    test "decoding a message with no trailers is an error" do
+      assert :error = Principal.from_trailers("manual changes\n")
+      assert :error = Principal.from_trailers("User: alice (1)\n")
+    end
+  end
+
   test "put_current/1 makes it the current process's principal", %{token: token} do
     assert Principal.current() == nil
 

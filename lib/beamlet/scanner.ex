@@ -58,7 +58,7 @@ defmodule Beamlet.Scanner do
   def scan_define(code, %Policy{} = policy) do
     with {:ok, ast} <- parse(code) do
       {modules, locals, structure_violations} = structure(ast, policy)
-      policy = %{policy | grants: Map.merge(policy.grants, Map.new(modules, &{&1, :all}))}
+      policy = Policy.grant(policy, modules)
 
       case render(walk(ast, policy, :define, locals) ++ structure_violations) do
         :ok -> {:ok, modules}

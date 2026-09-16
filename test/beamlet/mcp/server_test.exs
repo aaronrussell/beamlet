@@ -1,5 +1,6 @@
 defmodule Beamlet.MCP.ServerTest do
-  use Beamlet.Case
+  # The define test loads a module into the VM.
+  use Beamlet.Case, async: false
 
   alias Beamlet.MCP.Define
   alias Beamlet.MCP.Eval
@@ -39,13 +40,50 @@ defmodule Beamlet.MCP.ServerTest do
     assert text =~ "System.cmd"
   end
 
-  test "the define stub answers with an error result", %{token: token} do
+  test "define compiles the module, writes its source and returns the summary", %{
+    token: token,
+    data_dir: data_dir
+  } do
+    {client, _result} = MCPClient.initialize(token)
+    ns = unique_namespace()
+    purge_on_exit([Module.concat([ns, Greeter])])
+
+    code = """
+    defmodule #{ns}.Greeter do
+      @moduledoc "Greets."
+
+      @doc "Says hi."
+      def hi, do: "hi"
+    end
+    """
+
+    assert %{"isError" => false, "content" => [%{"type" => "text", "text" => text}]} =
+             MCPClient.call_tool(client, "define", %{code: code})
+
+    assert text == "Defined #{ns}.Greeter (new)"
+    assert File.exists?(Path.join(data_dir, "code/lib/#{Macro.underscore(ns)}/greeter.ex"))
+
+    assert %{"isError" => false, "content" => [%{"type" => "text", "text" => ~s|=> "hi"|}]} =
+             MCPClient.call_tool(client, "eval", %{code: "#{ns}.Greeter.hi()"})
+
+    assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
+             MCPClient.call_tool(client, "define", %{code: code})
+
+    assert text =~ "already exists"
+
+    assert %{"isError" => false, "content" => [%{"type" => "text", "text" => text}]} =
+             MCPClient.call_tool(client, "define", %{code: code, replace: true})
+
+    assert text == "Defined #{ns}.Greeter (replaced)"
+  end
+
+  test "a define that fails the docs gate is an error result", %{token: token} do
     {client, _result} = MCPClient.initialize(token)
 
     assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
              MCPClient.call_tool(client, "define", %{code: "defmodule A do end"})
 
-    assert text =~ "not available yet"
+    assert text =~ "A is missing @moduledoc"
   end
 
   describe "cancel" do

@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-16 (step 13 done)
+**Last updated:** 2026-09-16 (step 14 done)
 
 ---
 
@@ -72,11 +72,16 @@ the end.
     audit, their first caller, along with the round-trip test. The
     defined set is merged into the policy's grants before every
     scan, the other half of the effective grants, in whatever shape
-    the code server makes natural.
+    the code server makes natural. *Done 2026-09-16.*
 15. **The stdlib, module by module.** Fs, PubSub, Repo and KV and
     Migrator, Code, then Web and Router. The test endpoint arrives
     with Web and Router. The provenance JSON encoding lands with the
-    route table. The seven remaining host rows (`Host.Code`,
+    route table. What step 14 left out of the code server returns
+    with its consumer: migration placement and the applied-version
+    check with `Host.Migrator`, `compile_artifact` with the dynamic
+    router, `manifest` with discovery; `Host.Code.remove` wires the
+    server's remove and decides what a process with no ambient
+    principal may do. The seven remaining host rows (`Host.Code`,
     `Host.FS`, `Host.KV`, `Host.Migrator`, `Host.PubSub`,
     `Host.Router`, `Host.Web`) join `Beamlet.Policy.Default` as each
     module lands, one line and a regenerated golden each, and each
@@ -227,3 +232,23 @@ the end.
   suite came across minus the description, `Host.FS` and time zone
   cases; the cancel test drives the plug from a second process and
   sends `notifications/cancelled`. Design § 2 Eval records it.
+- **Step 14** (2026-09-16): `Beamlet.Define.run/3` scanning, running
+  the docs gate and handing the buffer to `Beamlet.Code`, the code
+  server owning `<data_dir>/code` with `Beamlet.Code.Tracer`, `Docs`
+  and `Audit` beneath it; `Beamlet.MCP.Define` as the thin component.
+  The reference server came across minus migrations,
+  `compile_artifact` and `manifest`, with remove included ahead of
+  `Host.Code`. One named ETS table holds the tracer's context, the
+  compile's records and the defined set, which `Beamlet.Code.defined/0`
+  reads and both runtimes merge into the policy with
+  `Beamlet.Policy.grant/2`. A cancel aborts the compile through a
+  monitor on the caller, and stopping a compile kills the parallel
+  compiler's workers, which its timeout path had leaked in code mode.
+  Git became a requirement: no flag, boot fails without it, the repo
+  carries no config, every commit names the user as author and
+  `beamlet` as committer, and the provenance trailers landed on
+  `Beamlet.Principal` with the round trip tested through a real
+  commit. `config :beamlet, define: [timeout:]`, `Beamlet.Config.code_dir/0`,
+  the transport timeout derived from both tools. `Beamlet.Case` wipes
+  the code dir per test and gained the code helpers. Design § 2
+  Define records it.

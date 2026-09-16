@@ -2,16 +2,10 @@ defmodule Beamlet.EvalTest do
   use Beamlet.Case
 
   alias Beamlet.Eval
-  alias Beamlet.Principal
   alias Beamlet.Users
 
   setup %{token: token} do
     %{principal: principal(token)}
-  end
-
-  defp principal(token) do
-    {:ok, authenticated} = Users.authenticate(token.secret)
-    Principal.from_token(authenticated)
   end
 
   defp run_error(code, principal, opts \\ []) do

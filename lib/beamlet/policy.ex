@@ -131,6 +131,20 @@ defmodule Beamlet.Policy do
     end
   end
 
+  @doc """
+  The policy with every module in `modules` granted whole.
+
+  The other half of the effective grants: modules defined on the
+  beamlet are granted by existence, so the runtimes merge the defined
+  set in before every scan (`Beamlet.Code.defined/0`), and the
+  scanner grants a `define` buffer's own modules to each other the
+  same way.
+  """
+  @spec grant(t(), [module()]) :: t()
+  def grant(%__MODULE__{grants: grants} = policy, modules) do
+    %{policy | grants: Map.merge(grants, Map.new(modules, &{&1, :all}))}
+  end
+
   @doc "Whether the module is granted at all (structs, require, use)."
   @spec allowed?(t(), module()) :: boolean()
   def allowed?(%__MODULE__{grants: grants}, module), do: Map.has_key?(grants, module)
