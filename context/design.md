@@ -89,6 +89,30 @@ code mode on purpose: it reads well ("the host of my code") and
 agent-facing vocabulary is the most expensive thing to rename once
 it lives in docs, teaching errors and model habits.
 
+**Where the machinery behind a `Host` module lives** (settled
+2026-09-16, before step 15). `Host.X` is the agent surface: it
+prints, raises with teaching copy, returns plain values, and is
+granted wholesale by the policy, so it holds only what an agent may
+call. The implementation sits in a root-level `Beamlet.*` module
+only when it earns its place: something else in Beamlet calls it,
+or it is a real subsystem, a context over a table, a process, a
+generator. Otherwise `Host.X` is the whole thing. The two sides
+share a leaf name when they are the same thing seen from each side
+(`Beamlet.Code` and `Host.Code`, `Beamlet.Repo` and `Host.Repo`),
+and a table follows the context convention (`Beamlet.Routes` owning
+`Beamlet.Route`, with `Host.Router` as the agent face). A support
+module has a moduledoc when an embedder might call it and
+`@moduledoc false` otherwise. Not testability: a `Host` module is a
+plain module a test calls directly. Two other shapes lost. A
+sub-namespace for "the machinery with a `Host` face" is not a real
+category, since `Beamlet.Code` serves a tool and `Host.Code` alike
+and the route table will serve `Host.Router`, discovery and remove.
+Nesting the implementation inside the `Host` module puts it in the
+agent's territory, where the listing, the reserved-prefix check and
+the moduledoc rule would all need a special case. Nothing under
+`Beamlet.*` is granted, so the split is what keeps the machinery
+out of reach by construction.
+
 ### Two databases
 
 Both Beamlet's, both under the data dir:

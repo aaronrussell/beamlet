@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-16 (step 14 done)
+**Last updated:** 2026-09-16 (step 14 done, step 15 split)
 
 ---
 
@@ -73,27 +73,41 @@ the end.
     defined set is merged into the policy's grants before every
     scan, the other half of the effective grants, in whatever shape
     the code server makes natural. *Done 2026-09-16.*
-15. **The stdlib, module by module.** Fs, PubSub, Repo and KV and
-    Migrator, Code, then Web and Router. The test endpoint arrives
-    with Web and Router. The provenance JSON encoding lands with the
-    route table. What step 14 left out of the code server returns
-    with its consumer: migration placement and the applied-version
-    check with `Host.Migrator`, `compile_artifact` with the dynamic
-    router, `manifest` with discovery; `Host.Code.remove` wires the
-    server's remove and decides what a process with no ambient
-    principal may do. The seven remaining host rows (`Host.Code`,
-    `Host.FS`, `Host.KV`, `Host.Migrator`, `Host.PubSub`,
-    `Host.Router`, `Host.Web`) join `Beamlet.Policy.Default` as each
-    module lands, one line and a regenerated golden each, and each
-    lights the signage redirect that points at it; the skipped
-    `Host.Web` shape test in the scanner suite comes back with
-    `Host.Web`; the scanner's denied-module copy goes public for
-    `Host.Code`'s discovery surface; `Macro` gets a partial grant for
-    its string helpers (`underscore`, `camelize`, `to_string`); the
-    discovery accessors code mode kept on its curation record
-    (`framework_modules`, package descriptions) return if the
-    listing needs them; and `Host.Code.print_policy` renders through
-    `Beamlet.Policy.render/1`.
+15. **The stdlib, module by module**, in four sub-steps, each with
+    its own planning pass and an API review as the module comes
+    across: names, arguments, docs and teaching copy are open to
+    change. Common to every module: its row joins
+    `Beamlet.Policy.Default`, one line and a regenerated golden, and
+    lights the signage redirect that points at it; what step 14 left
+    out of the code server returns with its consumer; the design's
+    Two surfaces section says where a module's machinery lives.
+    - **15a. `Host.Code` and `Host.PubSub`.** Discovery
+      (`print_modules`, `print_docs`, `print_source`, `print_policy`
+      through `Beamlet.Policy.render/1`) and `remove` over the
+      server's, deciding what a process with no ambient principal
+      may do; `manifest` returns to `Beamlet.Code`; the scanner's
+      denied-module copy goes public for the listing; the discovery
+      accessors code mode kept on its curation record return if the
+      listing needs them; `Macro` gets a partial grant for its string
+      helpers (`underscore`, `camelize`, `to_string`). PubSub is
+      `Beamlet.PubSub` as a child and `Host.PubSub` over it. Open for
+      the pass: where code mode's conventions text goes, here as a
+      `print_*` or at step 16. The routes section of the listing and
+      remove's mounted-route check wait for 15d.
+    - **15b. `Host.FS`**, with a design and API review of the scoped
+      filesystem before it comes across.
+    - **15c. `Host.Repo`, `Host.KV` and `Host.Migrator`.** The repo
+      is there; KV is the table created at boot outside the agent's
+      migrations; migration placement, the `code/migrations` layout
+      and the applied-version check return to `Beamlet.Code`.
+    - **15d. `Host.Web` and `Host.Router`.** The route table in the
+      agent database with the JSON provenance encoding, `Beamlet.Router`
+      that the host forwards to and the dynamic router it generates
+      with `compile_artifact` back in the server, layouts, the `use
+      Host.Web` roles, the test endpoint, `Host.Router.call`; the
+      skipped `Host.Web` shape test in the scanner suite comes back;
+      `Host.Code` gains its routes section and remove's mounted-route
+      check. The largest of the four; its pass may split it further.
 16. **Descriptions and instructions pass** against the 2KB budget,
     with tests that fail past it. The instructions are phrased to
     survive an eval-only token, since they stay static while the
