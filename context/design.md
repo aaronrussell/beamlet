@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-15 (the scanner and the signage review, step 12)
+**Last updated:** 2026-09-16 (eval, step 13)
 
 ---
 
@@ -503,6 +503,63 @@ to load and filter in memory. What carries provenance is exactly
 what did in code mode, every commit the code server makes and every
 route row. Not KV entries, not files, and there is no eval log.
 
+### Eval
+
+Settled 2026-09-16 (step 13). `Beamlet.Eval` is the runtime behind
+the `eval` tool: `run(code, principal, opts)` fetches the policy by
+the principal's name, scans, evaluates and returns the result or the
+error as text, and `Beamlet.MCP.Eval` maps the tuple to a tool
+result. Nothing sits between them: the component is the tool, and
+code mode's `Omni.Tool` layer with its per-call `active_description`
+went. The output contract is code mode's: what the code printed,
+then `=> ` and the inspected last expression, with a refused call,
+an exception, a timeout or a memory kill as error text that keeps
+the output printed before it. Each run is a fresh evaluation in the
+beamlet's VM, empty bindings, no prelude.
+
+**Two processes, tied one way.** Anubis runs every request in a
+task of its own and answers `notifications/cancelled` by
+terminating that task, so the tool process is Anubis's. The code
+runs in a child under `Beamlet.TaskSupervisor` so that the timeout
+and the heap cap can kill it while the tool process survives to
+report with partial output; the tool process owns the StringIO for
+the same reason. The child is not linked, since those two kills
+would take the tool process down, and a monitor alone cannot tell
+the child its caller was cancelled: code mode's runner left the
+code running to its own timeout after a cancel, the gap the MCP
+spike found. Erlang has no one-way link, so a watcher provides it:
+a third process monitors the tool process and kills the child when
+it goes. Trapping exits in the tool process was the alternative and
+lost, since it sets a flag on a process Anubis owns and makes the
+runner answer the supervisor's shutdown itself. Closing the HTTP
+stream cancels nothing in Anubis 2.0; the notification is the only
+cancel signal.
+
+**Three limits**, `config :beamlet, eval: [...]`, each named for
+what it protects: `timeout` (30 seconds) the session, since a
+session runs one request at a time; `max_heap_bytes` (256MB) the
+beamlet; `max_output` (16KB) the model's context. The transport's
+`request_timeout` is derived from the eval timeout plus a margin: it
+is a call timeout that answers "Server unavailable" and leaves the
+request running, so it must never fire first. 16KB stays because
+inspected Elixir runs three to four bytes a token, which puts a full
+result at four to five thousand tokens, under Claude Code's
+10,000-token warning (its default cap is 25,000, past which it
+writes the result to a file and hands the model the path), and
+because the inline tail teaches where a client's file fallback does
+not. The inspect limits are constants; nobody tunes how one value
+renders per beamlet. Agents get no per-call limits; `opts` on
+`run/3` are for tests.
+
+**The ambient principal.** Evaluated code takes no arguments, so the
+runner puts the principal in the child's process dictionary before
+the code runs (`Beamlet.Principal.put_current/1`) and the stdlib
+functions that must record who acted read it back (`current/0`);
+outside evaluated code it is nil. The value is the principal alone,
+where code mode stashed an agent name and a stance, and the policy
+is fetched by name. A tool that holds the principal passes it
+explicitly. No separate module: two functions on the struct's own.
+
 ### Config
 
 One surface: `:beamlet` application config, read at runtime through
@@ -573,7 +630,9 @@ Decided as each step arrives, not before:
 - The data dir layout, one path at a time as its owners land.
 - The exact stdlib surface, module by module (step 15).
 - What the server instructions and tool descriptions say within a
-  2KB budget per item (step 16).
+  2KB budget per item (step 16), and whether `eval` declares its
+  output cap to Claude Code through the `anthropic/maxResultSizeChars`
+  tool annotation.
 - Deployment model, source-run or release (step 17). Decided in
   principle at step 9: the library's only declaration surface is
   application config, and the server's release merges an optional

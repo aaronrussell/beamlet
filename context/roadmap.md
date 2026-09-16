@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-15 (step 12 done)
+**Last updated:** 2026-09-16 (step 13 done)
 
 ---
 
@@ -66,7 +66,7 @@ the end.
     modules carried across skipped. *Done 2026-09-15.*
 13. **`eval`.** The exec runtime and tool result, with cancel
     linkage, and the ambient principal in place of code mode's
-    ambient agent name and stance. No stdlib yet.
+    ambient agent name and stance. No stdlib yet. *Done 2026-09-16.*
 14. **`define`.** Plain modules, the code server, git audit. No
     migrations yet. The provenance trailers land here with the
     audit, their first caller, along with the round-trip test. The
@@ -214,3 +214,16 @@ the end.
   doors for tests about the join. The reference suite came across
   whole; the `Host.Web` shape test is skipped until step 15. Design
   § 2 Policy records the review.
+- **Step 13** (2026-09-16): `Beamlet.Eval.run/3` scanning,
+  evaluating and formatting; `Beamlet.Eval.Runner` with the child
+  under `Beamlet.TaskSupervisor` and the watcher that kills it when
+  the tool process is cancelled; `Beamlet.MCP.Eval` as the thin
+  component, code mode's tool layer and `active_description` gone.
+  Three limits under `config :beamlet, :eval` read by
+  `Beamlet.Config.eval!/0`, the transport's request timeout derived
+  from the eval timeout, the inspect limits fixed. The ambient
+  principal as `Beamlet.Principal.put_current/1` and `current/0`,
+  written by the runner and read by nobody yet. The reference exec
+  suite came across minus the description, `Host.FS` and time zone
+  cases; the cancel test drives the plug from a second process and
+  sends `notifications/cancelled`. Design § 2 Eval records it.

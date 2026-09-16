@@ -54,14 +54,18 @@ defmodule Beamlet.MCPClient do
     client |> rpc("tools/call", %{name: name, arguments: arguments}) |> result()
   end
 
-  @doc "Sends one JSON-RPC request and returns the conn."
-  @spec rpc(t() | nil, String.t(), map()) :: Plug.Conn.t()
-  def rpc(client, method, params) do
-    id = System.unique_integer([:positive])
+  @doc "Sends one JSON-RPC request and returns the conn. `id:` sets the request id, for a test that cancels it."
+  @spec rpc(t() | nil, String.t(), map(), keyword()) :: Plug.Conn.t()
+  def rpc(client, method, params, opts \\ []) do
+    id = Keyword.get_lazy(opts, :id, fn -> System.unique_integer([:positive]) end)
     post(client, %{jsonrpc: "2.0", id: id, method: method, params: params})
   end
 
-  defp notify(client, method), do: post(client, %{jsonrpc: "2.0", method: method})
+  @doc "Sends one JSON-RPC notification and returns the conn."
+  @spec notify(t(), String.t(), map()) :: Plug.Conn.t()
+  def notify(client, method, params \\ %{}) do
+    post(client, %{jsonrpc: "2.0", method: method, params: params})
+  end
 
   defp post(client, body) do
     conn(:post, "/", JSON.encode!(body))

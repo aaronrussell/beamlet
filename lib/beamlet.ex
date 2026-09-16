@@ -55,13 +55,18 @@ defmodule Beamlet do
     ]
   end
 
+  # The transport's request timeout answers "Server unavailable" and
+  # leaves the request running, so eval's own timeout must fire first.
   defp children(nil) do
     [
       Beamlet.Policies,
       Beamlet.Repo,
       {Ecto.Migrator, repos: [Beamlet.Repo]},
       Host.Repo,
-      {Beamlet.MCP.Server, transport: {:streamable_http, start: true}, request_timeout: 60_000}
+      {Task.Supervisor, name: Beamlet.TaskSupervisor},
+      {Beamlet.MCP.Server,
+       transport: {:streamable_http, start: true},
+       request_timeout: Config.eval!()[:timeout] + 5_000}
     ]
   end
 

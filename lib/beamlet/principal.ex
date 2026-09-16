@@ -16,12 +16,23 @@ defmodule Beamlet.Principal do
 
   Names and ids both, since a reader wants the name and a program
   wants the id after a rename.
+
+  Code an agent runs through `eval` takes no arguments, so it cannot
+  be handed the principal, and the stdlib functions it calls must
+  still know who is acting when they record it. The runtime puts the
+  principal in the evaluating process before the code runs
+  (`put_current/1`) and those functions read it back (`current/0`).
+  Outside evaluated code, in a web request or a test process, there
+  is none and `current/0` is nil. A tool that holds the principal
+  itself passes it explicitly.
   """
 
   alias Beamlet.Token
   alias Beamlet.User
 
   defstruct [:user_id, :user_name, :token_id, :token_name, :policy]
+
+  @key {Beamlet, :principal}
 
   @typedoc "A request's principal."
   @type t :: %__MODULE__{
@@ -43,4 +54,15 @@ defmodule Beamlet.Principal do
       policy: token.policy
     }
   end
+
+  @doc "Makes `principal` the one the current process acts as; eval's runtime calls it before evaluating."
+  @spec put_current(t()) :: :ok
+  def put_current(%__MODULE__{} = principal) do
+    Process.put(@key, principal)
+    :ok
+  end
+
+  @doc "The principal evaluated code runs as, or nil outside an eval."
+  @spec current() :: t() | nil
+  def current, do: Process.get(@key)
 end

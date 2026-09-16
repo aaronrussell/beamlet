@@ -52,4 +52,38 @@ defmodule Beamlet.ConfigTest do
       assert Config.db_dir() == Path.join(configured, "db")
     end
   end
+
+  describe "eval!/0" do
+    setup do
+      on_exit(fn -> Application.delete_env(:beamlet, :eval) end)
+    end
+
+    test "is the defaults when unset" do
+      assert Config.eval!() == [timeout: 30_000, max_heap_bytes: 268_435_456, max_output: 16_384]
+    end
+
+    test "merges a configured limit over the defaults" do
+      Application.put_env(:beamlet, :eval, timeout: 100)
+
+      assert Config.eval!() == [timeout: 100, max_heap_bytes: 268_435_456, max_output: 16_384]
+    end
+
+    test "raises when not a keyword list" do
+      Application.put_env(:beamlet, :eval, %{timeout: 100})
+
+      assert_raise ArgumentError, ~r/must be a keyword list of limits/, fn -> Config.eval!() end
+    end
+
+    test "raises on an unknown limit" do
+      Application.put_env(:beamlet, :eval, timeouts: 100)
+
+      assert_raise ArgumentError, ~r/got: {:timeouts, 100}/, fn -> Config.eval!() end
+    end
+
+    test "raises on a limit that is not a positive integer" do
+      Application.put_env(:beamlet, :eval, timeout: "100")
+
+      assert_raise ArgumentError, ~r/each a positive integer/, fn -> Config.eval!() end
+    end
+  end
 end

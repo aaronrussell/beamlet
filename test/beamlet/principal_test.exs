@@ -24,4 +24,14 @@ defmodule Beamlet.PrincipalTest do
     assert %Principal{token_name: "phone", policy: "restricted"} =
              Principal.from_token(authenticated)
   end
+
+  test "put_current/1 makes it the current process's principal", %{token: token} do
+    assert Principal.current() == nil
+
+    {:ok, authenticated} = Users.authenticate(token.secret)
+    principal = Principal.from_token(authenticated)
+
+    assert :ok = Principal.put_current(principal)
+    assert Principal.current() == principal
+  end
 end

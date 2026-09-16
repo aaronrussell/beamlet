@@ -23,13 +23,62 @@ defmodule Beamlet.MCP.ServerTest do
     assert Enum.map(tools, & &1["inputSchema"]["required"]) == [["code"], ["code"]]
   end
 
-  test "the stub tools answer with an error result", %{token: token} do
+  test "eval evaluates and returns the inspected result", %{token: token} do
+    {client, _result} = MCPClient.initialize(token)
+
+    assert %{"isError" => false, "content" => [%{"type" => "text", "text" => "=> 2"}]} =
+             MCPClient.call_tool(client, "eval", %{code: "1 + 1"})
+  end
+
+  test "a policy rejection is an error tool result", %{token: token} do
     {client, _result} = MCPClient.initialize(token)
 
     assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
-             MCPClient.call_tool(client, "eval", %{code: "1 + 1"})
+             MCPClient.call_tool(client, "eval", %{code: ~s|System.cmd("ls", [])|})
+
+    assert text =~ "System.cmd"
+  end
+
+  test "the define stub answers with an error result", %{token: token} do
+    {client, _result} = MCPClient.initialize(token)
+
+    assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
+             MCPClient.call_tool(client, "define", %{code: "defmodule A do end"})
 
     assert text =~ "not available yet"
+  end
+
+  describe "cancel" do
+    @tag policies: [probe: [allow: [Kernel]]]
+    @tag :capture_log
+    test "stops the evaluation when the client cancels the request", %{user: user} do
+      {:ok, token} = Users.create_token(user, name: "phone", policy: "probe")
+      {client, _result} = MCPClient.initialize(token)
+      Process.register(self(), :eval_probe)
+
+      code = """
+      send(:eval_probe, self())
+
+      receive do
+      after
+        60_000 -> :ok
+      end
+      """
+
+      call =
+        Task.async(fn ->
+          MCPClient.rpc(client, "tools/call", %{name: "eval", arguments: %{code: code}}, id: 42)
+        end)
+
+      assert_receive evaluating when is_pid(evaluating), 5_000
+      ref = Process.monitor(evaluating)
+
+      assert MCPClient.notify(client, "notifications/cancelled", %{requestId: 42}).status == 202
+
+      assert_receive {:DOWN, ^ref, :process, ^evaluating, :killed}, 5_000
+      assert %{"error" => %{"message" => message}} = JSON.decode!(Task.await(call).resp_body)
+      assert message =~ "cancelled"
+    end
   end
 
   describe "under a policy" do
@@ -54,7 +103,7 @@ defmodule Beamlet.MCP.ServerTest do
       assert %{"error" => %{"code" => -32602, "data" => %{"message" => "Tool not found: define"}}} =
                JSON.decode!(conn.resp_body)
 
-      assert %{"isError" => true} = MCPClient.call_tool(client, "eval", %{code: "1 + 1"})
+      assert %{"isError" => false} = MCPClient.call_tool(client, "eval", %{code: "1 + 1"})
     end
 
     @tag policies: [nothing: [tools: []]]

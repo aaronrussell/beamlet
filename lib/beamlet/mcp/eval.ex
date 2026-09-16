@@ -4,6 +4,7 @@ defmodule Beamlet.MCP.Eval do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias Beamlet.Eval
 
   schema do
     field(:code, {:required, :string}, description: "Elixir code to evaluate")
@@ -20,7 +21,10 @@ defmodule Beamlet.MCP.Eval do
   end
 
   @impl true
-  def execute(_params, frame) do
-    {:reply, Response.error(Response.tool(), "eval is not available yet on this beamlet"), frame}
+  def execute(%{code: code}, frame) do
+    case Eval.run(code, frame.assigns.principal) do
+      {:ok, text} -> {:reply, Response.text(Response.tool(), text), frame}
+      {:error, text} -> {:reply, Response.error(Response.tool(), text), frame}
+    end
   end
 end
