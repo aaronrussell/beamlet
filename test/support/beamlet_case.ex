@@ -46,7 +46,7 @@ defmodule Beamlet.Case do
     {:ok, user} = Beamlet.Users.create(name: "alice")
     {:ok, token} = Beamlet.Users.create_token(user, name: "test")
 
-    %{data_dir: Beamlet.Config.data_dir!(), user: user, token: token}
+    %{data_dir: Beamlet.Config.data_dir(), user: user, token: token}
   end
 
   @doc "Changeset errors as a map of field to messages, with values interpolated."

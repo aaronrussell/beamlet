@@ -54,7 +54,7 @@ defmodule Beamlet.Policies do
   end
 
   defp build_all! do
-    Enum.reduce(Config.policies!(), [Policy.default()], fn {name, document}, built ->
+    Enum.reduce(Config.policies(), [Policy.default()], fn {name, document}, built ->
       case Policy.build(name, document) do
         {:ok, policy} ->
           if Enum.any?(built, &(&1.name == policy.name)) do

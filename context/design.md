@@ -566,9 +566,18 @@ One surface: `:beamlet` application config, read at runtime through
 `Beamlet.Config` accessors, so a release or container sets it from
 the environment in `runtime.exs`. No start options carry
 configuration, nothing is read at compile time, nothing is stashed.
-`data_dir` is the root everything a beamlet persists lives under;
-starting checks it exists and fails the boot otherwise, and the
-modules owning paths beneath it add their accessors as they arrive.
+Checked once, read plainly after (revised 2026-09-16, after step
+13): `Beamlet.Config.validate!/0` checks every key first thing in
+`Beamlet.init/1`, on both boot paths, and fails the boot naming the
+key at fault; the accessors then return what was checked with
+defaults merged and never raise. Validating in each accessor was
+the earlier shape and lost: it spread the boot's job across every
+caller and made runtime paths look fallible when a change is a
+restart, as it already was for policies. `data_dir` is the root
+everything a beamlet persists lives under; after the document
+check, starting checks the dir exists and fails the boot otherwise,
+and the modules owning paths beneath it add their accessors as they
+arrive.
 Tests use one data dir per run, `tmp/test_data` in the repo, wiped
 at the start of each run; a test that needs its own directory gives
 it to the component directly rather than through config.

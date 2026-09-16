@@ -57,13 +57,6 @@ defmodule Beamlet.PoliciesTest do
     assert boot_error() =~ "policy explorer: declared twice"
   end
 
-  @tag :capture_log
-  test "policies that are not a keyword list fail the boot" do
-    Application.put_env(:beamlet, :policies, %{explorer: []})
-
-    assert boot_error() =~ "config :beamlet, :policies must be a keyword list"
-  end
-
   defp boot_error do
     assert {:error, {{:shutdown, {:failed_to_start_child, Policies, {error, _stack}}}, _spec}} =
              start_supervised({Beamlet, []})

@@ -41,6 +41,7 @@ defmodule Beamlet do
 
   @impl true
   def init(opts) do
+    Config.validate!()
     children = children(Keyword.get(opts, :only))
     prepare!()
 
@@ -66,7 +67,7 @@ defmodule Beamlet do
       {Task.Supervisor, name: Beamlet.TaskSupervisor},
       {Beamlet.MCP.Server,
        transport: {:streamable_http, start: true},
-       request_timeout: Config.eval!()[:timeout] + 5_000}
+       request_timeout: Config.eval()[:timeout] + 5_000}
     ]
   end
 
@@ -75,14 +76,15 @@ defmodule Beamlet do
           "Beamlet.start_link only: accepts :system, got: #{inspect(other)}"
   end
 
-  # The data dir check and the database files, before any child runs.
+  # The world the checked config points at: the data dir exists and
+  # the database files do, before any child runs.
   defp prepare! do
     ensure_data_dir!()
     Enum.each([Beamlet.Repo, Host.Repo], &ensure_database!/1)
   end
 
   defp ensure_data_dir! do
-    dir = Config.data_dir!()
+    dir = Config.data_dir()
 
     unless File.dir?(dir) do
       raise ArgumentError,

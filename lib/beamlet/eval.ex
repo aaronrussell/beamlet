@@ -56,7 +56,7 @@ defmodule Beamlet.Eval do
   @spec run(String.t(), Principal.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def run(code, %Principal{} = principal, opts \\ []) when is_binary(code) do
     {:ok, policy} = Policies.fetch(principal.policy)
-    limits = Keyword.merge(Config.eval!(), opts)
+    limits = Keyword.merge(Config.eval(), opts)
 
     with :ok <- Scanner.scan_eval(code, policy) do
       code
