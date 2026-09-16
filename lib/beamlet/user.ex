@@ -25,12 +25,17 @@ defmodule Beamlet.User do
           updated_at: NaiveDateTime.t() | nil
         }
 
-  @doc "Changeset for creating or updating a user; the name must be unique."
+  @doc """
+  Changeset for creating or updating a user; the name must be unique,
+  and `beamlet` is reserved for the system principal
+  (`Beamlet.Principal.system/0`).
+  """
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(user, attrs) do
     user
     |> cast(attrs, [:name])
     |> validate_name()
+    |> validate_exclusion(:name, ["beamlet"], message: "is reserved for the beamlet itself")
     |> unique_constraint(:name)
   end
 

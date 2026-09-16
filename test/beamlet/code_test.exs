@@ -50,6 +50,7 @@ defmodule Beamlet.CodeTest do
       assert doc =~ "Tracks the shopping list."
 
       assert Code.defined() == [mod]
+      assert Code.manifest() == %{mod => %{source_file: source_file, beam_file: beam_file}}
     end
 
     test "a multi-module buffer splits into one file per module", ctx do
@@ -361,6 +362,12 @@ defmodule Beamlet.CodeTest do
           assert quarantined |> Enum.flat_map(& &1.modules) |> Enum.sort() ==
                    Enum.sort([bad, dep])
 
+          assert [%{file: bad_file, error: error}, %{file: dep_file}] = quarantined
+          assert bad_file == Path.join(lib, "bad.ex")
+          assert dep_file == Path.join(lib, "dep.ex")
+          assert error =~ "undefined_local"
+
+          assert Map.keys(Code.manifest()) == [good]
           refute loaded?(bad)
         end)
 
@@ -387,6 +394,9 @@ defmodule Beamlet.CodeTest do
       restart_code_server()
       assert Code.quarantined() == []
       assert Code.defined() == [mod]
+
+      assert %{^mod => %{source_file: source_file}} = Code.manifest()
+      assert source_file == Path.join(ctx.code_dir, "lib/hand_edited.ex")
     end
 
     test "defined modules survive a restart", ctx do
@@ -594,6 +604,7 @@ defmodule Beamlet.CodeTest do
       refute File.exists?(source_file)
       refute File.exists?(beam_file)
       assert Code.defined() == []
+      assert Code.manifest() == %{}
       assert Code.deps() == %{}
       assert Code.calls() == %{}
     end

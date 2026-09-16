@@ -32,6 +32,8 @@ defmodule Beamlet.Code.AuditTest do
       assert File.read!(Path.join(ctx.code_dir, ".gitignore")) == "/ebin/\n/.staging/\n"
       assert commit_count(ctx.code_dir) == 1
       assert last_message(ctx.code_dir) =~ "initial snapshot"
+      assert {:ok, system} = Principal.from_trailers(last_message(ctx.code_dir))
+      assert system == Principal.system()
 
       files = git!(ctx.code_dir, ["ls-files"])
       assert files == ".gitignore\n"
@@ -42,7 +44,7 @@ defmodule Beamlet.Code.AuditTest do
       assert commit_count(ctx.code_dir) == 1
     end
 
-    test "a dirty tree is swept as manual changes, committed by beamlet", ctx do
+    test "a dirty tree is swept as manual changes under the system principal", ctx do
       ns = unique_namespace()
       purge_on_exit([Module.concat([ns, HandEdit])])
 
@@ -55,7 +57,9 @@ defmodule Beamlet.Code.AuditTest do
       restart_code_server()
 
       assert commit_count(ctx.code_dir) == 2
-      assert last_message(ctx.code_dir) =~ "manual changes"
+      message = last_message(ctx.code_dir)
+      assert message =~ "manual changes"
+      assert message =~ "User: beamlet (0)"
 
       assert git!(ctx.code_dir, ["log", "-1", "--format=%an <%ae>"]) =~
                "beamlet <beamlet@beamlet>"

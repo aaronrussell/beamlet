@@ -9,10 +9,11 @@ defmodule Beamlet.Code.Audit do
   # down. The agent has no git verbs and no knowledge git exists.
   #
   # Git trails the filesystem and never gatekeeps it: a hand-edited
-  # file is swept into its own commit at the next boot, and a failed
-  # commit is logged and its changes ride into the next `git add -A`.
-  # The repo carries no config of its own; every commit names its
-  # author and committer as it is made.
+  # file is swept into its own commit at the next boot under the
+  # system principal, and a failed commit is logged and its changes
+  # ride into the next `git add -A`. The repo carries no config of
+  # its own; every commit names its author and committer as it is
+  # made, and every commit carries trailers.
 
   require Logger
 
@@ -32,7 +33,9 @@ defmodule Beamlet.Code.Audit do
 
   @spec after_boot(Path.t()) :: :ok
   def after_boot(code_dir) do
-    if init_repo(code_dir), do: commit(code_dir, "initial snapshot", nil), else: sweep(code_dir)
+    if init_repo(code_dir),
+      do: commit(code_dir, "initial snapshot", Principal.system()),
+      else: sweep(code_dir)
   end
 
   @spec record_define(Path.t(), [module()], [module()], Principal.t()) :: :ok
@@ -65,20 +68,15 @@ defmodule Beamlet.Code.Audit do
   defp sweep(code_dir) do
     case git(code_dir, ["status", "--porcelain"]) do
       {"", 0} -> :ok
-      {_dirty, 0} -> commit(code_dir, "manual changes", nil)
+      {_dirty, 0} -> commit(code_dir, "manual changes", Principal.system())
       {output, _status} -> log_failure("status", output)
     end
   end
 
   # Empty commits are allowed so that a replace with the same source
   # is still on the record.
-  defp commit(code_dir, subject, principal) do
-    message =
-      case principal do
-        nil -> ["-m", subject]
-        principal -> ["-m", subject, "-m", Principal.to_trailers(principal)]
-      end
-
+  defp commit(code_dir, subject, %Principal{} = principal) do
+    message = ["-m", subject, "-m", Principal.to_trailers(principal)]
     args = ["-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty" | message]
 
     with {_out, 0} <- git(code_dir, ["add", "-A"]),
@@ -89,10 +87,7 @@ defmodule Beamlet.Code.Audit do
     end
   end
 
-  defp author(nil), do: author("beamlet")
-  defp author(%Principal{user_name: name}), do: author(name)
-
-  defp author(name) when is_binary(name) do
+  defp author(%Principal{user_name: name}) do
     [{"GIT_AUTHOR_NAME", name}, {"GIT_AUTHOR_EMAIL", "#{name}@beamlet"}]
   end
 

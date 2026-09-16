@@ -35,6 +35,12 @@ defmodule Beamlet.Principal do
   Outside evaluated code, in a web request or a test process, there
   is none and `current/0` is nil. A tool that holds the principal
   itself passes it explicitly.
+
+  What the beamlet does on its own behalf, such as sweeping hand
+  edits into a commit at boot, is recorded under the system principal
+  (`system/0`): user and token both named `beamlet` with id 0, which
+  the database never issues, under the `default` policy. The user
+  name `beamlet` is reserved so the record never names two things.
   """
 
   alias Beamlet.Token
@@ -46,9 +52,9 @@ defmodule Beamlet.Principal do
 
   @typedoc "A request's principal."
   @type t :: %__MODULE__{
-          user_id: pos_integer(),
+          user_id: non_neg_integer(),
           user_name: String.t(),
-          token_id: pos_integer(),
+          token_id: non_neg_integer(),
           token_name: String.t(),
           policy: String.t()
         }
@@ -62,6 +68,18 @@ defmodule Beamlet.Principal do
       token_id: token.id,
       token_name: token.name,
       policy: token.policy
+    }
+  end
+
+  @doc "The principal the beamlet acts as on its own behalf: `beamlet`, id 0, the default policy."
+  @spec system() :: t()
+  def system do
+    %__MODULE__{
+      user_id: 0,
+      user_name: "beamlet",
+      token_id: 0,
+      token_name: "beamlet",
+      policy: "default"
     }
   end
 

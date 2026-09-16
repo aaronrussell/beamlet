@@ -40,6 +40,11 @@ defmodule Beamlet.UsersTest do
       assert {:error, changeset} = Users.create(name: "bob")
       assert %{name: ["has already been taken"]} = errors_on(changeset)
     end
+
+    test "reserves beamlet for the system principal" do
+      assert {:error, changeset} = Users.create(name: "beamlet")
+      assert %{name: ["is reserved for the beamlet itself"]} = errors_on(changeset)
+    end
   end
 
   describe "update/2" do

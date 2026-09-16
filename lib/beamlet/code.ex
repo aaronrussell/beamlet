@@ -47,8 +47,9 @@ defmodule Beamlet.Code do
   sweeps hand edits into a commit of their own at boot. Git is a
   requirement: a beamlet whose PATH has no git does not start.
 
-  The defined set is published to a table this process owns, so a
-  lookup (`defined/0`) never waits on a compile in progress.
+  The defined set, the paths behind it and the quarantine are
+  published to a table this process owns, so a lookup (`defined/0`,
+  `manifest/0`, `quarantined/0`) never waits on a compile in progress.
   """
 
   use GenServer
@@ -109,10 +110,23 @@ defmodule Beamlet.Code do
     GenServer.call(__MODULE__, {:remove, modules, principal}, 30_000)
   end
 
+  @typedoc "Where a defined module lives: its source under `lib/` and its beam under `ebin/`."
+  @type paths :: %{source_file: Path.t(), beam_file: Path.t()}
+
   @doc "The defined modules, sorted. Read from the server's table, so it never waits on a define."
   @spec defined() :: [module()]
   def defined do
-    __MODULE__ |> :ets.match({:defined, :"$1"}) |> List.flatten() |> Enum.sort()
+    __MODULE__ |> :ets.match({:defined, :"$1", :_, :_}) |> List.flatten() |> Enum.sort()
+  end
+
+  @doc "The defined modules with their paths. A table read, like `defined/0`."
+  @spec manifest() :: %{module() => paths()}
+  def manifest do
+    __MODULE__
+    |> :ets.match_object({:defined, :_, :_, :_})
+    |> Map.new(fn {:defined, mod, source_file, beam_file} ->
+      {mod, %{source_file: source_file, beam_file: beam_file}}
+    end)
   end
 
   @doc "The compile-time edges between defined modules: each module to those it depends on."
@@ -123,9 +137,16 @@ defmodule Beamlet.Code do
   @spec calls() :: %{module() => %{module() => [{atom(), arity()}]}}
   def calls, do: GenServer.call(__MODULE__, :calls)
 
-  @doc "The files quarantined at boot."
+  @doc "The files quarantined at boot, by file. A table read, like `defined/0`."
   @spec quarantined() :: [quarantine_entry()]
-  def quarantined, do: GenServer.call(__MODULE__, :quarantined)
+  def quarantined do
+    __MODULE__
+    |> :ets.match_object({:quarantined, :_, :_, :_})
+    |> Enum.map(fn {:quarantined, file, modules, error} ->
+      %{file: file, modules: modules, error: error}
+    end)
+    |> Enum.sort_by(& &1.file)
+  end
 
   @impl GenServer
   def init(opts) do
@@ -152,7 +173,7 @@ defmodule Beamlet.Code do
     }
 
     state = boot_load(state)
-    publish_defined(state)
+    publish(state)
     Audit.after_boot(code_dir)
     {:ok, state}
   end
@@ -190,7 +211,6 @@ defmodule Beamlet.Code do
 
   def handle_call(:deps, _from, state), do: {:reply, state.deps, state}
   def handle_call(:calls, _from, state), do: {:reply, state.calls, state}
-  def handle_call(:quarantined, _from, state), do: {:reply, state.quarantined, state}
 
   # Define
 
@@ -416,7 +436,7 @@ defmodule Beamlet.Code do
         quarantined: quarantined
     }
 
-    publish_defined(state)
+    publish(state)
     Audit.record_define(state.code_dir, buffer_modules, replaced, principal)
 
     caller_lines = runtime_caller_lines(calls, replaced, buffer_modules)
@@ -678,7 +698,7 @@ defmodule Beamlet.Code do
         quarantined: quarantined
     }
 
-    publish_defined(state)
+    publish(state)
     Audit.record_remove(state.code_dir, modules, principal)
     {:ok, state}
   end
@@ -804,18 +824,27 @@ defmodule Beamlet.Code do
     :ets.delete(__MODULE__, :call)
   end
 
-  # Added before stale rows go, so a scan in flight never sees a
-  # defined module missing.
-  defp publish_defined(state) do
-    current = MapSet.new(Map.keys(state.modules))
-    published = MapSet.new(defined())
+  # Rows are added before stale ones go, so a scan in flight never
+  # sees a defined module missing.
+  defp publish(state) do
+    current =
+      MapSet.new(
+        Enum.map(state.modules, fn {mod, source_file} ->
+          {:defined, mod, source_file, beam_path(state, mod)}
+        end) ++
+          Enum.map(state.quarantined, fn entry ->
+            {:quarantined, entry.file, entry.modules, entry.error}
+          end)
+      )
 
-    for mod <- MapSet.difference(current, published),
-        do: :ets.insert(__MODULE__, {:defined, mod})
+    published =
+      MapSet.new(
+        :ets.match_object(__MODULE__, {:defined, :_, :_, :_}) ++
+          :ets.match_object(__MODULE__, {:quarantined, :_, :_, :_})
+      )
 
-    for mod <- MapSet.difference(published, current),
-        do: :ets.delete_object(__MODULE__, {:defined, mod})
-
+    for row <- MapSet.difference(current, published), do: :ets.insert(__MODULE__, row)
+    for row <- MapSet.difference(published, current), do: :ets.delete_object(__MODULE__, row)
     :ok
   end
 

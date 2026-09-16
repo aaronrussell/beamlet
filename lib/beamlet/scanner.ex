@@ -291,7 +291,8 @@ defmodule Beamlet.Scanner do
         {:ok, module} ->
           if Policy.allowed?(acc.policy, module),
             do: acc,
-            else: violation(acc, meta, "%#{inspect(module)}{} — #{denied_module(acc, module)}")
+            else:
+              violation(acc, meta, "%#{inspect(module)}{} — #{denied_module(acc.policy, module)}")
 
         :error ->
           acc
@@ -459,7 +460,7 @@ defmodule Beamlet.Scanner do
   end
 
   defp import_entry(acc, meta, module, _opts, :error) do
-    violation(acc, meta, "import #{inspect(module)} — #{denied_module(acc, module)}")
+    violation(acc, meta, "import #{inspect(module)} — #{denied_module(acc.policy, module)}")
   end
 
   defp import_entry(acc, meta, module, opts, {:ok, entry}) do
@@ -522,7 +523,12 @@ defmodule Beamlet.Scanner do
       {:ok, module} ->
         if Policy.allowed?(acc.policy, module),
           do: acc,
-          else: violation(acc, meta, "#{form} #{inspect(module)} — #{denied_module(acc, module)}")
+          else:
+            violation(
+              acc,
+              meta,
+              "#{form} #{inspect(module)} — #{denied_module(acc.policy, module)}"
+            )
 
       :error ->
         violation(acc, meta, "#{form} target must be a literal module")
@@ -584,7 +590,7 @@ defmodule Beamlet.Scanner do
       exports?(Kernel, fun, arity) ->
         if Policy.allowed?(acc.policy, Kernel, fun, arity),
           do: acc,
-          else: violation(acc, meta, "#{fun}/#{arity} #{not_permitted(acc, Kernel, fun)}")
+          else: violation(acc, meta, "#{fun}/#{arity} #{not_permitted(acc.policy, Kernel, fun)}")
 
       true ->
         # An unknown local is an eval-time undefined-function error,
@@ -618,28 +624,42 @@ defmodule Beamlet.Scanner do
 
   # ── Error copy ────────────────────────────────────────────────────
 
-  defp denied_remote(acc, module, fun, arity) do
-    target = "#{inspect(module)}.#{fun}/#{arity}"
-
-    if Policy.allowed?(acc.policy, module),
-      do: "#{target} #{not_permitted(acc, module, fun)}",
-      else: "#{target} — #{denied_module(acc, module)}"
-  end
-
-  # A denied module that exists is a policy matter; a name nothing
-  # answers to is not, and saying "not permitted" for a module that
-  # was never defined teaches the wrong lesson.
-  defp denied_module(acc, module) do
+  @doc """
+  The copy for a module the policy denies, with its signage hint:
+  `File is not permitted by your policy — Host.FS provides scoped
+  file access`. A name nothing answers to is not a policy matter, so
+  it reads `nothing named X exists on your beamlet` instead, since
+  "not permitted" for a module that was never defined teaches the
+  wrong lesson. Shared with discovery, so a refused `print_docs`
+  says what a refused call does.
+  """
+  @spec denied_module(Policy.t(), module()) :: String.t()
+  def denied_module(%Policy{} = policy, module) do
     if Code.ensure_loaded?(module) do
-      "#{inspect(module)} is not permitted by your policy#{hint(Signage.hint(acc.policy, module))}"
+      "#{inspect(module)} is not permitted by your policy#{hint(Signage.hint(policy, module))}"
     else
       "nothing named #{inspect(module)} exists on your beamlet — " <>
         "check the name, or define it first"
     end
   end
 
-  defp not_permitted(acc, module, fun) do
-    "is not permitted by your policy#{hint(Signage.hint(acc.policy, module, fun))}"
+  @doc """
+  The copy for a function the policy denies of a module it grants in
+  part, with its signage hint, to follow the target being refused:
+  `is not permitted by your policy — process primitives are withheld
+  as a family`.
+  """
+  @spec not_permitted(Policy.t(), module(), atom()) :: String.t()
+  def not_permitted(%Policy{} = policy, module, fun) do
+    "is not permitted by your policy#{hint(Signage.hint(policy, module, fun))}"
+  end
+
+  defp denied_remote(acc, module, fun, arity) do
+    target = "#{inspect(module)}.#{fun}/#{arity}"
+
+    if Policy.allowed?(acc.policy, module),
+      do: "#{target} #{not_permitted(acc.policy, module, fun)}",
+      else: "#{target} — #{denied_module(acc.policy, module)}"
   end
 
   defp hint(nil), do: ""

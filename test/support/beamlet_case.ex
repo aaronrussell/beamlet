@@ -15,7 +15,9 @@ defmodule Beamlet.Case do
   `user` and `token`, created through `Beamlet.Users` so a test
   authenticates the way production does. The token still carries its
   `secret`; `principal/1` turns it into the principal a request
-  would carry.
+  would carry, and `act_as/1` makes it the test process's ambient
+  principal, as eval's runtime does for evaluated code, for tests
+  that call `Host.*` directly.
 
   A test declares policies for its beamlet with a tag in the shape
   config takes, put into config before the beamlet starts and removed
@@ -68,6 +70,10 @@ defmodule Beamlet.Case do
     {:ok, authenticated} = Users.authenticate(secret)
     Principal.from_token(authenticated)
   end
+
+  @doc "Makes the token's principal the calling process's ambient one (`Beamlet.Principal.put_current/1`)."
+  @spec act_as(Token.t()) :: :ok
+  def act_as(%Token{} = token), do: token |> principal() |> Principal.put_current()
 
   @doc "A module namespace unique to one test, e.g. `BeamletT42`, so defined modules never collide."
   @spec unique_namespace() :: String.t()

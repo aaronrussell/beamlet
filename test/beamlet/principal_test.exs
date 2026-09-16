@@ -25,6 +25,13 @@ defmodule Beamlet.PrincipalTest do
              Principal.from_token(authenticated)
   end
 
+  test "system/0 is the beamlet acting on its own behalf, and round-trips" do
+    system = Principal.system()
+
+    assert %Principal{user_id: 0, user_name: "beamlet", token_id: 0, policy: "default"} = system
+    assert {:ok, ^system} = Principal.from_trailers(Principal.to_trailers(system))
+  end
+
   describe "trailers" do
     test "round-trip the principal", %{token: token} do
       principal = principal(token)

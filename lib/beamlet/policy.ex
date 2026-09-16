@@ -45,6 +45,12 @@ defmodule Beamlet.Policy do
   and token rule, lowercase letters, digits, underscores and hyphens;
   `default` is reserved.
 
+  Tools and grants are independent: a policy with `tools: [:eval]`
+  cannot define modules but can still remove them through
+  `Host.Code.remove/1`, since the default grants `Host.Code` whole.
+  A token that should not tear modules down gets
+  `allow: [{Host.Code, except: [remove: 1]}]`.
+
   ## What a relaxed rule reaches
 
   The pool of defined modules is shared by every token, so a rule

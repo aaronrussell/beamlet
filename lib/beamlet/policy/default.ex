@@ -14,6 +14,8 @@ defmodule Beamlet.Policy.Default do
   # Partial grants carry their slice rationale: Function.capture
   # builds funs from names (dynamic dispatch); IO is granted for
   # output only (device-directed IO reaches arbitrary processes);
+  # Macro keeps its string helpers, which name tables and files from
+  # module names, and loses everything that builds or expands code;
   # Path is pure string manipulation, safe because Host.FS re-checks
   # every path it receives, except wildcard, which touches the real
   # filesystem; System keeps its clock/VM introspection and loses
@@ -72,6 +74,7 @@ defmodule Beamlet.Policy.Default do
     Keyword => :all,
     List => :all,
     List.Chars => :all,
+    Macro => {:only, [underscore: 1, camelize: 1, to_string: 1]},
     Map => :all,
     MapSet => :all,
     NaiveDateTime => :all,
@@ -203,15 +206,19 @@ defmodule Beamlet.Policy.Default do
                        match?(%{__exception__: true}, mod.__struct__()),
                        do: mod
 
-  # The host stdlib, one row per module as each lands. Host.Repo:
-  # denied are the repo's process controls (put_dynamic_repo
-  # redirects every call to any running repo by name, the system repo
-  # included; start_link, stop and disconnect_all touch the pool). Raw
-  # SQL is granted: the agent database is the agent's to break, and
-  # the one statement that reached past it, ATTACH DATABASE, is refused
-  # by the SQLite authorizer on every connection
-  # (Beamlet.SQLiteAuthorizer).
+  # The host stdlib, one row per module as each lands. Host.Code and
+  # Host.PubSub are granted whole: every function is meant for agent
+  # code, and remove stays in step with the tools by the operator's
+  # choice (Beamlet.Policy). Host.Repo: denied are the repo's process
+  # controls (put_dynamic_repo redirects every call to any running
+  # repo by name, the system repo included; start_link, stop and
+  # disconnect_all touch the pool). Raw SQL is granted: the agent
+  # database is the agent's to break, and the one statement that
+  # reached past it, ATTACH DATABASE, is refused by the SQLite
+  # authorizer on every connection (Beamlet.SQLiteAuthorizer).
   @host %{
+    Host.Code => :all,
+    Host.PubSub => :all,
     Host.Repo =>
       {:except,
        [
@@ -229,8 +236,21 @@ defmodule Beamlet.Policy.Default do
   # per-module entries when the table is built, @moduledoc false
   # modules excluded. Jason rides alongside Elixir's own JSON module:
   # models that predate JSON reach for Jason by training prior, and
-  # turning them away teaches nothing.
-  @packages [:jason, :req]
+  # turning them away teaches nothing. A description is for the
+  # discovery listing where the package's own says nothing: Req's
+  # .app description is its bare name and its moduledoc opens "The
+  # high-level API."
+  @packages [
+    :jason,
+    {:req, description: "Req is a batteries-included HTTP client for Elixir."}
+  ]
+
+  @package_descriptions Map.new(@packages, fn
+                          {app, opts} -> {app, opts[:description]}
+                          app -> {app, nil}
+                        end)
+
+  @package_names Map.keys(@package_descriptions)
 
   # The language's self-reference: __MODULE__ is always the module
   # being defined, granted by construction. Keyed by the sentinel the
@@ -339,7 +359,6 @@ defmodule Beamlet.Policy.Default do
      [
        Code,
        Code.Fragment,
-       Macro,
        Module,
        :c,
        :code,
@@ -496,7 +515,7 @@ defmodule Beamlet.Policy.Default do
   Expanded to per-module entries when the table is built, `@moduledoc
   false` modules excluded:
 
-  #{@join_names.(@packages)}
+  #{@join_names.(@package_names)}
 
   ## Not granted
 
@@ -522,12 +541,27 @@ defmodule Beamlet.Policy.Default do
   """
   @spec grants() :: Policy.grants()
   def grants do
-    Enum.reduce(@packages, @granted, fn package, table -> Map.merge(table, expand!(package)) end)
+    Enum.reduce(@package_names, @granted, fn package, table ->
+      Map.merge(table, expand!(package))
+    end)
   end
 
   @doc "The packages granted whole, by OTP application name."
   @spec packages() :: [atom()]
-  def packages, do: @packages
+  def packages, do: @package_names
+
+  @doc "The curated description of a shipped package for the discovery listing, or nil to use the package's own."
+  @spec package_description(atom()) :: String.t() | nil
+  def package_description(app), do: Map.get(@package_descriptions, app)
+
+  @doc """
+  The framework modules: the curated web and data authoring surface,
+  granted module by module because the rest of their applications is
+  machinery. Discovery lists them apart from the packages granted
+  whole.
+  """
+  @spec framework_modules() :: [module()]
+  def framework_modules, do: Map.keys(@web) ++ Map.keys(@data)
 
   @doc "The recorded non-grants: reason copy and the modules it covers."
   @spec not_granted() :: [{String.t(), [module()]}]

@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-16 (step 14 done, step 15 split)
+**Last updated:** 2026-09-16 (step 15a done)
 
 ---
 
@@ -93,9 +93,11 @@ the end.
       `Beamlet.PubSub` as a child and `Host.PubSub` over it. Open for
       the pass: where code mode's conventions text goes, here as a
       `print_*` or at step 16. The routes section of the listing and
-      remove's mounted-route check wait for 15d.
+      remove's mounted-route check wait for 15d. *Done 2026-09-16.*
     - **15b. `Host.FS`**, with a design and API review of the scoped
-      filesystem before it comes across.
+      filesystem before it comes across. The review also takes the
+      idea of agent documentation served as read-only files under a
+      virtual path (design § 4).
     - **15c. `Host.Repo`, `Host.KV` and `Host.Migrator`.** The repo
       is there; KV is the table created at boot outside the agent's
       migrations; migration placement, the `code/migrations` layout
@@ -266,3 +268,23 @@ the end.
   the transport timeout derived from both tools. `Beamlet.Case` wipes
   the code dir per test and gained the code helpers. Design § 2
   Define records it.
+- **Step 15a** (2026-09-16): `Host.Code` with the print contract and
+  `remove`, every function requiring the ambient principal and
+  raising a teaching error without one; `Beamlet.Code.Discovery` as
+  the rendering beneath the code server, over the effective policy,
+  the listing in four sections with quarantined modules and a curated
+  package description, docs by beam or by name with the `Host.Repo`
+  join, source for defined and quarantined modules; the scanner's
+  refusal copy made public so a refused `print_docs` hints. The
+  system principal `Beamlet.Principal.system/0`, `beamlet` with id 0,
+  under which the boot sweep now commits with trailers, and the user
+  name reserved. The code server publishes paths and the quarantine
+  to its table, so `manifest/0` and `quarantined/0` are table reads.
+  `Beamlet.PubSub` as a named `Phoenix.PubSub` child, no module,
+  and `Host.PubSub` over it, `phoenix_pubsub` a direct dependency. `Host.Code`, `Host.PubSub`
+  and a partial `Macro` joined the default, the golden regenerated,
+  the pubsub redirect lit. `Beamlet.Case.act_as/1`. Tools and grants
+  stay independent, so an eval-only token can remove; noted with the
+  `except: [remove: 1]` recipe. Conventions direction recorded for
+  step 16 and the docs-in-FS idea for 15b. Design § 2 Discovery and
+  PubSub record it.

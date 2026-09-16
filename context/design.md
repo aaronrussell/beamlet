@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-16 (define, step 14)
+**Last updated:** 2026-09-16 (Host.Code and Host.PubSub, step 15a)
 
 ---
 
@@ -167,6 +167,18 @@ words do the work:
   record a persisted thing keeps of the principal that made it,
   backward looking. "Identity" is not a term of art here; the
   principal covers it.
+- The **system principal** (step 15a) is what the beamlet acts as on
+  its own behalf: user and token both named `beamlet` with id 0,
+  which the database never issues, under `default`. It is named
+  `beamlet` rather than `system` because that is the name already on
+  every commit's committer line and on the sweep's author line, so a
+  reader of `git log` sees one name for the beamlet itself; the user
+  name is reserved in the changeset so the record never names two
+  things. The boot sweep uses it, so every commit carries trailers
+  and the audit has one shape of commit rather than two, and it is
+  the seam a future in-process embedder would hand in. Nothing falls
+  back to it: a `Host.*` function that needs a principal and finds
+  none raises, since the unanticipated case should be loud.
 
 **Policy attaches to the token, not the user.** A policy is a
 named document (§ 2 Policy says what it contains); Beamlet ships
@@ -473,7 +485,12 @@ tools and then reads as code mode's did, rules in force, deliberate
 denials not re-granted with their reasons, partial grants. The
 one-line-per-module renderer for the golden fixture is test support.
 
-What migrated straight across at step 10: the grant maps for
+At step 15a `Host.Code` and `Host.PubSub` joined the default whole,
+and `Macro` moved from the not-granted walk to a partial grant of
+`underscore/1`, `camelize/1` and `to_string/1`, the string helpers
+agent code names tables and files with, everything that builds or
+expands code staying denied. What migrated straight across at step
+10: the grant maps for
 Elixir, Erlang, the exception families and `__MODULE__`; the web
 and data rows and Ecto's exception family, since `phoenix`,
 `phoenix_html`, `phoenix_live_view`, `req` and `jason` were added as
@@ -618,7 +635,9 @@ order, not into what may be referenced.
 **One table.** The server records everything it collects in a named
 public ETS table it owns: the compile context the tracer reads, the
 compiled beams, the edges and call records of the compile in
-flight, and the defined set. Code mode's `:persistent_term` for the
+flight, the defined set with its paths, and the quarantine (the
+last two widened at step 15a for discovery, so `manifest/0` and
+`quarantined/0` are table reads like `defined/0`). Code mode's `:persistent_term` for the
 tracer context went with it, since the value lives for one compile
 and every erase scanned the heaps. The defined set is the effective
 grants' other half: `Beamlet.Code.defined/0` is a table read, so an
@@ -669,6 +688,78 @@ step 15's question. `Beamlet.Case` wipes the code dir before each
 beamlet starts, so every test boots with no defined modules and a
 fresh history; the reference's private servers on tmp dirs would
 have fought the registered name and the table.
+
+### Discovery
+
+Settled 2026-09-16 (step 15a). `Host.Code` is the agent's discovery
+entry point and the module teardown verb: `print_modules`,
+`print_docs` at three arities, `print_source`, `print_policy` and
+`remove`. The print contract migrated whole: a `print_*` function
+prints and returns `:ok`, `remove` acts silently and returns `:ok`,
+and a failure raises with a teaching message, so it is
+unmistakable and eval keeps everything printed before it. The
+rendering is `Beamlet.Code.Discovery`, `@moduledoc false` beside
+`Docs`, `Tracer` and `Audit`, returning `{:ok, text}` or
+`{:error, text}`: it reads the server's table and beams the way
+`Docs` reads a buffer, and the print contract is not something a
+test can assert on as text. Code mode's prompt snapshot (`index/2`)
+did not come across, having no consumer, and `print_policy` is
+`Beamlet.Policy.render/1` of the token's policy.
+
+**Every function requires the ambient principal** and raises a
+teaching error without one ("works from eval, where your code acts
+as you"). The listing and the docs are filtered by a policy only the
+principal names, and a removal is recorded against one; a call from
+a web request or a process of the agent's own has neither, and no
+policy is an honest fallback, since a custom policy may be wider or
+narrower than `default`. Discovery takes the **effective policy**,
+the principal's with the defined modules merged in, exactly as the
+runtimes build it before a scan, so a defined module is granted like
+any other and the reference's special case for it went.
+
+**The listing** has four sections, in order: the modules defined
+with `define`, each with its moduledoc's first line, followed by any
+quarantined module with its error and the way out (define it again
+with `replace: true`, or remove it), since the listing is the one
+place an agent learns why a module vanished; the `Host.*` modules;
+the framework modules, the curated web and data authoring surface
+(`Beamlet.Policy.Default.framework_modules/0`); and the libraries,
+one line per package the beamlet ships, led by its primary module,
+with any module granted from another package on a line of its own.
+A package's line carries a curated description where its own says
+nothing (Req's `.app` description is its bare name), else the `.app`
+description. The platform is never listed, nor are exception
+structs. Docs are served from compiled artifacts: a defined module
+by its beam path, everything else by name, so a granted package is
+self-documenting. `Host.Repo` joins `Ecto.Repo`'s callback docs onto
+its generated functions, the one special case. A refused module or
+function gets the scanner's own copy, made public for it, so a
+refused `print_docs` carries the same signage hint a refused call
+does. `print_source` serves defined and quarantined modules and
+nothing else. The routes section and remove's mounted-route check
+arrive at 15d.
+
+**Tools and grants are independent**, and this step is where it
+shows: the default grants `Host.Code` whole, so a policy with
+`tools: [:eval]` cannot define modules but can remove them. Kept,
+because coupling them would be the first place a tool implied a
+grant; a token that should not tear modules down gets
+`allow: [{Host.Code, except: [remove: 1]}]`, documented on
+`Beamlet.Policy`. Per-module ownership, alice's module that bob
+cannot remove, is deferred (§ 4).
+
+### PubSub
+
+Settled 2026-09-16 (step 15a). `Beamlet.PubSub` is the beamlet's
+message bus: one `Phoenix.PubSub` registered under that name as a
+child of `Beamlet`, and the name is the whole thing. A module for it
+was written and dropped in the same step, since nothing called it
+and a name needs no module; the one line an embedder needs,
+`pubsub_server: Beamlet.PubSub` on their endpoint, which 15d relies
+on, is in the `Beamlet` moduledoc beside the child list.
+`Host.PubSub` is `subscribe`, `unsubscribe` and `broadcast` over it,
+with topics one shared namespace the moduledoc tells agents to
+prefix. `broadcast_from` waits for something to ask.
 
 ### Config
 
@@ -752,7 +843,13 @@ Decided as each step arrives, not before:
 - What the server instructions and tool descriptions say within a
   2KB budget per item (step 16), and whether `eval` declares its
   output cap to Claude Code through the `anthropic/maxResultSizeChars`
-  tool annotation.
+  tool annotation. Direction from 15a: code mode's conventions block
+  taught that a few pointers have to be in the instructions or the
+  model makes the same slips, so a handful go there; the environment
+  snapshot does not, replaced by a prominent steer to
+  `Host.Code.print_modules()` and `Host.Router.print_routes()`; and a
+  convention about one module lives in that module's moduledoc,
+  which `print_docs` serves.
 - Deployment model, source-run or release (step 17). Decided in
   principle at step 9: the library's only declaration surface is
   application config, and the server's release merges an optional
@@ -770,8 +867,14 @@ Decided as each step arrives, not before:
   in-process, without a Beamlet token. Struck from § 2 at step 5;
   if it returns, a principal that encodes and decodes is the seam.
 - User-scoped modules, routes, files and KV entries beside the
-  shared ones. The user id on every principal is what it would key
-  on.
+  shared ones, and with them per-module ownership, so that alice's
+  module is not bob's to remove. The user id on every principal is
+  what it would key on.
+- Documentation for agents served as read-only files through
+  `Host.FS` under a virtual path, a wiki the model lists and reads
+  when it needs more than the instructions carry. To be looked at
+  with the 15b design review, since a read-only virtual path is a
+  property of the scoped filesystem.
 - Supervised processes for agent code.
 - Agent-installed dependencies, and with them who grants an
   installed package to agent code.

@@ -145,6 +145,19 @@ defmodule Beamlet.Policy.DefaultTest do
       refute Policy.allowed?(policy, File)
     end
 
+    test "limits Macro to its string helpers", %{policy: policy} do
+      assert Policy.allowed?(policy, Macro, :underscore, 1)
+      assert Policy.allowed?(policy, Macro, :camelize, 1)
+      assert Policy.allowed?(policy, Macro, :to_string, 1)
+      refute Policy.allowed?(policy, Macro, :expand, 2)
+      refute Policy.allowed?(policy, Macro, :escape, 1)
+    end
+
+    test "grants Host.Code and Host.PubSub whole", %{policy: policy} do
+      assert policy.grants[Host.Code] == :all
+      assert policy.grants[Host.PubSub] == :all
+    end
+
     test "grants Host.Repo minus its process controls", %{policy: policy} do
       assert Policy.allowed?(policy, Host.Repo, :query!, 2)
       assert Policy.allowed?(policy, Host.Repo, :all, 1)
@@ -169,6 +182,15 @@ defmodule Beamlet.Policy.DefaultTest do
       refute Policy.allowed?(policy, Ecto.Migration, :execute_file, 1)
       refute Policy.allowed?(policy, Ecto.Repo)
       refute Policy.allowed?(policy, Ecto.Migrator)
+    end
+
+    test "names the framework modules and describes the packages" do
+      assert Phoenix.LiveView in Default.framework_modules()
+      assert Ecto.Query in Default.framework_modules()
+      refute Req in Default.framework_modules()
+
+      assert Default.package_description(:req) =~ "HTTP client"
+      assert Default.package_description(:jason) == nil
     end
 
     test "expands the shipped packages, hidden modules excluded", %{policy: policy} do

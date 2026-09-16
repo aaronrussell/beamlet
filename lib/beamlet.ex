@@ -19,6 +19,13 @@ defmodule Beamlet do
   the boot loudly when the dir is missing, a policy is bad or git is
   not installed. One beamlet runs per VM.
 
+  The beamlet's message bus is a `Phoenix.PubSub` named
+  `Beamlet.PubSub`, which agent code reaches through `Host.PubSub`.
+  A host's endpoint names it so LiveViews defined on the beamlet can
+  subscribe and receive:
+
+      config :my_app, MyAppWeb.Endpoint, pubsub_server: Beamlet.PubSub
+
   `only: :system` starts the system half alone: the policies and the
   system database, migrated. Nothing an agent reaches, no agent
   database and no MCP server. The operator CLI (`Beamlet.CLI`) uses it
@@ -70,6 +77,7 @@ defmodule Beamlet do
       {Ecto.Migrator, repos: [Beamlet.Repo]},
       Host.Repo,
       {Task.Supervisor, name: Beamlet.TaskSupervisor},
+      {Phoenix.PubSub, name: Beamlet.PubSub},
       Beamlet.Code,
       {Beamlet.MCP.Server,
        transport: {:streamable_http, start: true},

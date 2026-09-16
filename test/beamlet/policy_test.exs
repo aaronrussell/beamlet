@@ -239,6 +239,7 @@ defmodule Beamlet.PolicyTest do
       assert text =~ ~r/Task.*\n.*process primitives are withheld as a family/
       assert text =~ ~r/Application\n.*environment and application config may hold credentials/
       assert text =~ ~r/Ecto\.Repo.*\n.*the agent database is reached through Host\.Repo/
+      assert text =~ ~r/Phoenix\.PubSub\n.*publish\/subscribe goes through Host\.PubSub/
     end
 
     test "a redirect renders only once its door is granted" do
