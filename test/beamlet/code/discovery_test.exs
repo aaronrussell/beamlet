@@ -126,6 +126,32 @@ defmodule Beamlet.Code.DiscoveryTest do
       assert text =~ ~r/^  Ecto\.Adapters\.SQLite3 \(:ecto_sqlite3\) — /m
     end
 
+    test "a migration is listed with its version", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, CreateLists])
+      purge_on_exit([mod])
+
+      {:ok, _summary} =
+        Define.run(
+          """
+          defmodule #{ns}.CreateLists do
+            @moduledoc "Creates the lists table."
+            use Ecto.Migration
+
+            def change do
+              create table(:#{Macro.underscore(ns)}_lists) do
+                add :name, :string
+              end
+            end
+          end
+          """,
+          ctx.principal
+        )
+
+      assert {:ok, text} = Discovery.list(effective())
+      assert text =~ "  #{ns}.CreateLists (migration 1) — Creates the lists table."
+    end
+
     test "a quarantined module is listed with its error", ctx do
       {ns, _mod, _file} = quarantine!(ctx.data_dir)
 

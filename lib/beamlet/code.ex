@@ -6,8 +6,9 @@ defmodule Beamlet.Code do
   Everything an agent defines lives under `<data_dir>/code`:
 
       code/
-        lib/       one source file per module, shopping/list.ex for Shopping.List
-        ebin/      the compiled beams, with docs, rebuilt from lib/ at boot
+        lib/         one source file per module, shopping/list.ex for Shopping.List
+        migrations/  one file per migration, 0001_shopping_create_lists.ex
+        ebin/        the compiled beams, with docs, rebuilt from the sources at boot
         .git       the history: one commit per define or remove
         .staging   the buffer being compiled, gone when it is done
 
@@ -22,6 +23,13 @@ defmodule Beamlet.Code do
   same moment can observe a half-loaded new version for a few
   milliseconds, and replacing a module an eval is still executing
   old code of will kill that eval.
+
+  A module that uses `Ecto.Migration` is a migration: it is filed
+  under `migrations/` with the next version number, one past both
+  the files on disk and the versions the agent database records as
+  applied, and stays editable until `Host.Migrator` applies it. An
+  applied migration must be rolled back before it can be replaced or
+  removed, so the applied stack and the files never disagree.
 
   Boot compiles the code dir, rebuilding the dependency map and the
   beams. A module that fails to compile, a bad hand edit or a
@@ -110,22 +118,22 @@ defmodule Beamlet.Code do
     GenServer.call(__MODULE__, {:remove, modules, principal}, 30_000)
   end
 
-  @typedoc "Where a defined module lives: its source under `lib/` and its beam under `ebin/`."
-  @type paths :: %{source_file: Path.t(), beam_file: Path.t()}
+  @typedoc "Where a defined module lives: its source, its beam under `ebin/`, and its version when it is a migration."
+  @type paths :: %{source_file: Path.t(), beam_file: Path.t(), migration: pos_integer() | nil}
 
   @doc "The defined modules, sorted. Read from the server's table, so it never waits on a define."
   @spec defined() :: [module()]
   def defined do
-    __MODULE__ |> :ets.match({:defined, :"$1", :_, :_}) |> List.flatten() |> Enum.sort()
+    __MODULE__ |> :ets.match({:defined, :"$1", :_, :_, :_}) |> List.flatten() |> Enum.sort()
   end
 
   @doc "The defined modules with their paths. A table read, like `defined/0`."
   @spec manifest() :: %{module() => paths()}
   def manifest do
     __MODULE__
-    |> :ets.match_object({:defined, :_, :_, :_})
-    |> Map.new(fn {:defined, mod, source_file, beam_file} ->
-      {mod, %{source_file: source_file, beam_file: beam_file}}
+    |> :ets.match_object({:defined, :_, :_, :_, :_})
+    |> Map.new(fn {:defined, mod, source_file, beam_file, migration} ->
+      {mod, %{source_file: source_file, beam_file: beam_file, migration: migration}}
     end)
   end
 
@@ -153,10 +161,12 @@ defmodule Beamlet.Code do
     Audit.check!()
     code_dir = Keyword.get_lazy(opts, :code_dir, &Config.code_dir/0)
     lib_dir = Path.join(code_dir, "lib")
+    migrations_dir = Path.join(code_dir, "migrations")
     ebin_dir = Path.join(code_dir, "ebin")
     staging_dir = Path.join(code_dir, ".staging")
 
     File.mkdir_p!(lib_dir)
+    File.mkdir_p!(migrations_dir)
     File.mkdir_p!(ebin_dir)
     File.rm_rf!(staging_dir)
     :ets.new(__MODULE__, [:named_table, :bag, :public])
@@ -164,6 +174,7 @@ defmodule Beamlet.Code do
     state = %{
       code_dir: code_dir,
       lib_dir: lib_dir,
+      migrations_dir: migrations_dir,
       ebin_dir: ebin_dir,
       staging_dir: staging_dir,
       modules: %{},
@@ -219,7 +230,8 @@ defmodule Beamlet.Code do
   end
 
   defp run_define(state, code, buffer_modules, replace?, principal, timeout, caller_ref) do
-    with {:ok, new_mods, replaced} <- classify(state, buffer_modules, replace?) do
+    with {:ok, new_mods, replaced} <- classify(state, buffer_modules, replace?),
+         :ok <- check_not_applied(state, replaced, "replace") do
       dependents =
         state.deps
         |> dependents_closure(replaced)
@@ -261,9 +273,23 @@ defmodule Beamlet.Code do
 
       case outcome do
         {:ok, {:ok, _modules, _warnings}} ->
-          with [] <- broken_callers(merge_calls(state, buffer_modules ++ dependents), replaced) do
-            commit(state, code, staging, buffer_modules, replaced, dependents, principal)
+          with [] <- broken_callers(merge_calls(state, buffer_modules ++ dependents), replaced),
+               {:ok, placements} <- placements(state, buffer_modules) do
+            commit(
+              state,
+              code,
+              staging,
+              buffer_modules,
+              replaced,
+              dependents,
+              principal,
+              placements
+            )
           else
+            {:error, message} ->
+              rollback(state, staging, new_mods, previous)
+              {:error, message}
+
             breaks ->
               rollback(state, staging, new_mods, previous)
               {:error, render_broken_callers(breaks)}
@@ -358,6 +384,41 @@ defmodule Beamlet.Code do
     end
   end
 
+  # The pending rule: a migration is editable until it has run, the
+  # way a developer treats a migration file. Once applied, the only
+  # way through is a rollback; refusing here keeps the applied stack
+  # and the files in agreement.
+  defp check_not_applied(state, modules, verb) do
+    versioned = for mod <- modules, version = migration_version(state, mod), do: {mod, version}
+
+    with {:ok, applied} <- read_applied(versioned) do
+      case for {mod, version} <- versioned, version in applied, do: {mod, version} do
+        [] ->
+          :ok
+
+        refused ->
+          {:error,
+           Enum.map_join(refused, "\n", fn {mod, version} ->
+             "cannot #{verb} #{inspect(mod)} — migration #{version} is applied. Roll it " <>
+               "back first with Host.Migrator.rollback(), then #{verb} it."
+           end)}
+      end
+    end
+  end
+
+  # The tracking table is read only when a migration is in play, so
+  # ordinary defines and removes never touch the agent database.
+  defp read_applied([]), do: {:ok, []}
+
+  defp read_applied(_migrations) do
+    {:ok, Beamlet.Migrations.applied_versions()}
+  rescue
+    exception ->
+      {:error,
+       "could not read the migration history (#{Exception.message(exception)}) — " <>
+         "nothing was changed"}
+  end
+
   defp exists_error(state, mod) do
     quote_part =
       case moduledoc_first_line(state, mod) do
@@ -400,13 +461,76 @@ defmodule Beamlet.Code do
     end
   end
 
+  # Placement
+
+  # Where each buffer module's source lands. A migration is recognised
+  # the way Ecto recognises one, the compiled module exports
+  # __migration__/0, and filed under the migrations root with a
+  # host-assigned version: a replaced migration keeps the version its
+  # file already carries; a new one takes one past the highest version
+  # known to either the files on disk or the tracking table, in buffer
+  # order. Both sources count because a git rewind can remove an
+  # applied migration's file; reborn at that number, a new migration
+  # would already be "applied" and migrate would skip it silently.
+  defp placements(state, buffer_modules) do
+    migrations = Enum.filter(buffer_modules, &function_exported?(&1, :__migration__, 0))
+
+    with {:ok, applied} <- read_applied(migrations) do
+      floor = Enum.max(disk_versions(state) ++ applied, fn -> 0 end)
+
+      {placements, _next} =
+        Enum.map_reduce(buffer_modules, floor + 1, fn mod, next ->
+          cond do
+            mod not in migrations ->
+              {{mod, {module_path(state.lib_dir, mod), nil}}, next}
+
+            version = migration_version(state, mod) ->
+              {{mod, {migration_path(state, version, mod), version}}, next}
+
+            true ->
+              {{mod, {migration_path(state, next, mod), next}}, next + 1}
+          end
+        end)
+
+      {:ok, Map.new(placements)}
+    end
+  end
+
+  defp disk_versions(state) do
+    state.migrations_dir
+    |> Path.join("*.ex")
+    |> Path.wildcard()
+    |> Enum.flat_map(&List.wrap(file_version(&1)))
+  end
+
+  defp migration_version(state, mod) do
+    case Map.get(state.modules, mod) do
+      nil -> nil
+      path -> if Path.dirname(path) == state.migrations_dir, do: file_version(path), else: nil
+    end
+  end
+
+  defp file_version(path) do
+    case Integer.parse(Path.basename(path, ".ex")) do
+      {version, "_" <> _name} when version > 0 -> version
+      _other -> nil
+    end
+  end
+
+  # Four-digit padding is cosmetic; the version is parsed numerically.
+  defp migration_path(state, version, mod) do
+    name = mod |> Macro.underscore() |> String.replace("/", "_")
+    number = version |> Integer.to_string() |> String.pad_leading(4, "0")
+    Path.join(state.migrations_dir, "#{number}_#{name}.ex")
+  end
+
   # Commit and rollback
 
-  defp commit(state, code, staging, buffer_modules, replaced, dependents, principal) do
+  defp commit(state, code, staging, buffer_modules, replaced, dependents, principal, placements) do
     compiled = compiled_records()
 
     Enum.each(split_sources(code), fn {mod, source} ->
-      path = module_path(state.lib_dir, mod)
+      {path, _version} = Map.fetch!(placements, mod)
       File.mkdir_p!(Path.dirname(path))
       File.write!(path, source)
       remove_divergent_source(state, mod, path)
@@ -422,7 +546,8 @@ defmodule Beamlet.Code do
 
     modules =
       Enum.reduce(buffer_modules, state.modules, fn mod, modules ->
-        Map.put(modules, mod, module_path(state.lib_dir, mod))
+        {path, _version} = Map.fetch!(placements, mod)
+        Map.put(modules, mod, path)
       end)
 
     quarantined =
@@ -444,14 +569,24 @@ defmodule Beamlet.Code do
     Audit.record_define(state.code_dir, buffer_modules, replaced, principal)
 
     caller_lines = runtime_caller_lines(calls, replaced, buffer_modules)
-    {:ok, summary(buffer_modules, replaced, dependents, caller_lines), state}
+    {:ok, summary(buffer_modules, replaced, dependents, caller_lines, placements), state}
   end
 
-  defp summary(buffer_modules, replaced, dependents, caller_lines) do
+  # Define does not apply a migration, and the moment of definition is
+  # when the cue to run it matters.
+  defp summary(buffer_modules, replaced, dependents, caller_lines, placements) do
     lines =
       Enum.map(buffer_modules, fn mod ->
         flag = if mod in replaced, do: "replaced", else: "new"
-        "Defined #{inspect(mod)} (#{flag})"
+
+        case Map.fetch!(placements, mod) do
+          {_path, nil} ->
+            "Defined #{inspect(mod)} (#{flag})"
+
+          {_path, version} ->
+            "Defined #{inspect(mod)} (#{flag}) — migration #{version}, pending: run " <>
+              "Host.Migrator.migrate()"
+        end
       end)
 
     lines =
@@ -601,6 +736,7 @@ defmodule Beamlet.Code do
     modules = Enum.uniq(modules)
 
     with :ok <- check_removable(state, modules),
+         :ok <- check_not_applied(state, modules, "remove"),
          :ok <- check_dependents(state, modules) do
       execute_remove(state, modules, principal)
     end
@@ -713,8 +849,15 @@ defmodule Beamlet.Code do
 
   # Boot loading
 
+  # Both roots compile in one batch: a migration and the schema module
+  # it precedes are ordinary cross-file references to the compiler.
   defp boot_load(state) do
-    files = state.lib_dir |> Path.join("**/*.ex") |> Path.wildcard() |> Enum.sort()
+    files =
+      Enum.sort(
+        Path.wildcard(Path.join(state.lib_dir, "**/*.ex")) ++
+          Path.wildcard(Path.join(state.migrations_dir, "*.ex"))
+      )
+
     boot_loop(state, files, [])
   end
 
@@ -834,7 +977,7 @@ defmodule Beamlet.Code do
     current =
       MapSet.new(
         Enum.map(state.modules, fn {mod, source_file} ->
-          {:defined, mod, source_file, beam_path(state, mod)}
+          {:defined, mod, source_file, beam_path(state, mod), migration_version(state, mod)}
         end) ++
           Enum.map(state.quarantined, fn entry ->
             {:quarantined, entry.file, entry.modules, entry.error}
@@ -843,7 +986,7 @@ defmodule Beamlet.Code do
 
     published =
       MapSet.new(
-        :ets.match_object(__MODULE__, {:defined, :_, :_, :_}) ++
+        :ets.match_object(__MODULE__, {:defined, :_, :_, :_, :_}) ++
           :ets.match_object(__MODULE__, {:quarantined, :_, :_, :_})
       )
 

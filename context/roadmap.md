@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-16 (step 15b done)
+**Last updated:** 2026-09-17 (step 15c done)
 
 ---
 
@@ -102,6 +102,7 @@ the end.
       is there; KV is the table created at boot outside the agent's
       migrations; migration placement, the `code/migrations` layout
       and the applied-version check return to `Beamlet.Code`.
+      *Done 2026-09-17.*
     - **15d. `Host.Web` and `Host.Router`.** The route table in the
       agent database with the JSON provenance encoding, `Beamlet.Router`
       that the host forwards to and the dynamic router it generates
@@ -305,3 +306,20 @@ the end.
   gained the three `Host.FS` cases step 13 left out. Virtual paths
   recorded in design § 4, `~docs/` to be reviewed at step 16. Design
   § 2 Files records it.
+- **Step 15c** (2026-09-17): `Host.KV` over `Beamlet.KV.Entry` and a
+  parameterized `Beamlet.KV.Term`, with `fetch/1` added to the
+  reference API and `fetch!/1` declined; `Beamlet.Tables` creating
+  the `__kv` table at boot as a synchronous child after `Host.Repo`,
+  with `PRAGMA user_version` recorded as the post-release path for a
+  shape change. `Host.Migrator` with the three verbs and
+  `Beamlet.Migrations` as the shared history read; the reference's
+  boot orphan-warning child dropped, the sweep in `Beamlet.Code.Audit`
+  logging the status lines it commits instead. Migration placement,
+  the `code/migrations` root, the version floor over disk and applied
+  history, the pending rule on replace and remove, the pending cue on
+  the define summary and the `migration` field on the manifest
+  returned to `Beamlet.Code`; the listing suffixes a migration with
+  its version. Both rows joined the default and lit the `state` and
+  `migrations` redirects. The reference KV and migrator suites came
+  across under `Beamlet.Case`. Design § 2 Two databases, Define,
+  Discovery, Key/value and Migrations record it.

@@ -54,7 +54,11 @@ defmodule Beamlet.Code.AuditTest do
       end
       """)
 
-      restart_code_server()
+      log = ExUnit.CaptureLog.capture_log(fn -> restart_code_server() end)
+
+      assert log =~
+               "code audit: manual changes in the code dir, committing them as " <>
+                 "\"manual changes\":\n  ?? lib/hand_edit.ex"
 
       assert commit_count(ctx.code_dir) == 2
       message = last_message(ctx.code_dir)

@@ -50,7 +50,10 @@ defmodule Beamlet.CodeTest do
       assert doc =~ "Tracks the shopping list."
 
       assert Code.defined() == [mod]
-      assert Code.manifest() == %{mod => %{source_file: source_file, beam_file: beam_file}}
+
+      assert Code.manifest() == %{
+               mod => %{source_file: source_file, beam_file: beam_file, migration: nil}
+             }
     end
 
     test "a multi-module buffer splits into one file per module", ctx do
@@ -391,7 +394,7 @@ defmodule Beamlet.CodeTest do
       end
       """)
 
-      restart_code_server()
+      ExUnit.CaptureLog.capture_log(fn -> restart_code_server() end)
       assert Code.quarantined() == []
       assert Code.defined() == [mod]
 

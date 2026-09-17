@@ -76,6 +76,7 @@ defmodule Beamlet do
       Beamlet.Repo,
       {Ecto.Migrator, repos: [Beamlet.Repo]},
       Host.Repo,
+      Beamlet.Tables,
       {Task.Supervisor, name: Beamlet.TaskSupervisor},
       {Phoenix.PubSub, name: Beamlet.PubSub},
       Beamlet.Code,

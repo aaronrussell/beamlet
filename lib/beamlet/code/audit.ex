@@ -65,11 +65,23 @@ defmodule Beamlet.Code.Audit do
     end
   end
 
+  # A hand edit is unusual enough to say so: the warning lists what
+  # changed, and the commit it names is the point to roll back to.
   defp sweep(code_dir) do
-    case git(code_dir, ["status", "--porcelain"]) do
-      {"", 0} -> :ok
-      {_dirty, 0} -> commit(code_dir, "manual changes", Principal.system())
-      {output, _status} -> log_failure("status", output)
+    case git(code_dir, ["status", "--porcelain", "--untracked-files=all"]) do
+      {"", 0} ->
+        :ok
+
+      {dirty, 0} ->
+        Logger.warning(
+          "code audit: manual changes in the code dir, committing them as \"manual changes\":\n" <>
+            (dirty |> String.trim_trailing() |> String.replace(~r/^/m, "  "))
+        )
+
+        commit(code_dir, "manual changes", Principal.system())
+
+      {output, _status} ->
+        log_failure("status", output)
     end
   end
 

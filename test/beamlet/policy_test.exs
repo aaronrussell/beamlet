@@ -245,10 +245,10 @@ defmodule Beamlet.PolicyTest do
     test "a redirect renders only once its door is granted" do
       rendered = Policy.render(Policy.default())
       assert rendered =~ ~r/File.*\n.*Host\.File provides scoped file access/
-      refute rendered =~ "Host.KV"
+      refute rendered =~ "Host.Router"
 
       assert Policy.render(TestPolicies.doors_open()) =~
-               ~r/Agent.*\n.*state that outlives an eval is kept in Host\.KV/
+               ~r/Phoenix\.Router.*\n.*the URL surface is managed through Host\.Router/
     end
 
     test "renders the partial grants' carve-outs" do

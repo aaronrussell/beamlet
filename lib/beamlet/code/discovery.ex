@@ -36,7 +36,9 @@ defmodule Beamlet.Code.Discovery do
     defined_lines =
       manifest
       |> Enum.sort_by(fn {mod, _paths} -> inspect(mod) end)
-      |> Enum.map(fn {mod, paths} -> entry_line(mod, moduledoc_first_line(paths.beam_file)) end)
+      |> Enum.map(fn {mod, paths} ->
+        entry_line(mod, moduledoc_first_line(paths.beam_file), migration_suffix(paths))
+      end)
 
     text =
       Enum.join(
@@ -299,6 +301,9 @@ defmodule Beamlet.Code.Discovery do
   defp elixir_lib_root, do: :elixir |> :code.lib_dir() |> List.to_string() |> Path.dirname()
 
   defp module_lines(mods), do: Enum.map(mods, &entry_line(&1, moduledoc_first_line(&1)))
+
+  defp migration_suffix(%{migration: nil}), do: ""
+  defp migration_suffix(%{migration: version}), do: " (migration #{version})"
 
   defp entry_line(mod, summary, suffix \\ "")
   defp entry_line(mod, nil, suffix), do: "  #{inspect(mod)}#{suffix}"

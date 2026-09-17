@@ -26,8 +26,9 @@ defmodule Host.Repo do
       Host.Repo.insert(Shopping.Item.changeset(%Shopping.Item{}, %{name: "milk"}))
       Host.Repo.all(from i in Shopping.Item, where: not i.done, order_by: i.name)
 
-  Tables are created by migrations, which run against this database.
-  Every function here is Ecto's own `Ecto.Repo` API: `all`, `get`,
+  Tables are created by migrations, which `Host.Migrator` runs
+  against this database; small state that needs no table of its own,
+  a cursor or a last-run time, goes in `Host.KV`. Every function here is Ecto's own `Ecto.Repo` API: `all`, `get`,
   `one`, `insert`, `update`, `delete`, `insert_all`, `update_all`,
   `transaction` and the rest. Raw SQL through `query/2` stays inside
   this database file: `ATTACH DATABASE` is refused on every

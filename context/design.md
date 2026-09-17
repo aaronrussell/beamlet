@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-16 (Host.File, step 15b)
+**Last updated:** 2026-09-17 (Host.KV and Host.Migrator, step 15c)
 
 ---
 
@@ -137,6 +137,24 @@ runs a migration step and the test suite needs no `ecto.migrate`
 alias. An authorizer on every agent database connection refuses
 `ATTACH` and `DETACH`, so raw SQL granted to agents stays inside that
 file (`Beamlet.SQLiteAuthorizer`).
+
+**Beamlet's own tables in the agent database** (settled 2026-09-17,
+step 15c) are created by `Beamlet.Tables`, a synchronous child right
+after `Host.Repo` that runs `CREATE TABLE IF NOT EXISTS` for each
+and returns `:ignore`, so a failure fails the boot and a table agent
+code dropped is back at the next one. The double-underscore names
+(`__kv` now, `__routes` at 15d) mark them as furniture: Beamlet's
+tables holding the agent's data, outside the agent's migration
+history and inside the unit that wipes and backs up. A second
+`Ecto.Migrator` over `Host.Repo` lost: `migration_source` is repo
+config, so the agent's migrations would share it, and Beamlet's
+history would sit in the agent's database beside theirs. Pre-release
+a shape change is a wipe. The path for one after release is
+`PRAGMA user_version`, the integer SQLite keeps in the file header:
+the module becomes an ordered list of steps, runs the ones above the
+stored version and stores the new one, with no tracking table and
+no change to either Ecto migrator. That trades away the free
+recreation of a dropped table, accepted when it comes.
 
 ### Users, tokens and principals
 
@@ -622,10 +640,9 @@ changed. The reserved prefixes are `Beamlet.*` and `Host.*`.
 `Beamlet` owning `<data_dir>/code` (`lib/`, `ebin/`, `.staging/`,
 `.git`), with `Beamlet.Code.Tracer`, `Beamlet.Code.Docs` and
 `Beamlet.Code.Audit` beneath it as internals. It is the reference
-server minus what has no consumer yet: migration placement, the
-applied-version check and the migration field on the manifest wait
-for `Host.Migrator`, `compile_artifact` for the dynamic router, and
-`manifest` for discovery (step 15). Remove came across now, ahead of
+server minus `compile_artifact`, which waits for the dynamic router
+(15d); migration placement returned at 15c (Migrations, below) and
+`manifest` at 15a. Remove came across now, ahead of
 `Host.Code.remove`, because it is the server's own second operation,
 the audit's second commit kind, and the call records it reads exist
 for replace's dropped-function check anyway; its errors name
@@ -669,7 +686,12 @@ exactly as before, and step 17's image installs git. The repo
 carries no configuration: every commit names the user as author
 (`alice <alice@beamlet>`) and `beamlet` as committer through
 environment variables on the command, with the principal as trailers
-in the body, and the sweep commits are authored by `beamlet`. Empty
+in the body, and the sweep commits are authored by `beamlet`. The
+sweep says what it found (added 2026-09-17, step 15c): one warning
+listing git's status lines before the "manual changes" commit, since
+a hand edit to the code dir is unusual enough to surface to the
+operator, who reads the VM log and nothing the agent sees, and the
+commit it names is the point to roll back to. Empty
 commits are allowed so a replace with the same source is still on
 the record. The provenance trailers are `Beamlet.Principal.to_trailers/1`
 and `from_trailers/1`, their first encoding; a test round-trips the
@@ -736,7 +758,9 @@ its generated functions, the one special case. A refused module or
 function gets the scanner's own copy, made public for it, so a
 refused `print_docs` carries the same signage hint a refused call
 does. `print_source` serves defined and quarantined modules and
-nothing else. The routes section and remove's mounted-route check
+nothing else. A defined migration carries its version on its line,
+`(migration 3)`, since the number is what `Host.Migrator` speaks in.
+The routes section and remove's mounted-route check
 arrive at 15d.
 
 **Tools and grants are independent**, and this step is where it
@@ -813,6 +837,67 @@ agent code read exactly as `File` code: allowed and not advertised,
 since the visible `Host.` prefix is what tells a reader of
 `print_source` that the scoped door is in use. The `File` redirect
 in the signage lit with the row.
+
+### Key/value
+
+Settled 2026-09-17 (step 15c). `Host.KV` is durable storage for
+small state under string keys: `fetch/1`, `get/2` with a default,
+`put/2`, `delete/1`, `all/1` and `keys/1` under a prefix with an
+empty prefix meaning everything, and `delete_all/1` under a prefix
+with no default so wiping everything is written deliberately. Values
+are any term, stored in external term format in the `__kv` table of
+the agent database, so a put inside a `Host.Repo.transaction` lands
+with the agent's own rows. Keys are one shared namespace the
+moduledoc tells agents to prefix, as with PubSub topics. `fetch/1`
+joined the reference's API because a stored `nil` and a missing key
+are different answers and `get/2` cannot give both; it is the `Map`
+prior. `fetch!/1` did not, having no scenario: in an eval you `get`
+and look, in a controller a missing key is a 404 to handle. The
+module is the whole agent surface, with `Beamlet.KV.Entry` and
+`Beamlet.KV.Term` beneath it as internals, the type parameterized
+because only a parameterized type sees `nil`. A granted schema for
+agents to query the table through `Host.Repo` was considered and
+declined: the value column is opaque to SQL, so the only key-shaped
+operations it would open are the three the module already has, at
+the cost of pinning the table name and the encoding as public API.
+
+### Migrations
+
+Settled 2026-09-17 (step 15c). A migration is a plain
+`use Ecto.Migration` module through the define tool, recognised by
+the exported `__migration__/0` after the buffer compiles and filed
+under `code/migrations/NNNN_name.ex` with a version the beamlet
+assigns: one past both the files on disk and the versions the agent
+database records as applied, in buffer order, so a git rewind that
+removes an applied migration's file cannot see its number reused
+and the migration silently skipped. A replaced migration keeps its
+version and file; a replace that changes a module's kind moves its
+file between the roots. Define never applies: the summary line
+carries the pending cue. The pending rule: a migration is editable
+until it has run, and an applied one refuses replace and remove
+until rolled back, so the applied stack and the files never
+disagree. Boot compiles both roots in one batch and the audit
+commits both.
+
+`Host.Migrator` holds the verbs, `migrate/0`, `rollback/0` and
+`print_migrations/0`, printing as they go and returning `:ok`, with
+`Ecto.Migrator.up/4` and `down/4` against `Host.Repo` one migration
+at a time so a mid-batch failure leaves the earlier ones applied and
+names the one that failed. `Beamlet.Migrations` is the history they
+and the code server share: the applied versions and the join of the
+manifest with Ecto's own `schema_migrations` table, which Ecto
+creates on first read. The reference's one machinery module took a
+server argument for private servers and the face delegated to it;
+here the verbs print and raise teaching copy, which is what a `Host`
+module does, and the leaf names differ because the two sides are
+not the same thing seen twice. An applied version whose module is
+gone is an orphan, which only an operator can make since the pending
+rule stops an agent: the version floor counts it, the listing marks
+it as applied with its source missing, and rollback refuses past it
+with a teaching error, because Ecto would otherwise undo the
+migration beneath. The reference's boot child that warned about
+orphans went: it duplicated the listing for the operator who caused
+the state, and the sweep log now surfaces every hand edit instead.
 
 ### Config
 
