@@ -127,6 +127,38 @@ defmodule Host.CodeTest do
       assert {:error, error} = Eval.run(~s|Host.Code.remove(["Enum"])|, ctx.principal)
       assert error =~ "Host.Code.remove takes a module or a list of modules"
     end
+
+    test "remove refuses a routed module until it is unmounted", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, PageLive])
+      purge_on_exit([mod])
+
+      {:ok, _summary} =
+        Define.run(
+          """
+          defmodule #{ns}.PageLive do
+            @moduledoc "A page."
+            use Host.Web, :live_view
+
+            def render(assigns), do: ~H"<div>page</div>"
+          end
+          """,
+          ctx.principal
+        )
+
+      assert {:ok, _output} =
+               Eval.run(~s|Host.Router.live("/rt/routed", #{ns}.PageLive)|, ctx.principal)
+
+      assert {:error, error} = Eval.run("Host.Code.remove(#{ns}.PageLive)", ctx.principal)
+      assert error =~ "cannot remove #{ns}.PageLive — GET /rt/routed is mounted on it."
+      assert error =~ ~s|Unmount it first: Host.Router.unmount("/rt/routed").|
+      assert Code.defined() == [mod]
+
+      assert {:ok, _output} = Eval.run(~s|Host.Router.unmount("/rt/routed")|, ctx.principal)
+      assert {:ok, output} = Eval.run("Host.Code.remove(#{ns}.PageLive)", ctx.principal)
+      assert output =~ "=> :ok"
+      assert Code.defined() == []
+    end
   end
 
   describe "the ambient principal" do

@@ -153,9 +153,18 @@ defmodule Beamlet.Policy.DefaultTest do
       refute Policy.allowed?(policy, Macro, :escape, 1)
     end
 
-    test "grants Host.Code and Host.PubSub whole", %{policy: policy} do
-      assert policy.grants[Host.Code] == :all
-      assert policy.grants[Host.PubSub] == :all
+    test "grants every Host module but Host.Repo whole", %{policy: policy} do
+      for mod <- [
+            Host.Code,
+            Host.File,
+            Host.KV,
+            Host.Migrator,
+            Host.PubSub,
+            Host.Router,
+            Host.Web
+          ] do
+        assert policy.grants[mod] == :all
+      end
     end
 
     test "grants Host.Repo minus its process controls", %{policy: policy} do

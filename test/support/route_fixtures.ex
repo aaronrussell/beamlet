@@ -36,5 +36,10 @@ defmodule Beamlet.RouteFixtures do
     def plain(conn, _params), do: text(conn, "plain")
 
     def crash(_conn, _params), do: raise("boom")
+
+    def whoami(conn, _params) do
+      principal = Beamlet.Principal.current()
+      json(conn, %{principal: principal && principal.user_name})
+    end
   end
 end

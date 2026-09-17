@@ -14,8 +14,11 @@ defmodule Beamlet.Code.Discovery do
   # self-documenting. The listing leaves out the standard platform,
   # Elixir and Erlang/OTP: it carries exactly what a model cannot bring
   # from training, what this beamlet provides, what was built on it
-  # before, and which packages it ships. A refused module gets the
-  # scanner's copy, so print_docs teaches what a refused call does.
+  # before, and which packages it ships. The defined section is
+  # code/lib: migrations live in code/migrations and are listed by
+  # Host.Migrator, and the routes by Host.Router, which the footer
+  # points at. A refused module gets the scanner's copy, so print_docs
+  # teaches what a refused call does.
 
   alias Beamlet.Policy
   alias Beamlet.Policy.Default
@@ -26,6 +29,9 @@ defmodule Beamlet.Code.Discovery do
   @framework_heading "Framework modules (what you write pages and data against):"
   @libraries_heading "Libraries (every module of each package is available):"
 
+  @footer "Host.Code.print_docs(Module) for documentation; Host.Router.print_routes() " <>
+            "for the routes; Host.Migrator.print_migrations() for the migrations."
+
   @format_note "(documentation is in a format your beamlet cannot render)"
 
   @spec list(Policy.t()) :: {:ok, String.t()}
@@ -35,10 +41,9 @@ defmodule Beamlet.Code.Discovery do
 
     defined_lines =
       manifest
+      |> Enum.reject(fn {_mod, paths} -> paths.migration end)
       |> Enum.sort_by(fn {mod, _paths} -> inspect(mod) end)
-      |> Enum.map(fn {mod, paths} ->
-        entry_line(mod, moduledoc_first_line(paths.beam_file), migration_suffix(paths))
-      end)
+      |> Enum.map(fn {mod, paths} -> entry_line(mod, moduledoc_first_line(paths.beam_file)) end)
 
     text =
       Enum.join(
@@ -50,7 +55,8 @@ defmodule Beamlet.Code.Discovery do
           ),
           section(@host_heading, module_lines(host_mods), "(none)"),
           section(@framework_heading, module_lines(framework_mods), "(none)"),
-          section(@libraries_heading, library_lines(libraries), "(none)")
+          section(@libraries_heading, library_lines(libraries), "(none)"),
+          @footer
         ],
         "\n\n"
       )
@@ -301,9 +307,6 @@ defmodule Beamlet.Code.Discovery do
   defp elixir_lib_root, do: :elixir |> :code.lib_dir() |> List.to_string() |> Path.dirname()
 
   defp module_lines(mods), do: Enum.map(mods, &entry_line(&1, moduledoc_first_line(&1)))
-
-  defp migration_suffix(%{migration: nil}), do: ""
-  defp migration_suffix(%{migration: version}), do: " (migration #{version})"
 
   defp entry_line(mod, summary, suffix \\ "")
   defp entry_line(mod, nil, suffix), do: "  #{inspect(mod)}#{suffix}"

@@ -242,13 +242,15 @@ defmodule Beamlet.PolicyTest do
       assert text =~ ~r/Phoenix\.PubSub\n.*publish\/subscribe goes through Host\.PubSub/
     end
 
-    test "a redirect renders only once its door is granted" do
+    test "a redirect renders only while its door is granted" do
       rendered = Policy.render(Policy.default())
       assert rendered =~ ~r/File.*\n.*Host\.File provides scoped file access/
-      refute rendered =~ "Host.Router"
 
-      assert Policy.render(TestPolicies.doors_open()) =~
+      assert rendered =~
                ~r/Phoenix\.Router.*\n.*the URL surface is managed through Host\.Router/
+
+      {:ok, closed} = Policy.build(:closed, deny: [Host.Router])
+      refute Policy.render(closed) =~ "Host.Router"
     end
 
     test "renders the partial grants' carve-outs" do

@@ -206,11 +206,10 @@ defmodule Beamlet.Policy.Default do
                        match?(%{__exception__: true}, mod.__struct__()),
                        do: mod
 
-  # The host stdlib, one row per module as each lands. Host.Code,
-  # Host.File, Host.KV, Host.Migrator and Host.PubSub are granted
-  # whole: every function is meant for agent code, and remove stays
-  # in step with the tools by the operator's choice (Beamlet.Policy).
-  # Host.Repo: denied are the repo's process
+  # The host stdlib, one row per module. Every module but Host.Repo
+  # is granted whole: each function is meant for agent code, and
+  # remove stays in step with the tools by the operator's choice
+  # (Beamlet.Policy). Host.Repo: denied are the repo's process
   # controls (put_dynamic_repo redirects every call to any running
   # repo by name, the system repo included; start_link, stop and
   # disconnect_all touch the pool). Raw SQL is granted: the agent
@@ -223,6 +222,8 @@ defmodule Beamlet.Policy.Default do
     Host.KV => :all,
     Host.Migrator => :all,
     Host.PubSub => :all,
+    Host.Router => :all,
+    Host.Web => :all,
     Host.Repo =>
       {:except,
        [

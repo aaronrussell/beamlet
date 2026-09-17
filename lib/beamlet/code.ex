@@ -772,9 +772,34 @@ defmodule Beamlet.Code do
 
     with :ok <- check_removable(state, modules),
          :ok <- check_not_applied(state, modules, "remove"),
+         :ok <- check_not_routed(modules),
          :ok <- check_dependents(state, modules) do
       execute_remove(state, modules, principal)
     end
+  end
+
+  # A mounted route names its module by inspect form and would answer
+  # 404 the moment the module went; refusing here keeps the removal
+  # and the check atomic, as the dependents check is.
+  defp check_not_routed(modules) do
+    case Beamlet.Routes.list(modules: Enum.map(modules, &inspect/1)) do
+      [] ->
+        :ok
+
+      routes ->
+        {:error,
+         Enum.map_join(routes, "\n", fn route ->
+           verb = route.verb |> Atom.to_string() |> String.upcase()
+
+           "cannot remove #{route.module} — #{verb} #{route.path} is mounted on it. " <>
+             "Unmount it first: Host.Router.unmount(#{inspect(route.path)})."
+         end)}
+    end
+  rescue
+    exception ->
+      {:error,
+       "could not read the route table (#{Exception.message(exception)}) — " <>
+         "nothing was changed"}
   end
 
   defp check_removable(state, modules) do

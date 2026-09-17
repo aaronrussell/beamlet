@@ -126,7 +126,7 @@ defmodule Beamlet.Code.DiscoveryTest do
       assert text =~ ~r/^  Ecto\.Adapters\.SQLite3 \(:ecto_sqlite3\) — /m
     end
 
-    test "a migration is listed with its version", ctx do
+    test "a migration is not listed; the footer points at its listing", ctx do
       ns = unique_namespace()
       mod = Module.concat([ns, CreateLists])
       purge_on_exit([mod])
@@ -149,7 +149,15 @@ defmodule Beamlet.Code.DiscoveryTest do
         )
 
       assert {:ok, text} = Discovery.list(effective())
-      assert text =~ "  #{ns}.CreateLists (migration 1) — Creates the lists table."
+      refute text =~ "CreateLists"
+      assert text =~ "Defined modules (define):\n  (none yet"
+
+      assert String.ends_with?(
+               text,
+               "Host.Code.print_docs(Module) for documentation; " <>
+                 "Host.Router.print_routes() for the routes; " <>
+                 "Host.Migrator.print_migrations() for the migrations."
+             )
     end
 
     test "a quarantined module is listed with its error", ctx do

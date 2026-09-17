@@ -77,6 +77,8 @@ Host.KV :all
 Host.Migrator :all
 Host.PubSub :all
 Host.Repo except disconnect_all/1, disconnect_all/2, put_dynamic_repo/1, start_link/0, start_link/1, stop/0, stop/1
+Host.Router :all
+Host.Web :all
 IO only chardata_to_string/1, inspect/1, inspect/2, iodata_length/1, iodata_to_binary/1, puts/1, warn/1
 IO.ANSI :all
 IO.StreamError :all

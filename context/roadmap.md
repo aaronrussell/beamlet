@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-17 (step 15d done)
+**Last updated:** 2026-09-17 (step 15e done)
 
 ---
 
@@ -120,7 +120,7 @@ the end.
       redirect lights; the skipped `Host.Web` shape test in the
       scanner suite comes back; remove's mounted-route check in the
       code server; the listing narrowed to `code/lib` with a footer
-      pointing at the other prints.
+      pointing at the other prints. *Done 2026-09-17.*
 16. **Descriptions and instructions pass** against the 2KB budget,
     with tests that fail past it. The instructions are phrased to
     survive an eval-only token, since they stay static while the
@@ -356,3 +356,24 @@ the end.
   placement rule. Design § 2 Web rewritten; MCP, Provenance, Two
   databases, Two surfaces, Config and Users, tokens and principals
   updated; § 4 gained web auth and private routes.
+- **Step 15e** (2026-09-17): `Host.Web` with its four roles and
+  `Host.Router` with the verbs, `path`, `url`, `~p`, `call` and
+  `print_routes`, the reference's middle machinery module inlined
+  into the face. Mount composes `Beamlet.Routes`: insert, regenerate,
+  delete on failure; mount and unmount require the ambient principal
+  and the row records it; a reserved first segment (`_`, `~`) is
+  refused with teaching copy, the prefix guard fires only when a
+  prefix is set, and the root is the default in every test. `call/4`
+  sets the principal aside around the dispatch and restores it, so a
+  route acts as nobody under it as in a browser, and
+  `Beamlet.Principal.delete_current/0` landed for it. Remove's
+  mounted-route check joined `run_remove` in the code server. The
+  listing narrowed to `code/lib`: migrations and their version suffix
+  gone, no route suffix, quarantined modules kept, a footer naming
+  `print_docs`, `print_routes` and `print_migrations`. Both rows
+  joined the default whole, the golden regenerated, the routing
+  redirect lit and the scanner's `Host.Web` shape test came back. The
+  reference router suite, the end-to-end describe and the `Host.Web`
+  cases came across under `Beamlet.Case`. Design § 2 Web gained the
+  agent face; Discovery and Policy updated; § 3 notes the print
+  question for step 16.

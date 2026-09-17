@@ -34,7 +34,9 @@ defmodule Host.Code do
   framework modules you write pages and data against, and the
   libraries it ships. Standard Elixir and Erlang are not listed; they
   are available unless your policy says otherwise
-  (`print_policy/0`).
+  (`print_policy/0`). Migrations and routes have listings of their
+  own, `Host.Migrator.print_migrations/0` and
+  `Host.Router.print_routes/0`, which the footer points at.
   """
   @spec print_modules() :: :ok
   def print_modules, do: print(Discovery.list(policy!(:print_modules)))

@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-17 (the route table and the dynamic router, step 15d)
+**Last updated:** 2026-09-17 (`Host.Web` and `Host.Router`, step 15e)
 
 ---
 
@@ -544,8 +544,10 @@ dependencies at the same time; `Host.Repo`'s row; the table type
 and the package expansion; the curation coverage tests and golden
 fixture; the rendering. The seven remaining host rows (`Host.Code`,
 `Host.File`, `Host.KV`, `Host.Migrator`, `Host.PubSub`, `Host.Router`,
-`Host.Web`) join the default at step 15 as each module lands, one
-line each; no stub modules were written to carry them early. The
+`Host.Web`) joined the default through step 15 as each module
+landed, one line each, the last two at 15e; no stub modules were
+written to carry them early, and every signage door is now a module
+the default grants, so each redirect fires under it. The
 signage copy that names those modules came across as written, since
 the names are settled, and was then slimmed at step 12. What
 changes: one cached table becomes a table per policy, the stance
@@ -771,11 +773,12 @@ the principal's with the defined modules merged in, exactly as the
 runtimes build it before a scan, so a defined module is granted like
 any other and the reference's special case for it went.
 
-**The listing** has four sections, in order: the modules defined
-with `define`, each with its moduledoc's first line, followed by any
-quarantined module with its error and the way out (define it again
-with `replace: true`, or remove it), since the listing is the one
-place an agent learns why a module vanished; the `Host.*` modules;
+**The listing is `code/lib`** (narrowed at 15e). Four sections, in
+order: the modules defined with `define`, each with its moduledoc's
+first line, followed by any quarantined module with its error and
+the way out (define it again with `replace: true`, or remove it),
+since the listing is the one place an agent learns why a module
+vanished; the `Host.*` modules;
 the framework modules, the curated web and data authoring surface
 (`Beamlet.Policy.Default.framework_modules/0`); and the libraries,
 one line per package the beamlet ships, led by its primary module,
@@ -790,10 +793,15 @@ its generated functions, the one special case. A refused module or
 function gets the scanner's own copy, made public for it, so a
 refused `print_docs` carries the same signage hint a refused call
 does. `print_source` serves defined and quarantined modules and
-nothing else. A defined migration carries its version on its line,
-`(migration 3)`, since the number is what `Host.Migrator` speaks in.
-The routes section and remove's mounted-route check
-arrive at 15d.
+nothing else. Migrations are not listed: they live in
+`code/migrations`, `Host.Migrator.print_migrations/0` is their home
+and speaks in the version numbers the listing would otherwise have
+to carry, and a web module carries no route suffix, since the URL
+surface is `Host.Router.print_routes/0`'s. A one-line footer after
+the libraries points at `print_docs`, `print_routes` and
+`print_migrations`, so the one print an agent is steered to names
+the other three. Remove's mounted-route check sits in the code
+server beside the dependents check (§ 2 Web).
 
 **Tools and grants are independent**, and this step is where it
 shows: the default grants `Host.Code` whole, so a policy with
@@ -1002,8 +1010,8 @@ itself.
 
 ### Web
 
-Settled 2026-09-17 (step 15d, the machinery; the agent face is
-15e). The pages and APIs agents build are served by the host's own
+Settled 2026-09-17 (step 15d, the machinery; step 15e, the agent
+face). The pages and APIs agents build are served by the host's own
 endpoint, named in config, and Beamlet owns the router that serves
 them, the layout they render in, and a plain error view.
 
@@ -1025,7 +1033,7 @@ owns every path whose first segment starts with an underscore,
 `/_mcp` for the MCP server, `/_live` for the LiveView socket,
 `/_assets/...` for the JavaScript bundles, later `/_admin`; the
 operator copies an odd-looking URL once and an agent never writes
-one, since a leading underscore is refused at mount (15e). A leading
+one, since a leading underscore is refused at mount. A leading
 `~` is reserved the same way, for the per-user scope § 4 keeps open,
 and costs nothing now. The prefix survives as an embedder's option,
 `config :beamlet, web: [prefix: "/app"]`, for a host that wants
@@ -1065,8 +1073,8 @@ path with a LiveView storing `get`. The format validations are
 load-bearing, since the fields interpolate into router source.
 `create`, `delete` and `list` change or read the table and nothing
 else; regeneration is the caller's to compose, which `Host.Router`
-does at 15e by inserting, regenerating and deleting the row again
-when regeneration fails. A row whose target is missing, quarantined
+does by inserting, regenerating and deleting the row again when
+regeneration fails. A row whose target is missing, quarantined
 or of the wrong shape is left out at generation with a warning and
 answers 404; the row stays for inspection, and `servable?/1` is the
 one rule discovery and remove share. The boot child is synchronous,
@@ -1093,6 +1101,47 @@ message as text or as JSON, so a miss under the forward is a plain
 404 and the test endpoint and the server need no error view of
 their own; a host with its own keeps it.
 
+**The agent face** (step 15e) is `Host.Web` and `Host.Router`, the
+reference's two modules with its middle machinery module inlined
+into the router (Two surfaces, above: the table is a subsystem, the
+verbs are not). `use Host.Web, :live_view | :controller |
+:live_component | :html` is the one `use` line an agent writes; it
+brings the framework for the role, `Phoenix.HTML`, the `JS` alias
+and `~p`, and an unknown role is a teaching error at define time.
+`Host.Router` holds the verbs, `live/3` and the five named for HTTP
+verbs, `unmount/2`, `path/1`, `url/1`, `~p`, `call/4` and
+`print_routes/0`. Two words kept apart: a *path* is what the agent
+chooses and every function takes, never carrying the operator's
+prefix, and a *URL* is what people are given; `path/1` and `~p` map
+the one to the browser path and `url/1` to the other, and a path
+that already carries the prefix is refused with the relative form
+suggested, only when a prefix is set. A mount validates the path
+(a string, a leading slash, the row's format), refuses a reserved
+first segment with copy naming the convention, requires the target
+to be in the code server's manifest and of the right shape
+(`__live__/0`, or `action/2` plus the action), then composes
+`Beamlet.Routes`: insert, regenerate, delete the row if the router
+failed to build. Mount and unmount require the ambient principal
+and the row records it; a conflict names the mounted route and the
+user who mounted it. `print_routes` prints the base once, then
+verb, path, target, mounting user, and a not-served annotation from
+`servable?/1`. Remove's mounted-route check lives in
+`Beamlet.Code.run_remove/3` beside the dependents check, so it is
+atomic with the removal, and its copy names the unmount call.
+
+`call/4` is a real request through the configured endpoint over
+`Plug.Test` in the calling process, the response returned as data
+with JSON decoded, the adapter's mailbox messages drained so they
+never reach a LiveView's `handle_info`, and a crash re-raised with
+the route's frames above the endpoint. It sets the ambient
+principal aside for the dispatch and restores it after
+(`Beamlet.Principal.delete_current/0`), so a route behaves under
+`call/4` exactly as it does in a browser: a served route acts as
+nobody (Users, tokens and principals), and a controller action that
+reaches for `Host.Code` or the mutating verbs here raises either
+way. Without that, an agent's test call would pass where a
+visitor's request fails.
+
 **Every dynamic route is public.** No web auth until login arrives
 (§ 4), a recorded posture carried from the reference.
 
@@ -1112,7 +1161,11 @@ Decided as each step arrives, not before:
   snapshot does not, replaced by a prominent steer to
   `Host.Code.print_modules()` and `Host.Router.print_routes()`; and a
   convention about one module lives in that module's moduledoc,
-  which `print_docs` serves.
+  which `print_docs` serves. From 15e: the listing's footer names
+  the other prints, so step 16 considers whether the instructions
+  need a sentence on calling several prints in one eval, and
+  whether a `print_environment` that runs them all earns its place
+  or the footer is enough.
 - Deployment model, source-run or release (step 17). Decided in
   principle at step 9: the library's only declaration surface is
   application config, and the server's release merges an optional

@@ -158,4 +158,11 @@ defmodule Beamlet.Principal do
   @doc "The principal evaluated code runs as, or nil outside an eval."
   @spec current() :: t() | nil
   def current, do: Process.get(@key)
+
+  @doc "Removes the current process's principal, so the code that follows acts as nobody; `Host.Router.call/4` does this around a request."
+  @spec delete_current() :: :ok
+  def delete_current do
+    Process.delete(@key)
+    :ok
+  end
 end

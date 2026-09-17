@@ -380,7 +380,6 @@ defmodule Beamlet.ScannerTest do
                """)
     end
 
-    @tag skip: "Host.Web lands at step 15"
     test "the Host.Web authoring shape passes the scan" do
       assert {:ok, _modules} =
                scan_define("""
@@ -409,10 +408,14 @@ defmodule Beamlet.ScannerTest do
       end
       """
 
-      assert scan_define_error(code) =~ ~r/Phoenix\.Router is not permitted by your policy$/
+      {:ok, closed} = Policy.build(:closed, deny: [Host.Router])
 
-      assert scan_define_error(code, @doors_open) =~
-               "the URL surface is managed through Host.Router"
+      assert scan_define_error(code, closed) =~
+               ~r/Phoenix\.Router is not permitted by your policy$/
+
+      assert scan_define_error(code) =~
+               "Phoenix.Router is not permitted by your policy — " <>
+                 "the URL surface is managed through Host.Router"
     end
 
     test "the send_file carve-out carries the fs redirect" do
