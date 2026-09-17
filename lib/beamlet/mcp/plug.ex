@@ -2,9 +2,10 @@ defmodule Beamlet.MCP.Plug do
   @moduledoc """
   The authenticated entry to a beamlet's MCP server.
 
-  A host mounts it where the server should live:
+  `Beamlet.Router` mounts it at `/_mcp`, so a host that forwards to
+  that router has it:
 
-      forward "/mcp", Beamlet.MCP.Plug
+      forward "/", Beamlet.Router
 
   Every request carries one of the beamlet's own tokens as a bearer
   credential:

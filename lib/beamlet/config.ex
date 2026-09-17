@@ -13,16 +13,21 @@ defmodule Beamlet.Config do
   the databases under `db/`, the defined modules under `code/`
   (`Beamlet.Code`) and the files agent code keeps under `files/`
   (`Host.File`). Policies are declared here too (`Beamlet.Policy`),
-  and the limits on the two tools (`Beamlet.Eval`, `Beamlet.Define`).
+  the limits on the two tools (`Beamlet.Eval`, `Beamlet.Define`), and
+  the web surface: the host's endpoint, which serves the routes agents
+  mount (`Beamlet.Router`), and the prefix they are served under.
 
       config :beamlet,
         data_dir: "/var/lib/beamlet",
+        web: [endpoint: MyAppWeb.Endpoint],
         eval: [timeout: 60_000],
         define: [timeout: 60_000]
   """
 
   @eval_defaults [timeout: 30_000, max_heap_bytes: 268_435_456, max_output: 16_384]
   @define_defaults [timeout: 30_000]
+  @web_defaults [endpoint: nil, prefix: ""]
+  @prefix_format ~r{\A/[A-Za-z0-9_\-/]*[A-Za-z0-9_\-]\z}
 
   @doc """
   Checks every key, raising `ArgumentError` for the first at fault.
@@ -32,7 +37,10 @@ defmodule Beamlet.Config do
   depend on the working directory; the policies must be a keyword
   list of name to document, each document checked by
   `Beamlet.Policies` when it builds them; the eval and define limits
-  must be known keys with positive integers.
+  must be known keys with positive integers; the web group's endpoint
+  must be a module and its prefix empty or a path with a leading
+  slash and no trailing one. Whether an endpoint is set is checked by
+  the full boot, not here, since the system half runs without one.
   """
   @spec validate!() :: :ok
   def validate! do
@@ -40,6 +48,7 @@ defmodule Beamlet.Config do
     validate_policies!(Application.get_env(:beamlet, :policies, []))
     validate_limits!(:eval, @eval_defaults, Application.get_env(:beamlet, :eval, []))
     validate_limits!(:define, @define_defaults, Application.get_env(:beamlet, :define, []))
+    validate_web!(Application.get_env(:beamlet, :web, []))
     :ok
   end
 
@@ -77,6 +86,14 @@ defmodule Beamlet.Config do
   """
   @spec define() :: keyword()
   def define, do: limits(:define, @define_defaults)
+
+  @doc """
+  The web surface, merged over the defaults: `endpoint`, the host's
+  Phoenix endpoint (nil when unset), and `prefix`, the path the
+  routes agents mount are served under, `""` for the root.
+  """
+  @spec web() :: keyword()
+  def web, do: limits(:web, @web_defaults)
 
   defp limits(key, defaults) do
     configured = Application.get_env(:beamlet, key, [])
@@ -119,6 +136,30 @@ defmodule Beamlet.Config do
       raise ArgumentError,
             "config :beamlet, #{inspect(key)}: the limits are #{list(names)}, " <>
               "each a positive integer, got: #{inspect({name, value})}"
+    end
+  end
+
+  defp validate_web!(web) do
+    unless Keyword.keyword?(web) and Keyword.keys(web) -- Keyword.keys(@web_defaults) == [] do
+      raise ArgumentError,
+            "config :beamlet, :web takes endpoint and prefix, got: #{inspect(web)}"
+    end
+
+    case Keyword.get(web, :endpoint) do
+      endpoint when is_atom(endpoint) ->
+        :ok
+
+      other ->
+        raise ArgumentError,
+              "config :beamlet, :web: endpoint must be a module, got: #{inspect(other)}"
+    end
+
+    prefix = Keyword.get(web, :prefix, "")
+
+    unless prefix == "" or (is_binary(prefix) and Regex.match?(@prefix_format, prefix)) do
+      raise ArgumentError,
+            "config :beamlet, :web: prefix must be \"\" or a path such as \"/app\", " <>
+              "with no trailing slash, got: #{inspect(prefix)}"
     end
   end
 

@@ -36,6 +36,7 @@ defmodule Beamlet.MixProject do
       {:ecto_sql, "~> 3.14"},
       {:ecto_sqlite3, "~> 0.24"},
       {:jason, "~> 1.4"},
+      {:lazy_html, "~> 0.1", only: :test},
       {:phoenix, "~> 1.8"},
       {:phoenix_html, "~> 4.3"},
       {:phoenix_live_view, "~> 1.2"},

@@ -118,6 +118,24 @@ defmodule Beamlet.Code do
     GenServer.call(__MODULE__, {:remove, modules, principal}, 30_000)
   end
 
+  @doc """
+  Compiles derived source, the router `Beamlet.Routes` generates, in
+  this process's lane, so it never interleaves with a define or a
+  boot compile: the compiler options and tracers it swaps are
+  VM-global. The modules load into the VM; nothing is written to
+  disk, no policy gate runs, no edges are recorded and the server's
+  state is untouched. A compile failure returns the error and the
+  previously loaded version keeps serving.
+  """
+  @spec compile_artifact(String.t(), String.t()) :: {:ok, [module()]} | {:error, String.t()}
+  def compile_artifact(source, file) when is_binary(source) and is_binary(file) do
+    GenServer.call(
+      __MODULE__,
+      {:compile_artifact, source, file},
+      Config.define()[:timeout] + 5_000
+    )
+  end
+
   @typedoc "Where a defined module lives: its source, its beam under `ebin/`, and its version when it is a migration."
   @type paths :: %{source_file: Path.t(), beam_file: Path.t(), migration: pos_integer() | nil}
 
@@ -218,6 +236,23 @@ defmodule Beamlet.Code do
       {:ok, state} -> {:reply, :ok, state}
       {:error, message} -> {:reply, {:error, message}, state}
     end
+  end
+
+  # An empty root set keeps the tracer out of it: nothing in a derived
+  # artifact is an edge between defined modules.
+  def handle_call({:compile_artifact, source, file}, _from, state) do
+    ctx = %{roots: MapSet.new(), granted: MapSet.new()}
+
+    result =
+      with_compiler_env(ctx, fn ->
+        try do
+          {:ok, source |> Code.compile_string(file) |> Enum.map(&elem(&1, 0))}
+        rescue
+          exception -> {:error, Exception.message(exception)}
+        end
+      end)
+
+    {:reply, result, state}
   end
 
   def handle_call(:deps, _from, state), do: {:reply, state.deps, state}

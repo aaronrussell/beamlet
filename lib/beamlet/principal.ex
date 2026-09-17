@@ -20,12 +20,19 @@ defmodule Beamlet.Principal do
   Provenance is this struct written down. A commit the code server
   makes carries it as git trailers (`to_trailers/1`), which git parses
   natively, so `git log` can filter the history by token or policy
-  with no code of Beamlet's; a route row will carry it as JSON. Both
-  encodings decode back to the struct.
+  with no code of Beamlet's; a route row (`Beamlet.Route`) carries it
+  as JSON (`to_map/1`). Both encodings decode back to the struct.
 
       User: alice (1)
       Token: laptop (3)
       Policy: default
+
+      {"user": {"id": 1, "name": "alice"}, "token": {"id": 3, "name": "laptop"},
+       "policy": "default"}
+
+  A principal is a token acting through a tool. A web request has no
+  principal: a served route acts as nobody, and a future web identity
+  is a user on the request, never a principal in the process.
 
   Code an agent runs through `eval` takes no arguments, so it cannot
   be handed the principal, and the stdlib functions it calls must
@@ -109,6 +116,37 @@ defmodule Beamlet.Principal do
       nil -> :error
     end
   end
+
+  @doc "Encodes the principal as the map a route row stores as JSON: names and ids nested under `user` and `token`, and the policy."
+  @spec to_map(t()) :: map()
+  def to_map(%__MODULE__{} = principal) do
+    %{
+      "user" => %{"id" => principal.user_id, "name" => principal.user_name},
+      "token" => %{"id" => principal.token_id, "name" => principal.token_name},
+      "policy" => principal.policy
+    }
+  end
+
+  @doc "Decodes the map back to the principal; `:error` when a part is missing or malformed."
+  @spec from_map(map()) :: {:ok, t()} | :error
+  def from_map(%{
+        "user" => %{"id" => user_id, "name" => user_name},
+        "token" => %{"id" => token_id, "name" => token_name},
+        "policy" => policy
+      })
+      when is_integer(user_id) and is_binary(user_name) and is_integer(token_id) and
+             is_binary(token_name) and is_binary(policy) do
+    {:ok,
+     %__MODULE__{
+       user_id: user_id,
+       user_name: user_name,
+       token_id: token_id,
+       token_name: token_name,
+       policy: policy
+     }}
+  end
+
+  def from_map(_other), do: :error
 
   @doc "Makes `principal` the one the current process acts as; eval's runtime calls it before evaluating."
   @spec put_current(t()) :: :ok

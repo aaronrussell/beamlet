@@ -20,6 +20,18 @@ defmodule BeamletTest do
     assert %{rows: [["wal"]]} = Host.Repo.query!("pragma journal_mode")
   end
 
+  test "creates its own tables in the agent database at boot" do
+    assert %{rows: [["__kv"], ["__routes"]]} =
+             Host.Repo.query!(
+               "select name from sqlite_master where name like '\\_\\_%' escape '\\' order by name"
+             )
+  end
+
+  test "serves the routes through the host's endpoint" do
+    assert Process.whereis(Beamlet.TestEndpoint)
+    assert Beamlet.Config.web()[:endpoint] == Beamlet.TestEndpoint
+  end
+
   test "migrates the system database at boot" do
     assert %{rows: [["schema_migrations"]]} =
              Beamlet.Repo.query!(

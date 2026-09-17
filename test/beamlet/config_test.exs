@@ -4,9 +4,11 @@ defmodule Beamlet.ConfigTest do
 
   setup do
     previous = Application.fetch_env!(:beamlet, :data_dir)
+    web = Application.fetch_env!(:beamlet, :web)
 
     on_exit(fn ->
       Application.put_env(:beamlet, :data_dir, previous)
+      Application.put_env(:beamlet, :web, web)
       Application.delete_env(:beamlet, :policies)
       Application.delete_env(:beamlet, :eval)
       Application.delete_env(:beamlet, :define)
@@ -76,6 +78,48 @@ defmodule Beamlet.ConfigTest do
       end
     end
 
+    test "raises on an unknown web key" do
+      Application.put_env(:beamlet, :web, router: Beamlet.Router)
+
+      assert_raise ArgumentError, ~r/:web takes endpoint and prefix/, fn ->
+        Config.validate!()
+      end
+    end
+
+    test "raises when the endpoint is not a module" do
+      Application.put_env(:beamlet, :web, endpoint: "MyApp.Endpoint")
+
+      assert_raise ArgumentError, ~r/endpoint must be a module, got: "MyApp.Endpoint"/, fn ->
+        Config.validate!()
+      end
+    end
+
+    test "raises on a prefix without a leading slash or with a trailing one" do
+      for prefix <- ["app", "/app/", "/", :app] do
+        Application.put_env(:beamlet, :web, prefix: prefix)
+
+        assert_raise ArgumentError, ~r/prefix must be "" or a path such as "\/app"/, fn ->
+          Config.validate!()
+        end
+      end
+    end
+
+    @tag :capture_log
+    test "the full boot fails without an endpoint" do
+      Application.put_env(:beamlet, :web, [])
+
+      assert {:error, {{%ArgumentError{message: message}, _stack}, _spec}} =
+               start_supervised({Beamlet, []})
+
+      assert message =~ "web: [endpoint: ...] is not set"
+    end
+
+    test "the system half boots without an endpoint" do
+      Application.put_env(:beamlet, :web, [])
+
+      assert {:ok, _pid} = start_supervised({Beamlet, only: :system})
+    end
+
     @tag :capture_log
     test "a bad key fails the boot" do
       Application.put_env(:beamlet, :data_dir, "data")
@@ -132,6 +176,13 @@ defmodule Beamlet.ConfigTest do
 
     test "code_dir/0 is the code directory under the data dir", %{configured: configured} do
       assert Config.code_dir() == Path.join(configured, "code")
+    end
+
+    test "web/0 is the configured endpoint over the defaults" do
+      assert Config.web() == [endpoint: Beamlet.TestEndpoint, prefix: ""]
+
+      Application.put_env(:beamlet, :web, prefix: "/app")
+      assert Config.web() == [endpoint: nil, prefix: "/app"]
     end
   end
 end

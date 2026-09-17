@@ -3,11 +3,12 @@ defmodule Beamlet.MCP.Server do
   A beamlet's MCP server: the `define` and `eval` tools over
   Streamable HTTP, for any MCP client.
 
-  Runs as a child of `Beamlet`. A host serves it by mounting the
-  authenticating plug, and every request then carries one of the
-  beamlet's tokens (`Beamlet.MCP.Plug`):
+  Runs as a child of `Beamlet`. A host serves it at `/_mcp` by
+  forwarding to `Beamlet.Router`, which mounts the authenticating
+  plug there, and every request then carries one of the beamlet's
+  tokens (`Beamlet.MCP.Plug`):
 
-      forward "/mcp", Beamlet.MCP.Plug
+      forward "/", Beamlet.Router
 
   What a token sees is set by its policy (`Beamlet.Policy`): the
   listing holds only the tools the policy grants, and a call to any

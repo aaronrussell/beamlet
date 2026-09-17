@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-17 (step 15c done)
+**Last updated:** 2026-09-17 (step 15d done)
 
 ---
 
@@ -73,7 +73,7 @@ the end.
     defined set is merged into the policy's grants before every
     scan, the other half of the effective grants, in whatever shape
     the code server makes natural. *Done 2026-09-16.*
-15. **The stdlib, module by module**, in four sub-steps, each with
+15. **The stdlib, module by module**, in five sub-steps, each with
     its own planning pass and an API review as the module comes
     across: names, arguments, docs and teaching copy are open to
     change. Common to every module: its row joins
@@ -103,14 +103,24 @@ the end.
       migrations; migration placement, the `code/migrations` layout
       and the applied-version check return to `Beamlet.Code`.
       *Done 2026-09-17.*
-    - **15d. `Host.Web` and `Host.Router`.** The route table in the
-      agent database with the JSON provenance encoding, `Beamlet.Router`
-      that the host forwards to and the dynamic router it generates
-      with `compile_artifact` back in the server, layouts, the `use
-      Host.Web` roles, the test endpoint, `Host.Router.call`; the
-      skipped `Host.Web` shape test in the scanner suite comes back;
-      `Host.Code` gains its routes section and remove's mounted-route
-      check. The largest of the four; its pass may split it further.
+    - **15d. The route table and the dynamic router.** The JSON
+      provenance encoding on the principal; the `__routes` table in
+      the agent database with `Beamlet.Routes` and `Beamlet.Route`;
+      the generator and the dynamic router it regenerates through
+      `compile_artifact`, back in the code server; `Beamlet.Router`,
+      the static router a host forwards to at the root, carrying the
+      MCP plug under the reserved `/_mcp`; the root layout; the test
+      endpoint and router that write down what a host's endpoint must
+      carry. Proven with `Plug.Test` and `Phoenix.LiveViewTest`; no
+      agent face yet. Split from the original 15d at its planning
+      pass, 2026-09-17, together with 15e. *Done 2026-09-17.*
+    - **15e. `Host.Web` and `Host.Router`.** The `use Host.Web` roles;
+      the mount and unmount verbs, `path`, `url`, `~p`, `call` and
+      `print_routes`; both rows join the default and the routing
+      redirect lights; the skipped `Host.Web` shape test in the
+      scanner suite comes back; remove's mounted-route check in the
+      code server; the listing narrowed to `code/lib` with a footer
+      pointing at the other prints.
 16. **Descriptions and instructions pass** against the 2KB budget,
     with tests that fail past it. The instructions are phrased to
     survive an eval-only token, since they stay static while the
@@ -323,3 +333,26 @@ the end.
   `migrations` redirects. The reference KV and migrator suites came
   across under `Beamlet.Case`. Design § 2 Two databases, Define,
   Discovery, Key/value and Migrations record it.
+- **Step 15d** (2026-09-17): the planning pass found that a forward
+  at a prefix breaks every LiveView page, since the connected mount
+  re-matches the full URL against the dispatching router and
+  `route_info` never recurses through a forward, so the host's one
+  line is `forward "/", Beamlet.Router`, last. Root by default with
+  a reserved namespace, first segments starting with `_` (`/_mcp`,
+  `/_live`, `/_assets`) and `~`, and the prefix kept as an embedder's
+  option under `config :beamlet, web: [endpoint:, prefix:]`; the
+  full boot fails without an endpoint. `Beamlet.Router` static over
+  the generated `Beamlet.DynamicRouter`; `Beamlet.Routes` over
+  `__routes` with `Beamlet.Route` at the root, `create`, `delete`,
+  `list`, `regenerate`, `servable?` and the boot child, which skips
+  the compile when table and loaded router are both empty;
+  `Beamlet.Routes.Generator`, `Beamlet.Layouts`, `Beamlet.ErrorView`;
+  `compile_artifact` back in the code server; the JSON provenance
+  encoding on the principal. `Beamlet.TestEndpoint` and
+  `Beamlet.TestRouter` in test support as the written endpoint
+  requirements, started by `Beamlet.Case`, with `@tag web:`. The
+  step also settled that a principal is a token acting through a
+  tool and a web identity is a user on a request, and the schema
+  placement rule. Design § 2 Web rewritten; MCP, Provenance, Two
+  databases, Two surfaces, Config and Users, tokens and principals
+  updated; § 4 gained web auth and private routes.

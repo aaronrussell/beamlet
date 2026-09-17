@@ -12,3 +12,13 @@ config :beamlet, Beamlet.Repo,
 config :beamlet, Host.Repo,
   pool_size: 5,
   pool: Ecto.Adapters.SQL.Sandbox
+
+config :beamlet, web: [endpoint: Beamlet.TestEndpoint]
+
+config :beamlet, Beamlet.TestEndpoint,
+  url: [host: "localhost", port: 4000],
+  secret_key_base: "beamlet-test-secret-key-base-that-is-long-enough-for-phoenix-to-accept-it",
+  live_view: [signing_salt: "beamlet-test-lv"],
+  pubsub_server: Beamlet.PubSub,
+  render_errors: [formats: [html: Beamlet.ErrorView, json: Beamlet.ErrorView], layout: false],
+  server: false

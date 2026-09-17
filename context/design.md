@@ -5,7 +5,7 @@ records what is settled and grows one step at a time as the port
 from `../omni_host` proceeds. Nothing here is carried over
 unexamined; a decision appears when the code that needs it lands.
 
-**Last updated:** 2026-09-17 (Host.KV and Host.Migrator, step 15c)
+**Last updated:** 2026-09-17 (the route table and the dynamic router, step 15d)
 
 ---
 
@@ -113,6 +113,16 @@ the moduledoc rule would all need a special case. Nothing under
 `Beamlet.*` is granted, so the split is what keeps the machinery
 out of reach by construction.
 
+**Where a schema sits** (settled 2026-09-17, step 15d). A schema
+that is a resource of a public context sits at the root beside it,
+singular: `Beamlet.User` beside `Beamlet.Users`, `Beamlet.Route`
+beside `Beamlet.Routes`. A schema that is a private detail behind a
+`Host` module with no context nests under that module's internal
+namespace with `@moduledoc false`: `Beamlet.KV.Entry` is the
+encoding of `Host.KV`'s rows and nothing outside the module touches
+it. The two styles looked like a conflict and are the one rule
+applied to a public resource and to an implementation detail.
+
 ### Two databases
 
 Both Beamlet's, both under the data dir:
@@ -143,7 +153,7 @@ step 15c) are created by `Beamlet.Tables`, a synchronous child right
 after `Host.Repo` that runs `CREATE TABLE IF NOT EXISTS` for each
 and returns `:ignore`, so a failure fails the boot and a table agent
 code dropped is back at the next one. The double-underscore names
-(`__kv` now, `__routes` at 15d) mark them as furniture: Beamlet's
+(`__kv` and `__routes`) mark them as furniture: Beamlet's
 tables holding the agent's data, outside the agent's migration
 history and inside the unit that wipes and backs up. A second
 `Ecto.Migrator` over `Host.Repo` lost: `migration_source` is repo
@@ -197,6 +207,24 @@ words do the work:
   the seam a future in-process embedder would hand in. Nothing falls
   back to it: a `Host.*` function that needs a principal and finds
   none raises, since the unanticipated case should be loud.
+- **A principal is a token acting through a tool; a web identity
+  is a user on a request; nothing turns one into the other**
+  (settled 2026-09-17, step 15d). The principal carries a policy
+  because the tools are where code is authored and discovered, and
+  the policy governs exactly those two things; it is ambient in the
+  process only because evaluated code takes no arguments. A served
+  route is neither: its code was scanned when it was defined, under
+  its author's policy, and nothing more is authored when it runs.
+  So a route acts as nobody, the `Host.*` functions that record who
+  acted or filter by policy raise inside one, and a controller
+  action that removes modules or unmounts routes is not a supported
+  case. A future logged-in user is a web identity: a user known to
+  the request, carried on the conn or the socket the way Phoenix
+  carries `current_user` and checked by a plug or an `on_mount`
+  hook, with no token and no policy, since a browser authors no
+  code. If a page ever changes the beamlet, that is the admin UI
+  calling `Beamlet.*` with an explicit record of who acted, not
+  agent code reaching for tool-side verbs.
 
 **Policy attaches to the token, not the user.** A policy is a
 named document (§ 2 Policy says what it contains); Beamlet ships
@@ -562,7 +590,9 @@ to load and filter in memory. What carries provenance is exactly
 what did in code mode, every commit the code server makes and every
 route row. Not KV entries, not files, and there is no eval log. The
 trailers landed at step 14 with the audit (§ 2 Define); the JSON
-lands with the route table.
+landed at step 15d on `Beamlet.Route`, as
+`Beamlet.Principal.to_map/1` and `from_map/1`, a map column the
+row stores and `Beamlet.Route.principal/1` reads back.
 
 ### Eval
 
@@ -640,9 +670,11 @@ changed. The reserved prefixes are `Beamlet.*` and `Host.*`.
 `Beamlet` owning `<data_dir>/code` (`lib/`, `ebin/`, `.staging/`,
 `.git`), with `Beamlet.Code.Tracer`, `Beamlet.Code.Docs` and
 `Beamlet.Code.Audit` beneath it as internals. It is the reference
-server minus `compile_artifact`, which waits for the dynamic router
-(15d); migration placement returned at 15c (Migrations, below) and
-`manifest` at 15a. Remove came across now, ahead of
+server; migration placement returned at 15c (Migrations, below),
+`manifest` at 15a and `compile_artifact` at 15d (Web, below), the
+derived-source compile that runs in the server's lane because the
+compiler options and tracers it swaps are VM-global, records nothing
+and writes nothing. Remove came across now, ahead of
 `Host.Code.remove`, because it is the server's own second operation,
 the audit's second commit kind, and the call records it reads exist
 for replace's dropped-function check anyway; its errors name
@@ -917,7 +949,10 @@ everything a beamlet persists lives under; after the document
 check, starting checks the dir exists and fails the boot otherwise,
 and the modules owning paths beneath it add their accessors as they
 arrive: `db/` for the two databases (`db_dir/0`) and `code/` for the
-defined modules (`code_dir/0`, step 14).
+defined modules (`code_dir/0`, step 14). The web surface is the `web`
+group, `endpoint` and `prefix` (step 15d, Web below): the full boot
+fails without an endpoint, since the routes are served through it,
+and the system half needs none.
 Tests use one data dir per run, `tmp/test_data` in the repo, wiped
 at the start of each run; a test that needs its own directory gives
 it to the component directly rather than through config.
@@ -933,8 +968,9 @@ servers themselves (Claude Code shows `mcp__beamlet__eval`), so a
 result, which is what Elixir calls it. Schemas carry only what the
 tool needs; there is no per-call description field, since the
 client owns its UI and already shows the arguments. A host serves
-the tools by mounting `Beamlet.MCP.Plug` at `/mcp`; `Beamlet.Router`
-takes that over when it arrives.
+the tools by forwarding to `Beamlet.Router`, which mounts
+`Beamlet.MCP.Plug` at `/_mcp`, a path in the beamlet's reserved
+namespace (step 15d, Web below).
 
 Server instructions and each tool description are held under 2,048
 bytes by tests: Claude Code truncates both at 2KB, and bytes are the
@@ -944,7 +980,7 @@ stdlib for the rest.
 
 **Authentication is Beamlet's own plug, not Anubis's authorization.**
 `Beamlet.MCP.Plug` wraps the transport plug with the server baked
-in, so a host mounts `forward "/mcp", Beamlet.MCP.Plug` and nothing
+in, so `Beamlet.Router` mounts it with one forward and nothing
 else. It runs on every request and method: reads the `Bearer`
 secret, authenticates it through `Beamlet.Users`, and puts the
 principal in the conn's assigns as `:principal` before forwarding.
@@ -966,11 +1002,99 @@ itself.
 
 ### Web
 
-Beamlet takes the endpoint as an option and owns the dynamic router
-and layouts; the host forwards to `Beamlet.Router`. The host's
-endpoint must carry the LiveView socket and static JS. The
-library's test endpoint is that requirement written down, and the
-server copies it.
+Settled 2026-09-17 (step 15d, the machinery; the agent face is
+15e). The pages and APIs agents build are served by the host's own
+endpoint, named in config, and Beamlet owns the router that serves
+them, the layout they render in, and a plain error view.
+
+**The host forwards at the root, last.** The one line a host writes
+is `forward "/", Beamlet.Router` as the last route of its router.
+Last because a root forward matches everything after it, so host
+routes win by order. At the root because LiveView's connected mount
+re-matches the full browser URL against the router that dispatched
+the page, stripping only the endpoint's script name, and
+`Phoenix.Router.route_info/4` never recurses through a forward; a
+forward at a prefix therefore breaks every LiveView page, which the
+reference found and its "strip nothing" rule recorded. The design's
+earlier sentence, "the host forwards to `Beamlet.Router`", meant a
+prefix and was wrong.
+
+**Root by default, and a reserved namespace.** No prefix: "add a
+dashboard to my beamlet" is served at `/dashboard`. The beamlet
+owns every path whose first segment starts with an underscore,
+`/_mcp` for the MCP server, `/_live` for the LiveView socket,
+`/_assets/...` for the JavaScript bundles, later `/_admin`; the
+operator copies an odd-looking URL once and an agent never writes
+one, since a leading underscore is refused at mount (15e). A leading
+`~` is reserved the same way, for the per-user scope § 4 keeps open,
+and costs nothing now. The prefix survives as an embedder's option,
+`config :beamlet, web: [prefix: "/app"]`, for a host that wants
+agent-built pages fenced under its own namespace; the generated
+router bakes it into its scopes, since a forward cannot supply it,
+and the code is the same whether it is empty or not. The reference's
+`/app` default came from a host with an API surface of its own and
+lost to the plain URL.
+
+**Two routers.** `Beamlet.Router` is static and public: it mounts
+`Beamlet.MCP.Plug` at `/_mcp` and forwards everything else to
+`Beamlet.DynamicRouter`, so the beamlet decides what lives under the
+underscore and the host's line never changes. Because it sits behind
+a root forward, it can carry the future admin LiveViews directly,
+with no router macro. `Beamlet.DynamicRouter` is the generated
+module: a compiled-in empty placeholder, so the forward compiles,
+that `Beamlet.Routes.regenerate/0` replaces in the VM by rendering
+the route table into a real `Phoenix.Router` source
+(`Beamlet.Routes.Generator`, internal) and compiling it through
+`Beamlet.Code.compile_artifact/2`. A derived artifact: never on
+disk, never committed, rebuilt from the table at boot and after
+every change. Two convention pipelines, LiveView rows through a
+browser pipeline with session, CSRF protection and the root layout,
+controller rows through an API pipeline with neither so a webhook
+can call them; no plug kind, no per-mount override. Rows render in
+mount order, so an earlier mount wins an overlapping match as in a
+hand-written router. Folding the static routes into the generated
+source was considered and lost: it couples the MCP mount to an
+artifact that fails and rolls back.
+
+**The table.** `Beamlet.Routes` is the context over `__routes` in
+the agent database, created by `Beamlet.Tables` beside `__kv`, with
+`Beamlet.Route` at the root beside it (Two surfaces, above): kind,
+verb, path, module in inspect form, an optional action, the
+principal as JSON (Provenance) and `inserted_at`, unique on verb and
+path with a LiveView storing `get`. The format validations are
+load-bearing, since the fields interpolate into router source.
+`create`, `delete` and `list` change or read the table and nothing
+else; regeneration is the caller's to compose, which `Host.Router`
+does at 15e by inserting, regenerating and deleting the row again
+when regeneration fails. A row whose target is missing, quarantined
+or of the wrong shape is left out at generation with a warning and
+answers 404; the row stays for inspection, and `servable?/1` is the
+one rule discovery and remove share. The boot child is synchronous,
+right after the code server, returns `:ignore` and never fails the
+boot: the worst case is the placeholder serving 404s with an error
+in the log. An empty table and an empty loaded router already
+agree, so boot compiles nothing in that case, which is what keeps a
+suite that boots a beamlet per test from paying a forty-millisecond
+router compile each time; the sandbox empties the table between
+tests, so no reset fixture exists.
+
+**What the endpoint carries** is written down twice: as prose on
+`Beamlet.Router` and as `Beamlet.TestEndpoint` in the library's test
+support, which `Beamlet.Case` starts after every beamlet and the
+server will copy at step 17. The session, the LiveView socket at
+`/_live`, `Plug.Static` serving the LiveView JavaScript from the
+deps' precompiled bundles under `/_assets` so there is no build
+step, JSON parsers, `pubsub_server: Beamlet.PubSub`, and
+`render_errors`. `Beamlet.Layouts` is the root layout: CSRF token,
+the two modules, the socket, Tailwind from its CDN, and nothing
+about how a page looks; styling needs the internet, accepted for a
+substrate with no bundler. `Beamlet.ErrorView` renders a status
+message as text or as JSON, so a miss under the forward is a plain
+404 and the test endpoint and the server need no error view of
+their own; a host with its own keeps it.
+
+**Every dynamic route is public.** No web auth until login arrives
+(§ 4), a recorded posture carried from the reference.
 
 ## 3. Open
 
@@ -1001,7 +1125,19 @@ Decided as each step arrives, not before:
 
 ## 4. Deferred
 
-- Admin UI and login.
+- Admin UI and login. The admin LiveViews can sit in `Beamlet.Router`
+  under `/_admin`, since it is behind a root forward (§ 2 Web).
+- Web authentication and private routes, after login. A private
+  route keys on the web identity for access and on the row's
+  provenance for ownership, never on the principal (§ 2 Users,
+  tokens and principals). Two shapes were weighed at step 15d and
+  neither chosen: a property of the route, `private: true` on the
+  mount, keeping one namespace with the generated router putting
+  the row in a scope that requires a login; or a per-user scope in
+  the path, `/~alice/notes`, mirroring `~home/` below and nesting
+  under any prefix. The reserved leading `~` keeps the second open,
+  and the path-to-browser-path indirection `Host.Router` carries
+  (`path/1`, `~p`) is the seam either would fill.
 - A principal handed in by an embedding host calling tools
   in-process, without a Beamlet token. Struck from § 2 at step 5;
   if it returns, a principal that encodes and decodes is the seam.

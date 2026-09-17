@@ -60,6 +60,34 @@ defmodule Beamlet.PrincipalTest do
     end
   end
 
+  describe "the map encoding" do
+    test "round-trips the principal through the JSON shape", %{token: token} do
+      principal = principal(token)
+
+      map = Principal.to_map(principal)
+
+      assert map == %{
+               "user" => %{"id" => principal.user_id, "name" => "alice"},
+               "token" => %{"id" => principal.token_id, "name" => "test"},
+               "policy" => "default"
+             }
+
+      assert {:ok, ^principal} = map |> JSON.encode!() |> JSON.decode!() |> Principal.from_map()
+    end
+
+    test "a map missing a part or with the wrong types is an error" do
+      assert :error = Principal.from_map(%{})
+      assert :error = Principal.from_map(%{"user" => %{"id" => 1, "name" => "alice"}})
+
+      assert :error =
+               Principal.from_map(%{
+                 "user" => %{"id" => "1", "name" => "alice"},
+                 "token" => %{"id" => 1, "name" => "t"},
+                 "policy" => "default"
+               })
+    end
+  end
+
   test "put_current/1 makes it the current process's principal", %{token: token} do
     assert Principal.current() == nil
 

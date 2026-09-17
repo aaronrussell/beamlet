@@ -19,11 +19,16 @@ defmodule Beamlet.Case do
   principal, as eval's runtime does for evaluated code, for tests
   that call `Host.*` directly.
 
+  The test endpoint (`Beamlet.TestEndpoint`) starts after the beamlet,
+  so every test can request the routes it mounts through
+  `Phoenix.ConnTest` and `Phoenix.LiveViewTest`; `@endpoint` is set.
+
   A test declares policies for its beamlet with a tag in the shape
   config takes, put into config before the beamlet starts and removed
-  after:
+  after, and likewise the web keys merged over the configured ones:
 
       @tag policies: [restricted: [tools: [:eval]]]
+      @tag web: [prefix: "/pages"]
 
   Tests that define modules touch VM-global state, loaded modules and
   the compiler's tracer list, so they run `async: false` and use
@@ -39,6 +44,8 @@ defmodule Beamlet.Case do
 
   using do
     quote do
+      @endpoint Beamlet.TestEndpoint
+
       import Beamlet.Case
     end
   end
@@ -49,10 +56,17 @@ defmodule Beamlet.Case do
       on_exit(fn -> Application.delete_env(:beamlet, :policies) end)
     end
 
+    if web = context[:web] do
+      configured = Application.fetch_env!(:beamlet, :web)
+      Application.put_env(:beamlet, :web, Keyword.merge(configured, web))
+      on_exit(fn -> Application.put_env(:beamlet, :web, configured) end)
+    end
+
     File.rm_rf!(Beamlet.Config.code_dir())
     File.rm_rf!(Beamlet.Config.files_dir())
     preserve_compiler_tracers()
     start_supervised!({Beamlet, []})
+    start_supervised!(Beamlet.TestEndpoint)
 
     for repo <- [Beamlet.Repo, Host.Repo] do
       owner = Sandbox.start_owner!(repo, shared: true)
