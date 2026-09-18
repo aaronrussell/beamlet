@@ -411,7 +411,14 @@ defmodule Beamlet.Policy do
   # ── Rendering ─────────────────────────────────────────────────────
 
   defp render_tools([]), do: "(none)"
-  defp render_tools(tools), do: Enum.join(tools, ", ")
+
+  defp render_tools(tools) do
+    rendered = Enum.join(tools, ", ")
+
+    if :define in tools,
+      do: rendered,
+      else: rendered <> " (no define: modules cannot be added with this token)"
+  end
 
   # Only rules in force are listed: a relaxed rule says nothing, and
   # the rule names are operator configuration, not something an agent

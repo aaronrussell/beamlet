@@ -59,7 +59,8 @@ defmodule Beamlet.MCP.Server do
   - Ecto's query builders are macros: put `import Ecto.Query` at the
     top of any eval or module that queries.
   - Your beamlet is shared with other users and agents. Read what
-    exists before building, and a module's source before replacing it.
+    exists before building, and `Host.Code.print_source(Module)`
+    before replacing a module.
   - Verify before reporting done: call a mounted route with
     `Host.Router.call(verb, path)`, query the rows you wrote.
   """

@@ -225,12 +225,20 @@ defmodule Beamlet.ScannerTest do
                "capture target must be a literal module, got: &mod.sum/1"
     end
 
-    test "module definitions are rejected" do
+    test "module definitions are rejected, pointing at define" do
       assert scan_error("defmodule Foo do\nend") =~
-               "eval evaluates expressions — module definitions are not permitted"
+               "eval evaluates expressions — module definitions are not permitted; " <>
+                 "add a module to your beamlet with the define tool"
 
       assert scan_error("Kernel.defmodule Foo do\nend") =~ "module definitions are not permitted"
       assert scan_error("defimpl String.Chars, for: Tuple do\nend") =~ "module definitions"
+    end
+
+    test "module definitions on a token with no define tool say so" do
+      policy = %{Policy.default() | tools: [:eval]}
+      assert {:error, message} = Scanner.scan_eval("defmodule Foo do\nend", policy)
+      assert message =~ "your policy grants no define tool, so modules cannot be added"
+      refute message =~ "with the define tool"
     end
 
     test "an unpipeable pipe is rejected" do

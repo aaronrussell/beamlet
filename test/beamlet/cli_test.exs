@@ -259,7 +259,10 @@ defmodule Beamlet.CLITest do
     @tag policies: [restricted: [tools: [:eval]]]
     test "shows a policy as the agent reads it" do
       assert {:ok, output} = with_io(fn -> CLI.main(["policies.show", "restricted"]) end)
-      assert output =~ ~r/^Policy: restricted\nTools: eval\n/
+
+      assert output =~
+               ~r/^Policy: restricted\nTools: eval \(no define: modules cannot be added with this token\)\n/
+
       assert output =~ "Rules for your code:"
 
       assert {:ok, output} = with_io(fn -> CLI.main(["policies.show", "default"]) end)

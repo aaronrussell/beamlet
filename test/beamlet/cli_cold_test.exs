@@ -38,7 +38,9 @@ defmodule Beamlet.CLIColdTest do
     assert String.split(output, "\n", trim: true) == ["default", "restricted"]
 
     assert {:ok, output} = with_io(fn -> CLI.main(["policies.show", "restricted"]) end)
-    assert output =~ "Policy: restricted\nTools: eval\n"
+
+    assert output =~
+             "Policy: restricted\nTools: eval (no define: modules cannot be added with this token)\n"
 
     assert {:ok, output} = with_io(fn -> CLI.main(["users.delete", "cold"]) end)
     assert output =~ "Deleted user cold and 1 token."

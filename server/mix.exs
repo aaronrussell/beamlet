@@ -43,7 +43,8 @@ defmodule BeamletServer.MixProject do
       {:phoenix, "~> 1.8"},
       {:phoenix_live_view, "~> 1.2"},
       {:jason, "~> 1.4"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:tz, "~> 0.28"}
     ]
   end
 

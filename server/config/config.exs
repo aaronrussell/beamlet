@@ -9,6 +9,11 @@ import Config
 
 config :beamlet, web: [endpoint: BeamletServer.Endpoint]
 
+# Named time zones for agent code (DateTime.shift_zone and friends):
+# tz compiles the IANA data in, so there is nothing to fetch at
+# runtime. The library leaves this to the host; the server chooses.
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 # Configure the endpoint
 config :beamlet_server, BeamletServer.Endpoint,
   url: [host: "localhost"],

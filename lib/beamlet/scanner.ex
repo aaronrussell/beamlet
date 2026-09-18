@@ -29,6 +29,9 @@ defmodule Beamlet.Scanner do
   alias Beamlet.Policy.Signage
 
   @eval_defmodule_error "eval evaluates expressions — module definitions are not permitted"
+  @define_hint "; add a module to your beamlet with the define tool"
+  @no_define_hint ", and your policy grants no define tool, so modules cannot be added with " <>
+                    "this token; run the code here instead"
   @expression_error "define declares modules — run expressions with eval"
   @protocol_error "defprotocol and defimpl are not supported — define a plain module"
   @nested_error "nested module definitions are not permitted"
@@ -243,7 +246,7 @@ defmodule Beamlet.Scanner do
   end
 
   defp handle({form, meta, _args}, acc) when form in [:defmodule, :defprotocol, :defimpl] do
-    {:ok, violation(acc, meta, @eval_defmodule_error)}
+    {:ok, violation(acc, meta, eval_defmodule_error(acc.policy))}
   end
 
   defp handle({:alias, meta, args}, acc), do: {:ok, handle_alias(args, meta, acc)}
@@ -541,7 +544,7 @@ defmodule Beamlet.Scanner do
        when fun in [:defmodule, :defprotocol, :defimpl] do
     message =
       case acc.mode do
-        :eval -> @eval_defmodule_error
+        :eval -> eval_defmodule_error(acc.policy)
         :define -> @nested_error
       end
 
@@ -670,5 +673,13 @@ defmodule Beamlet.Scanner do
   defp violation(acc, meta, message) do
     line = if is_list(meta), do: Keyword.get(meta, :line, 0), else: 0
     %{acc | violations: [{line, message} | acc.violations]}
+  end
+
+  # Whether the redirect names a door the token has: a policy with no
+  # define tool gets told so, rather than sent to a tool it cannot see.
+  defp eval_defmodule_error(%Policy{tools: tools}) do
+    if :define in tools,
+      do: @eval_defmodule_error <> @define_hint,
+      else: @eval_defmodule_error <> @no_define_hint
   end
 end
