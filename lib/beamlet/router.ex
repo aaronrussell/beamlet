@@ -22,25 +22,36 @@ defmodule Beamlet.Router do
   `/_mcp` here, and the socket and asset paths below on the host's
   endpoint.
 
-  ## What the host's endpoint carries
+  ## What the host carries
 
   The pages agents build are LiveViews, and the endpoint serving them
-  needs what any LiveView app's endpoint has. `Beamlet.TestEndpoint`
-  in the library's test support is this list written down:
+  needs what any LiveView app's endpoint has. This is the whole list
+  of integration points; `Beamlet.TestEndpoint` in the library's test
+  support is it written down, and the standalone server in `server/`
+  is a copy.
 
-    * `Plug.Session`, since the browser pipeline fetches the session.
-    * The LiveView socket at `/_live`:
+  In the router:
+
+    * `forward "/", Beamlet.Router` as the last route.
+
+  In the endpoint:
+
+    * The LiveView socket at `/_live`, the path the root layout
+      (`Beamlet.Layouts`) connects to:
       `socket "/_live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]`.
-    * `Plug.Static` serving the LiveView JavaScript from the deps'
-      precompiled bundles, which the root layout (`Beamlet.Layouts`)
-      loads, so there is no asset pipeline to run:
-      `at: "/_assets/phoenix", from: {:phoenix, "priv/static"}, only: ~w(phoenix.mjs phoenix.mjs.map)`
-      and `at: "/_assets/phoenix_live_view", from: {:phoenix_live_view, "priv/static"}, only: ~w(phoenix_live_view.esm.js phoenix_live_view.esm.js.map)`.
+    * `plug Beamlet.Assets` before the parsers, serving the LiveView
+      JavaScript under `/_assets` from the deps' precompiled bundles.
     * `Plug.Parsers` with the JSON parser, for controller routes.
-    * `pubsub_server: Beamlet.PubSub` in the endpoint's config, so a
-      page can subscribe through `Host.PubSub`.
-    * `render_errors` naming an error view; `Beamlet.ErrorView` is a
-      plain one, or the host's own.
+    * `Plug.Session`, since the browser pipeline fetches the session.
+
+  In config:
+
+    * `config :beamlet, web: [endpoint: MyAppWeb.Endpoint]`, naming the
+      endpoint the routes are served through (`Beamlet.Config`).
+    * `pubsub_server: Beamlet.PubSub` on the endpoint, so a page can
+      subscribe through `Host.PubSub`.
+    * `render_errors` on the endpoint naming an error view;
+      `Beamlet.ErrorView` is a plain one, or the host's own.
   """
 
   use Phoenix.Router, helpers: false

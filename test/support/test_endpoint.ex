@@ -2,10 +2,10 @@ defmodule Beamlet.TestEndpoint do
   @moduledoc """
   The endpoint the suite serves a beamlet's routes through, and the
   written form of what a host's endpoint must carry (`Beamlet.Router`):
-  the session, the LiveView socket at `/_live`, the LiveView
-  JavaScript from the deps' bundles under `/_assets`, the JSON parser,
-  and a router whose last line forwards to `Beamlet.Router` at the
-  root. `Beamlet.Case` starts it after the beamlet.
+  the session, the LiveView socket at `/_live`, `Beamlet.Assets` for
+  the LiveView JavaScript under `/_assets`, the JSON parser, and a
+  router whose last line forwards to `Beamlet.Router` at the root.
+  `Beamlet.Case` starts it after the beamlet.
   """
 
   use Phoenix.Endpoint, otp_app: :beamlet
@@ -21,15 +21,7 @@ defmodule Beamlet.TestEndpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
-  plug Plug.Static,
-    at: "/_assets/phoenix",
-    from: {:phoenix, "priv/static"},
-    only: ~w(phoenix.mjs phoenix.mjs.map)
-
-  plug Plug.Static,
-    at: "/_assets/phoenix_live_view",
-    from: {:phoenix_live_view, "priv/static"},
-    only: ~w(phoenix_live_view.esm.js phoenix_live_view.esm.js.map)
+  plug Beamlet.Assets
 
   plug Plug.Parsers,
     parsers: [:json],

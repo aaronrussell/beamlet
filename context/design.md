@@ -1086,14 +1086,20 @@ suite that boots a beamlet per test from paying a forty-millisecond
 router compile each time; the sandbox empties the table between
 tests, so no reset fixture exists.
 
-**What the endpoint carries** is written down twice: as prose on
-`Beamlet.Router` and as `Beamlet.TestEndpoint` in the library's test
-support, which `Beamlet.Case` starts after every beamlet and the
-server will copy at step 17. The session, the LiveView socket at
-`/_live`, `Plug.Static` serving the LiveView JavaScript from the
-deps' precompiled bundles under `/_assets` so there is no build
-step, JSON parsers, `pubsub_server: Beamlet.PubSub`, and
-`render_errors`. `Beamlet.Layouts` is the root layout: CSRF token,
+**What the host carries** is written down twice: as the list of
+integration points on `Beamlet.Router` and as `Beamlet.TestEndpoint`
+in the library's test support, which `Beamlet.Case` starts after
+every beamlet and the server app copies. In the router, the root
+forward; in the endpoint, the session, the LiveView socket at
+`/_live`, `Beamlet.Assets` and JSON parsers; in config, the endpoint
+named under `:web`, `pubsub_server: Beamlet.PubSub` and
+`render_errors`. `Beamlet.Assets` is a `Plug.Builder` over two
+`Plug.Static` plugs serving the LiveView JavaScript from the deps'
+precompiled bundles under `/_assets`, so there is no build step; it
+is a plug on the host's endpoint rather than a forward inside
+`Beamlet.Router`, which would also work, because agent-installed
+JavaScript (§ 4) may grow it and how it is consumed is reviewed
+then. `Beamlet.Layouts` is the root layout: CSRF token,
 the two modules, the socket, Tailwind from its CDN, and nothing
 about how a page looks; styling needs the internet, accepted for a
 substrate with no bundler. `Beamlet.ErrorView` renders a status
@@ -1166,8 +1172,12 @@ Decided as each step arrives, not before:
   need a sentence on calling several prints in one eval, and
   whether a `print_environment` that runs them all earns its place
   or the footer is enough.
-- Deployment model, source-run or release (step 17). Decided in
-  principle at step 9: the library's only declaration surface is
+- Deployment model, source-run or release (step 17). The server app
+  itself landed early (2026-09-18) for testing with an MCP client:
+  endpoint, application module and config under one `BeamletServer`
+  namespace, no tests of its own, and in prod the data dir named by
+  `BEAMLET_DATA_DIR` in `runtime.exs`. Decided in principle at step
+  9: the library's only declaration surface is
   application config, and the server's release merges an optional
   operator config file from the data dir into it at boot through a
   config provider, a plain `import Config` file. An operator with a
@@ -1216,7 +1226,15 @@ Decided as each step arrives, not before:
   installed package to agent code.
 - Package-level denial in a policy (`deny_app`) and reloading
   policies without a restart, each when a policy needs it.
-- Static assets.
+- Static assets, and agent-installed JavaScript and CSS, with
+  colocated JS and CSS in agent modules as the likely shape.
+  `Beamlet.Assets` is where served files would grow. Colocated CSS
+  needs `config :phoenix_live_view, root_tag_attribute:` set in the
+  VM that compiles the module, which for agent modules is the
+  beamlet's, so the setting is the library's to make or require of
+  every host, not the server's; and both extract to files under
+  `_build` that a bundler is expected to pick up, which the
+  no-bundler substrate would have to serve itself.
 - The modern-era MCP protocol (2026-07-28); Anubis 2.0 is
   legacy-era and current clients negotiate it.
 - Any dependency on Omni packages. If `omni` is ever added, it is as

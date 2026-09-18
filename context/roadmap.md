@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-17 (step 15e done)
+**Last updated:** 2026-09-18 (server app landed ahead of step 17)
 
 ---
 
@@ -130,7 +130,10 @@ the end.
 17. **Server app and Docker image.** Deployment model decided here.
     The release ships `bin/beamlet` calling `Beamlet.CLI.main/1` and
     a config provider merging an optional operator config file from
-    the data dir.
+    the data dir. The app itself, `server/` with `BeamletServer`,
+    landed on 2026-09-18 ahead of the planning pass, for testing
+    with an MCP client; `Beamlet.Assets` moved the static plugs into
+    the library with it.
 18. **Verify** against the M14 walkthrough over MCP.
 19. **Beyond the port:** supervised processes, agent-installed
     dependencies and who grants them, static assets, the admin UI.
