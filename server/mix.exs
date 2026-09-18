@@ -9,7 +9,8 @@ defmodule BeamletServer.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      releases: releases()
     ]
   end
 
@@ -43,6 +44,18 @@ defmodule BeamletServer.MixProject do
       {:phoenix_live_view, "~> 1.2"},
       {:jason, "~> 1.4"},
       {:bandit, "~> 1.5"}
+    ]
+  end
+
+  # Agents read module docs through print_docs, and the policy tells
+  # library internals from public surface by @moduledoc false, both
+  # from the Docs chunk that a release strips by default.
+  defp releases do
+    [
+      beamlet_server: [
+        include_executables_for: [:unix],
+        strip_beams: [keep: ["Docs"]]
+      ]
     ]
   end
 

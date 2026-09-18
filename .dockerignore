@@ -1,0 +1,14 @@
+.git
+_build
+deps
+data
+tmp
+doc
+cover
+context
+test
+server/_build
+server/deps
+server/tmp
+**/.DS_Store
+**/*.md

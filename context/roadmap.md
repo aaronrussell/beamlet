@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-18 (server app landed ahead of step 17)
+**Last updated:** 2026-09-18 (step 17 done; operator config file is step 19)
 
 ---
 
@@ -127,15 +127,14 @@ the end.
     listing does not. Reviews whether `~docs/`, documentation served
     as read-only files through `Host.File` (design § 4), is needed
     yet.
-17. **Server app and Docker image.** Deployment model decided here.
-    The release ships `bin/beamlet` calling `Beamlet.CLI.main/1` and
-    a config provider merging an optional operator config file from
-    the data dir. The app itself, `server/` with `BeamletServer`,
-    landed on 2026-09-18 ahead of the planning pass, for testing
-    with an MCP client; `Beamlet.Assets` moved the static plugs into
-    the library with it.
+17. **Server app and Docker image.** The release ships `bin/beamlet`
+    calling `Beamlet.CLI.main/1`. *Done 2026-09-18.*
 18. **Verify** against the M14 walkthrough over MCP.
-19. **Beyond the port:** supervised processes, agent-installed
+19. **Operator config file.** A config provider merging an optional
+    `config.exs` from the data dir into application config at boot,
+    so a container declares policies without a rebuild; decided in
+    principle at step 9 (design § 3).
+20. **Beyond the port:** supervised processes, agent-installed
     dependencies and who grants them, static assets, the admin UI.
 
 ## Done
@@ -380,3 +379,17 @@ the end.
   cases came across under `Beamlet.Case`. Design § 2 Web gained the
   agent face; Discovery and Policy updated; § 3 notes the print
   question for step 16.
+- **Step 17** (2026-09-18): `server/` with `BeamletServer`, the
+  smallest Phoenix app that runs a beamlet, landed first for testing
+  with an MCP client, and `Beamlet.Assets` moved the static plugs
+  into the library. Then the multi-stage Dockerfile on the hexpm
+  Debian builder and slim runner with git, the release keeping the
+  Docs chunk and always serving, `bin/beamlet` as an overlay over
+  `eval`, `runtime.exs` with `BEAMLET_DATA_DIR`, `BEAMLET_URL` and a
+  secret generated into the data dir, `force_ssl` dropped, and
+  `fly.toml` for one machine and one volume. Verified with an MCP
+  inspector against a local container and a Fly machine. The first
+  image missed the library's `priv`, so the migrator reported itself
+  up on an empty database; a boot check for the migrations dir is a
+  candidate. The operator config file became step 19. Design § 2
+  Layout and § 3 Deployment record it.

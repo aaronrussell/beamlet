@@ -64,6 +64,7 @@ beamlet/                 the repo and the hex package
   lib/beamlet/mcp/       Beamlet.MCP.*   Anubis server and tool components
   server/                beamlet_server  the standalone Phoenix app, path dep on `..`
   Dockerfile             builds and runs the server
+  fly.toml               one machine, one volume, for the image on Fly
 ```
 
 The library is a **child spec** a host starts in its own supervision
@@ -1172,12 +1173,32 @@ Decided as each step arrives, not before:
   need a sentence on calling several prints in one eval, and
   whether a `print_environment` that runs them all earns its place
   or the footer is enough.
-- Deployment model, source-run or release (step 17). The server app
-  itself landed early (2026-09-18) for testing with an MCP client:
-  endpoint, application module and config under one `BeamletServer`
-  namespace, no tests of its own, and in prod the data dir named by
-  `BEAMLET_DATA_DIR` in `runtime.exs`. Decided in principle at step
-  9: the library's only declaration surface is
+- Deployment model (step 17). Settled 2026-09-18 as a release in a
+  Docker image, with the operator config file still to come. The
+  server app landed first for testing with an MCP client: endpoint,
+  application module and config under one `BeamletServer` namespace,
+  no tests of its own. The image is multi-stage on the hexpm Debian
+  builder and the matching slim runner, since the release carries
+  ERTS and the SQLite NIF built against the builder's libc; the
+  runner adds git, which the code audit shells out to, and runs as
+  the `beamlet` user, uid 1000. The release keeps the Docs chunk
+  (`strip_beams: [keep: ["Docs"]]`), since `print_docs` and the
+  policy's `@moduledoc false` filter read it, and always serves: no
+  `PHX_SERVER` toggle. The operator surface is three variables and a
+  volume: `BEAMLET_DATA_DIR`, `/data` in the image, holds everything
+  including the cookie secret, generated on first boot into
+  `secret_key_base` when `SECRET_KEY_BASE` is unset; `BEAMLET_URL`,
+  one variable for host, port and scheme, which LiveView's origin
+  check keys on; `PORT`. TLS is the proxy's; `force_ssl` is
+  compile-time config and would break plain HTTP on a LAN, so it is
+  out. `bin/beamlet` is an overlay script over the release's `eval`,
+  which passes trailing arguments to `System.argv/0`, runs the config
+  providers and loads the release without starting it; the CLI
+  starts the system half itself, so the script works on a fresh
+  volume and beside a running server. `fly.toml` at the root is one
+  machine in one region with the volume at `/data` and auto-stop off,
+  since a beamlet's modules are compiled into the running VM.
+  Decided in principle at step 9 and now step 19: the library's only declaration surface is
   application config, and the server's release merges an optional
   operator config file from the data dir into it at boot through a
   config provider, a plain `import Config` file. An operator with a

@@ -1,0 +1,26 @@
+# One machine, one volume: a beamlet keeps everything under /data and
+# compiles agent code into the VM it is running in, so there is
+# nothing to scale out and nothing to auto-stop.
+app = "beamlet"
+primary_region = "lhr"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  BEAMLET_URL = "https://beamlet.fly.dev"
+
+[[mounts]]
+  source = "beamlet_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

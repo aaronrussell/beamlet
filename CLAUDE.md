@@ -28,6 +28,8 @@ server/              beamlet_server  separate mix project: the standalone
                                      Phoenix app, path dep on `..`
 data/                dev data dir (gitignored)
 context/             design notes
+Dockerfile           builds and runs the server; context is the repo root
+fly.toml             the image on Fly: one machine, one volume
 ```
 
 Two audiences, two surfaces: `Host.*` is what agent code reads and

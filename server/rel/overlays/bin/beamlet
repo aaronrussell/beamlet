@@ -1,0 +1,8 @@
+#!/bin/sh
+# The operator CLI (Beamlet.CLI) in a release: `bin/beamlet users` and
+# friends. `eval` runs the config providers and loads the release
+# without starting it; the CLI starts the system half of a beamlet
+# itself, so this works on a fresh volume and beside a running server.
+set -e
+cd -P -- "$(dirname -- "$0")/.."
+exec bin/beamlet_server eval 'Logger.configure(level: :warning); if Beamlet.CLI.main(System.argv()) != :ok, do: System.halt(1)' "$@"
