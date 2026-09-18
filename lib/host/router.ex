@@ -1,12 +1,13 @@
 defmodule Host.Router do
   @moduledoc """
-  Mount your modules on your beamlet's web surface: URLs served live
-  by your beamlet, answered by modules you defined with `define`.
+  Mount your modules at URLs your beamlet serves.
 
   `live/2` mounts a LiveView page; `get/3`, `post/3`, `put/3`,
   `patch/3` and `delete/3` mount a controller action for that verb.
   Routes persist across restarts, and every route is public: anyone
-  who can reach your beamlet can request it.
+  who can reach your beamlet can request it. Redefining a mounted
+  module with `replace: true` updates what its routes serve; there
+  is no need to unmount and remount.
 
   Two words to keep apart. A *path* is what you choose and what
   every function here takes: `"/todos"`, never carrying a prefix the
@@ -41,11 +42,9 @@ defmodule Host.Router do
   @verbs [:get, :post, :put, :patch, :delete]
 
   @doc """
-  Mounts a LiveView page at `path`, e.g.
-  `live("/todos", Todo.PageLive)`. Prints the route and the URL it
-  is served at.
+  Mounts a LiveView page at `path`, e.g. `live("/todos", Todo.PageLive)`.
 
-  The module must be a LiveView (`use Host.Web, :live_view`). An
+  Prints the route and the URL it is served at. The module must be a LiveView (`use Host.Web, :live_view`). An
   optional live action arrives as `socket.assigns.live_action`, not
   in the mount params, so one LiveView can serve several paths:
   `live("/todos/new", Todo.PageLive, :new)`.
@@ -68,11 +67,10 @@ defmodule Host.Router do
   end
 
   @doc """
-  Mounts a controller action for GET requests at `path`, e.g.
-  `get("/report", Report.Api, :show)`, called as
-  `show(conn, params)`. Prints the route and the URL it is served at.
+  Mounts a controller action for GET at `path`, e.g. `get("/report", Report.Api, :show)`.
 
-  Controller routes answer JSON/webhook-style requests: no session,
+  The action is called as `show(conn, params)`; the route and its
+  URL are printed. Controller routes answer JSON/webhook-style requests: no session,
   no CSRF, so external services can call them directly. The module
   must be a Phoenix controller (`use Host.Web, :controller`).
   """
@@ -80,39 +78,38 @@ defmodule Host.Router do
   def get(path, module, action), do: mount_action(:get, path, module, action)
 
   @doc """
-  Mounts a controller action for POST requests at `path`, e.g.
-  `post("/hooks/github", Hooks.Github, :create)`. Prints the route
-  and its URL, the one external services should call.
+  Mounts a controller action for POST at `path`, e.g. `post("/hooks/github", Hooks.Github, :create)`.
+
+  Prints the route and its URL, the one external services should
+  call. See `get/3` for what a controller route is.
   """
   @spec post(String.t(), module(), atom()) :: :ok
   def post(path, module, action), do: mount_action(:post, path, module, action)
 
   @doc """
-  Mounts a controller action for PUT requests at `path`. Prints the
-  route and the URL it is served at.
+  Mounts a controller action for PUT at `path`; see `get/3`.
   """
   @spec put(String.t(), module(), atom()) :: :ok
   def put(path, module, action), do: mount_action(:put, path, module, action)
 
   @doc """
-  Mounts a controller action for PATCH requests at `path`. Prints
-  the route and the URL it is served at.
+  Mounts a controller action for PATCH at `path`; see `get/3`.
   """
   @spec patch(String.t(), module(), atom()) :: :ok
   def patch(path, module, action), do: mount_action(:patch, path, module, action)
 
   @doc """
-  Mounts a controller action for DELETE requests at `path`. Prints
-  the route and the URL it is served at.
+  Mounts a controller action for DELETE at `path`; see `get/3`.
   """
   @spec delete(String.t(), module(), atom()) :: :ok
   def delete(path, module, action), do: mount_action(:delete, path, module, action)
 
   @doc """
-  Unmounts every route at `path`, e.g. `unmount("/todos")`: the
-  page or action stops being served. Pass `verb: :post` to remove
-  only that verb's route and leave the others mounted. Prints each
-  route removed.
+  Unmounts every route at `path`, e.g. `unmount("/todos")`.
+
+  The page or action stops being served, and each route removed is
+  printed. Pass `verb: :post` to remove only that verb's route and
+  leave the others mounted.
   """
   @spec unmount(String.t(), keyword()) :: :ok
   def unmount(path, opts \\ []) do
@@ -139,10 +136,12 @@ defmodule Host.Router do
   end
 
   @doc """
-  The browser path for `path`: `path("/todos")` is `"/todos"` on a
-  beamlet serving at the root, and `"/app/todos"` on one whose
-  operator fenced agent routes under `/app`. In a template,
-  `~p"/todos"` is the same thing; use this form in code.
+  The browser path for `path`, e.g. `path("/todos")`.
+
+  It is `"/todos"` on a beamlet serving at the root, and
+  `"/app/todos"` on one whose operator fenced agent routes under
+  `/app`. In a template, `~p"/todos"` is the same thing; use this
+  form in code.
   """
   @spec path(String.t()) :: String.t()
   def path(path) do
@@ -151,16 +150,18 @@ defmodule Host.Router do
   end
 
   @doc """
-  The full URL for `path`, e.g. `url("/todos")` is
-  `"http://localhost:4000/todos"`. This is what you show people and
-  register with external services.
+  The full URL for `path`, e.g. `url("/todos")`.
+
+  Something like `"http://localhost:4000/todos"`: what you show
+  people and register with external services.
   """
   @spec url(String.t()) :: String.t()
   def url(path), do: base_url() <> path(path)
 
   @doc ~S"""
-  The `~p` sigil: the browser path for a route path, for links and
-  forms in templates, `<.link navigate={~p"/todos/#{id}"}>`. It is
+  The `~p` sigil: the browser path for a route path in a template.
+
+  For links and forms, `<.link navigate={~p"/todos/#{id}"}>`. It is
   `path/1` in sigil form: it prepends the operator's prefix, if any,
   and nothing else, so there is no compile-time route check. Comes
   imported with `use Host.Web`.
@@ -187,10 +188,9 @@ defmodule Host.Router do
   end
 
   @doc """
-  Calls a mounted route in this process and returns its response,
-  e.g. `call(:get, "/todos")` or
-  `call(:post, "/hooks/github", %{"action" => "opened"})`.
+  Calls a mounted route and returns its response, e.g. `call(:get, "/todos")`.
 
+  Or `call(:post, "/hooks/github", %{"action" => "opened"})`.
   `path` is the path you mounted. `data` is a map or a string: on
   GET a map becomes the query string; on other verbs a map is sent
   as a JSON body and a string as the raw body. Pass
@@ -227,10 +227,11 @@ defmodule Host.Router do
   end
 
   @doc """
-  Prints the mounted routes: verb, path, the module (and action)
-  serving each, and the user who mounted it, under the base URL they
-  are served from. A route whose module is gone or no longer fits it
-  is marked as not served.
+  Prints the mounted routes.
+
+  Verb, path, the module (and action) serving each, and the user
+  who mounted it, under the base URL they are served from. A route
+  whose module is gone or no longer fits it is marked as not served.
   """
   @spec print_routes() :: :ok
   def print_routes do

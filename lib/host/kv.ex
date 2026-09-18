@@ -1,9 +1,9 @@
 defmodule Host.KV do
   @moduledoc """
-  Durable key/value storage for small state: a cursor, a last-run
-  time, a preference. Any Elixir term under a string key.
+  Durable key/value storage for small state under string keys.
 
-  Values come back exactly as stored. Keys are one shared namespace
+  A cursor, a last-run time, a preference: any Elixir term, and
+  values come back exactly as stored. Keys are one shared namespace
   across every agent and module on your beamlet, so prefix yours
   with your domain, e.g. `"poller:last_id"`. The store lives in the
   agent database beside your own tables, so a write here inside a

@@ -1,8 +1,7 @@
 defmodule Host.Code do
   @moduledoc """
-  Discover and manage your beamlet: the modules your code can call,
-  their documentation, the source of modules defined before, and
-  removal of modules no longer needed.
+  Discover what is on your beamlet, read its docs and source, and
+  remove modules.
 
   Start with `print_modules/0`. The `print_*` functions print what
   they find and return `:ok`; `remove/1` acts silently and returns
@@ -100,10 +99,10 @@ defmodule Host.Code do
   end
 
   @doc """
-  Removes modules previously defined with `define`: unloaded from
-  your beamlet, files deleted, e.g. `remove(Shopping.List)`.
+  Removes modules defined with `define`, e.g. `remove(Shopping.List)`.
 
-  Accepts a module or a list of modules removed together as one
+  The modules are unloaded from your beamlet and their files
+  deleted. Accepts a module or a list of modules removed together as one
   atomic set. Removal is refused while any module outside the set
   depends on a target; the error names the dependents. Remove or
   rework dependents first, or pass the whole group in one call:

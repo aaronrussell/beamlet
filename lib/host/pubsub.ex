@@ -1,10 +1,10 @@
 defmodule Host.PubSub do
   @moduledoc """
-  Publish/subscribe on your beamlet's shared message bus: a process
-  subscribes to a topic string, and every message broadcast on that
-  topic is delivered to it as an ordinary process message.
+  Publish/subscribe on your beamlet's shared message bus.
 
-  A LiveView subscribes in `mount/3` and handles the message in
+  A process subscribes to a topic string, and every message
+  broadcast on that topic is delivered to it as an ordinary process
+  message. A LiveView subscribes in `mount/3` and handles the message in
   `handle_info/2`; a controller action broadcasts:
 
       def mount(_params, _session, socket) do

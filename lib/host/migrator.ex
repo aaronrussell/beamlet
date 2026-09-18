@@ -31,6 +31,11 @@ defmodule Host.Migrator do
   by table name and call `Host.Repo` by name after `flush()`; do not
   reference schema modules, which change while a migration is frozen
   history.
+
+  To change a migration that has run, `rollback/0`, replace it and
+  `migrate/0` again. SQLite cannot change a column's type or drop a
+  constraint: create a new table, copy the rows with an insert from
+  a select, drop the old table and rename the new one.
   """
 
   alias Beamlet.Migrations

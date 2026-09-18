@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-18 (step 17 done; operator config file is step 19)
+**Last updated:** 2026-09-18 (step 16 done, after 17; operator config file is step 19)
 
 ---
 
@@ -126,7 +126,7 @@ the end.
     survive an eval-only token, since they stay static while the
     listing does not. Reviews whether `~docs/`, documentation served
     as read-only files through `Host.File` (design § 4), is needed
-    yet.
+    yet. *Done 2026-09-18, after step 17.*
 17. **Server app and Docker image.** The release ships `bin/beamlet`
     calling `Beamlet.CLI.main/1`. *Done 2026-09-18.*
 18. **Verify** against the M14 walkthrough over MCP.
@@ -379,6 +379,24 @@ the end.
   cases came across under `Beamlet.Case`. Design § 2 Web gained the
   agent face; Discovery and Policy updated; § 3 notes the print
   question for step 16.
+- **Step 16** (2026-09-18, after step 17): the pass settled a
+  ladder for where context lives, instructions, description,
+  moduledoc, teaching error, print, and placed every piece of the
+  reference's conventions block on it. The instructions became a
+  1.4KB pointer block that speaks of `eval` throughout and of
+  `define` as "when it is in your tool list", with the five slips
+  the spike saw; the descriptions became call-time contracts with
+  the configured limits interpolated; the reference's Web and Data
+  conventions moved into the `Host.Web`, `Host.Repo`, `Host.Migrator`
+  and `Host.Router` moduledocs; every `Host.*` moduledoc and `@doc`
+  opens with one short sentence, since the listing and the function
+  index render the first paragraph; and the listing's framework
+  section became a wrapped list of names. The byte tests from step 4
+  stand as the only tests on the copy. `~docs/` stays deferred with
+  a trigger, `print_environment` and the `maxResultSizeChars`
+  annotation were declined, and a CLI command for reading the copy
+  is noted as a likely small addition. Design § 2 MCP records the
+  ladder and the first-paragraph rule; § 3 and § 4 updated.
 - **Step 17** (2026-09-18): `server/` with `BeamletServer`, the
   smallest Phoenix app that runs a beamlet, landed first for testing
   with an MCP client, and `Beamlet.Assets` moved the static plugs

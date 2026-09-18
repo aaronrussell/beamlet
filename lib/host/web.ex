@@ -1,21 +1,42 @@
 defmodule Host.Web do
-  @moduledoc """
-  The entry point for modules on your beamlet's web surface. One
-  `use` line brings in the right framework for the module's role,
-  plus the `~p` sigil for paths in templates:
+  @moduledoc ~S'''
+  The `use` line for a module on your beamlet's web surface.
+
+  One line brings in the framework for the module's role, plus
+  `Phoenix.HTML`, the `JS` alias and the `~p` sigil for paths in
+  templates:
 
       defmodule Todo.PageLive do
         use Host.Web, :live_view
-        ...
+
+        def mount(_params, _session, socket) do
+          {:ok, assign(socket, todos: Todo.List.all())}
+        end
+
+        def render(assigns) do
+          ~H"""
+          <ul :for={todo <- @todos}><li>{todo.name}</li></ul>
+          <.link navigate={~p"/todos/new"}>Add one</.link>
+          """
+        end
       end
 
-  `:live_view` for an HTML page (mounted with `Host.Router.live/2`);
-  `:controller` for JSON API and webhook actions (mounted with the
-  `Host.Router` function named after the HTTP verb, JSON-only, no
-  CSRF); `:live_component` for a stateful component a page renders
-  with `<.live_component>`; `:html` for a module of shared function
-  components.
-  """
+  `:live_view` for an HTML page, mounted with `Host.Router.live/2`;
+  `:controller` for JSON API and webhook actions, mounted with the
+  `Host.Router` function named after the HTTP verb, JSON-only with
+  no session or CSRF; `:live_component` for a stateful component a
+  page renders with `<.live_component>`; `:html` for a module of
+  shared function components.
+
+  A template is a `~H` sigil in `render/1`; `~p` is for the paths
+  inside it, never the template itself. `<.link navigate={~p"..."}>`
+  or `<.link patch={...}>` keeps navigation on the LiveView socket
+  where a plain `<a href>` reloads the page. Pages render inside
+  your beamlet's layout with Tailwind utility classes available; no
+  stylesheet or asset setup is needed. For live updates, broadcast
+  from the action that receives the change with `Host.PubSub` and
+  subscribe in the LiveView's `mount/3`.
+  '''
 
   @doc false
   def controller do

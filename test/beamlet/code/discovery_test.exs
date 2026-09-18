@@ -72,16 +72,17 @@ defmodule Beamlet.Code.DiscoveryTest do
 
       assert {:ok, text} = Discovery.list(effective())
 
-      assert text =~ ~r/^  Host\.Code — Discover and manage your beamlet/m
+      assert text =~ ~r/^  Host\.Code — Discover what is on your beamlet/m
 
       assert text =~
-               ~r/^  Host\.PubSub — Publish\/subscribe on your beamlet's shared message bus/m
+               ~r/^  Host\.PubSub — Publish\/subscribe on your beamlet's shared message bus\.$/m
 
       assert text =~ "  #{ns}.Greeter — Greets people warmly."
       refute text =~ "second paragraph"
-      assert text =~ ~r/^  Phoenix\.Controller — /m
-      assert text =~ ~r/^  Phoenix\.LiveView — /m
-      assert text =~ ~r/^  Plug\.Conn — /m
+      assert text =~ ~r/\bPhoenix\.Controller, /
+      assert text =~ ~r/\bPhoenix\.LiveView,/
+      assert text =~ ~r/\bPlug\.Conn$/m
+      refute text =~ ~r/^  Phoenix\.LiveView — /m
       refute text =~ "Phoenix.Flash (:phoenix)"
       assert text =~ ~r/^  Req \(:req\) — Req is a batteries-included HTTP client/m
       assert text =~ ~r/^  Jason \(:jason\) — A blazing fast JSON parser/m
@@ -91,13 +92,13 @@ defmodule Beamlet.Code.DiscoveryTest do
       refute text =~ ~r/^  Macro\b/m
     end
 
-    test "the data surface: Host.Repo once, Ecto as framework lines, no exceptions" do
+    test "the data surface: Host.Repo once, Ecto as framework names, no exceptions" do
       assert {:ok, text} = Discovery.list(effective())
 
       assert text =~ ~r/^  Host\.Repo — The agent database/m
-      assert text =~ ~r/^  Ecto\.Changeset — /m
-      assert text =~ ~r/^  Ecto\.Migration — /m
-      assert text =~ ~r/^  Ecto\.Query\.API — /m
+      assert text =~ ~r/^  Ecto, Ecto\.Changeset, Ecto\.Enum, Ecto\.Migration, /m
+      assert text =~ ~r/\bEcto\.Query\.API, /
+      refute text =~ ~r/^  Ecto\.Changeset — /m
       refute text =~ "Ecto.NoResultsError"
       refute text =~ "Ecto.Repo"
       refute text =~ ~r/^    insert\(/m
@@ -109,7 +110,7 @@ defmodule Beamlet.Code.DiscoveryTest do
       headings = [
         "Defined modules (define):",
         "Host modules (your beamlet's stdlib):",
-        "Framework modules (what you write pages and data against):",
+        "Framework modules (what you write pages and data against; print_docs for any):",
         "Libraries (every module of each package is available):"
       ]
 
@@ -177,7 +178,9 @@ defmodule Beamlet.Code.DiscoveryTest do
       assert text =~
                "Defined modules (define):\n  (none yet — build something durable with define)"
 
-      assert text =~ "Framework modules (what you write pages and data against):\n  (none)"
+      assert text =~
+               "Framework modules (what you write pages and data against; print_docs for any):\n  (none)"
+
       assert text =~ "Libraries (every module of each package is available):\n  (none)"
     end
   end

@@ -35,15 +35,33 @@ defmodule Beamlet.MCP.Server do
   component(Beamlet.MCP.Eval)
 
   @instructions """
-  This is your beamlet: a running Elixir application you extend from
-  the inside. Two tools. `eval` evaluates Elixir code and returns the
-  result; `define` compiles module definitions into the running
-  system and keeps them across restarts.
+  These tools work on your beamlet: a running Elixir application you
+  extend from the inside. They apply only when working on it.
 
-  Start with `eval`: `Host.Code.print_modules()` lists what has been
-  defined on this beamlet and `Host.Code.print_policy()` what your
-  code may call. A refused call comes back as an error saying what
-  to use instead.
+  `eval` evaluates Elixir code on your beamlet and returns the
+  result. `define`, when it is in your tool list, compiles module
+  definitions into the running system and keeps them across
+  restarts; anything worth calling again belongs in a module.
+
+  Start with `eval`. `Host.Code.print_modules()` lists what exists,
+  `Host.Code.print_docs(Module)` prints the documentation of any
+  module you may call, and `Host.Code.print_policy()` shows what your
+  code may not. A refused call comes back as an error saying what to
+  use instead. The `Host.*` modules are the stdlib: files, key/value
+  state, the agent database and its migrations, pubsub and the web
+  surface. Each one's docs carry the conventions for its area.
+
+  Worth knowing before the first call:
+  - Each `eval` starts with fresh bindings; nothing carries over from
+    an earlier call except what you defined or stored.
+  - The `print_*` functions print for you to read and return `:ok`.
+    Several fit in one `eval`.
+  - Ecto's query builders are macros: put `import Ecto.Query` at the
+    top of any eval or module that queries.
+  - Your beamlet is shared with other users and agents. Read what
+    exists before building, and a module's source before replacing it.
+  - Verify before reporting done: call a mounted route with
+    `Host.Router.call(verb, path)`, query the rows you wrote.
   """
 
   @impl true

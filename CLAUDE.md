@@ -67,6 +67,7 @@ Run the affected tests while working and `mix precommit` before claiming done.
 
 - Public modules have a `@moduledoc`; internal ones `@moduledoc false`. This matters more here than usual: `@moduledoc false` is also how policy tells library internals from public surface, and module docs are what agents read to discover the environment.
 - Public functions have `@doc` and `@spec`; public types a `@typedoc`. Rely on the spec for types, do not repeat them in prose.
+- On `Host.*` modules, the first paragraph of a `@moduledoc` or `@doc` is one short sentence: `print_modules` and the function index render it. The explanation starts in the second paragraph. A convention about one module lives in that module's moduledoc, not in the server instructions.
 - Tone: friendly, curious, technically fluent. Concrete, example-led, no AI hype.
 
 ## Testing

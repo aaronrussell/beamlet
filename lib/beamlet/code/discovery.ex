@@ -26,7 +26,8 @@ defmodule Beamlet.Code.Discovery do
 
   @defined_heading "Defined modules (define):"
   @host_heading "Host modules (your beamlet's stdlib):"
-  @framework_heading "Framework modules (what you write pages and data against):"
+  @framework_heading "Framework modules (what you write pages and data against; " <>
+                       "print_docs for any):"
   @libraries_heading "Libraries (every module of each package is available):"
 
   @footer "Host.Code.print_docs(Module) for documentation; Host.Router.print_routes() " <>
@@ -54,7 +55,7 @@ defmodule Beamlet.Code.Discovery do
             "(none yet — build something durable with define)"
           ),
           section(@host_heading, module_lines(host_mods), "(none)"),
-          section(@framework_heading, module_lines(framework_mods), "(none)"),
+          section(@framework_heading, framework_lines(framework_mods), "(none)"),
           section(@libraries_heading, library_lines(libraries), "(none)"),
           @footer
         ],
@@ -307,6 +308,31 @@ defmodule Beamlet.Code.Discovery do
   defp elixir_lib_root, do: :elixir |> :code.lib_dir() |> List.to_string() |> Path.dirname()
 
   defp module_lines(mods), do: Enum.map(mods, &entry_line(&1, moduledoc_first_line(&1)))
+
+  # Names only, wrapped: the framework modules are ones the model
+  # knows, and their moduledoc openers say nothing a name does not.
+  @wrap_at 76
+
+  defp framework_lines([]), do: []
+
+  defp framework_lines(mods) do
+    mods
+    |> Enum.map(&inspect/1)
+    |> Enum.reduce([], fn
+      name, [] ->
+        [name]
+
+      name, [line | rest] when byte_size(line) + byte_size(name) + 2 > @wrap_at ->
+        [name, line | rest]
+
+      name, [line | rest] ->
+        [line <> ", " <> name | rest]
+    end)
+    |> Enum.reverse()
+    |> Enum.join(",\n")
+    |> String.split("\n")
+    |> Enum.map(&("  " <> &1))
+  end
 
   defp entry_line(mod, summary, suffix \\ "")
   defp entry_line(mod, nil, suffix), do: "  #{inspect(mod)}#{suffix}"
