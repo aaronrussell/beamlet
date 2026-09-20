@@ -17,18 +17,30 @@ defmodule Beamlet.MCP.Eval do
     """
     Evaluate Elixir code on your beamlet and return the result.
 
-    The standard library, the `Host.*` stdlib and every module defined
-    on this beamlet are callable; what else is allowed is set by your
-    policy, and a refused call is an error naming the alternative.
-    Each call is a fresh evaluation with empty bindings.
+    Your beamlet is a running Elixir application you extend from the
+    inside. Start here: `Host.Code.print_modules()` lists what exists,
+    `Host.Code.print_docs(Module)` prints the documentation of any
+    module you may call, and `Host.Code.print_policy()` shows what
+    your code may not. The `Host.*` modules are the stdlib: files,
+    key/value state, the agent database and its migrations, pubsub
+    and the web surface; each one's docs carry the conventions for
+    its area. Everything defined on this beamlet is callable too, and
+    a refused call is an error naming the alternative.
+
+    Worth knowing: each call is a fresh evaluation with empty
+    bindings; the `print_*` functions print and return `:ok`, and
+    several fit in one call; put `import Ecto.Query` at the top of
+    any code that queries; the beamlet is shared with other users and
+    agents, so read what exists before building; verify before
+    reporting done, with `Host.Router.call(verb, path)` on a route
+    and a query on the rows you wrote.
 
     The result is whatever the code printed, then `=> ` and the
-    inspected value of the last expression, cut at
-    #{kb(limits[:max_output])}. End with `:ok` when only the printed
-    output matters, and look at large data with
+    inspected value of the last expression; the output cap is
+    #{kb(limits[:max_output])} and the timeout #{seconds(limits[:timeout])},
+    after which you get what was printed up to then. End with `:ok`
+    when only the printed output matters, and look at large data with
     `IO.inspect(data, limit: 20)` rather than returning it whole.
-    Evaluation stops after #{seconds(limits[:timeout])} or on runaway
-    memory, and you get what was printed up to then.
     """
   end
 

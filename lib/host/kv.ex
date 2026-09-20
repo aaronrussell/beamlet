@@ -20,8 +20,11 @@ defmodule Host.KV do
 
   Anything you would filter, sort or join on belongs in a table of
   its own, through a migration (`Host.Migrator`) and an
-  `Ecto.Schema`. Reads return the value or a default; `fetch/1` is
-  the one that tells a stored `nil` from a missing key.
+  `Ecto.Schema`, and so does a total you increment: count the rows,
+  or keep a counter row the database bumps in one upsert, since a
+  read-increment-write here loses updates under concurrent requests.
+  Reads return the value or a default; `fetch/1` is the one that
+  tells a stored `nil` from a missing key.
   """
 
   import Ecto.Query

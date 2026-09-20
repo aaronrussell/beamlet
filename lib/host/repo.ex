@@ -13,7 +13,7 @@ defmodule Host.Repo do
         schema "shopping_items" do
           field :name, :string
           field :done, :boolean, default: false
-          timestamps()
+          timestamps(type: :utc_datetime)
         end
 
         @doc "Casts name and done; name is required."

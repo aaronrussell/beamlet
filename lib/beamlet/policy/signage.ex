@@ -32,7 +32,9 @@ defmodule Beamlet.Policy.Signage do
     concurrency:
       {"process primitives are withheld as a family; there is no sibling to reach for", nil},
     confidentiality: {"environment and application config may hold credentials", nil},
-    eval: {"durable code is made with the define tool", {:tool, :define}},
+    eval:
+      {"durable code is made with the define tool, and Host.Code.print_modules() " <>
+         "shows what is on your beamlet", {:tool, :define}},
     routing: {"the URL surface is managed through Host.Router", Host.Router},
     pubsub: {"publish/subscribe goes through Host.PubSub", Host.PubSub},
     migrations: {"migrations are run through Host.Migrator", Host.Migrator},

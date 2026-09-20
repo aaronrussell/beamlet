@@ -19,9 +19,12 @@ defmodule Beamlet.MCP.Define do
     limits = Beamlet.Config.define()
 
     """
-    Define one or more modules on your beamlet: compiled into the
-    running system, kept on disk and reloaded at boot, callable from
-    `eval` and from other modules straight away.
+    Define modules on your beamlet: durable Elixir code, compiled and kept.
+
+    The modules are compiled into the running system, kept on disk
+    and reloaded at boot, callable from `eval` and from other
+    modules straight away. Explore with `eval` first:
+    `Host.Code.print_modules()` shows what exists.
 
     The code is top-level `defmodule`s only: no loose expressions, no
     nested modules. `Beamlet.*` and `Host.*` are reserved; pick clear

@@ -138,6 +138,15 @@ defmodule Beamlet.ScannerTest do
       message = scan_error("Meal.Plan.plan_item(\"pasta\", 2)")
       assert message =~ "nothing named Meal.Plan exists on your beamlet"
       assert message =~ "check the name, or define it first"
+    end
+
+    test "a guessed Host module is pointed at the listing, not at define" do
+      message = scan_error("Host.help()")
+      assert message =~ "nothing named Host exists on your beamlet"
+      assert message =~ "Host.Code.print_modules() lists the Host modules"
+      refute message =~ "define it first"
+
+      assert scan_error("Host.Files.read(\"x\")") =~ "Host.Code.print_modules() lists"
       refute message =~ "not permitted"
     end
 

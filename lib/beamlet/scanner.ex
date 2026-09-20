@@ -638,13 +638,24 @@ defmodule Beamlet.Scanner do
   """
   @spec denied_module(Policy.t(), module()) :: String.t()
   def denied_module(%Policy{} = policy, module) do
-    if Code.ensure_loaded?(module) do
-      "#{inspect(module)} is not permitted by your policy#{hint(Signage.hint(policy, module))}"
-    else
-      "nothing named #{inspect(module)} exists on your beamlet — " <>
-        "check the name, or define it first"
+    cond do
+      Code.ensure_loaded?(module) ->
+        "#{inspect(module)} is not permitted by your policy#{hint(Signage.hint(policy, module))}"
+
+      host_name?(module) ->
+        "nothing named #{inspect(module)} exists on your beamlet — " <>
+          "Host.Code.print_modules() lists the Host modules and Host.Code.print_docs(Module) " <>
+          "their functions"
+
+      true ->
+        "nothing named #{inspect(module)} exists on your beamlet — " <>
+          "check the name, or define it first"
     end
   end
+
+  # A guessed Host module is a model looking for the stdlib, not a
+  # module it meant to define.
+  defp host_name?(module), do: match?(["Host" | _], Module.split(module))
 
   @doc """
   The copy for a function the policy denies of a module it grants in
