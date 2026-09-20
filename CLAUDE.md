@@ -86,5 +86,5 @@ Run the affected tests while working and `mix precommit` before claiming done.
 ## Where to look
 
 - **Design** — `context/design.md`: framing, settled decisions, what is deliberately open.
-- **Roadmap** — `context/roadmap.md`: the steps of the port and where it stands. `../omni_host/context/beamlet.md` holds the longer note behind it: the shape discussion, the seam being crossed, and the context carried from the spike.
+- **Roadmap** — `context/roadmap.md`: what each version ships and the steps inside it. `../omni_host/context/beamlet.md` holds the shaping note behind the port: the shape discussion, the seam crossed, and the context carried from the spike.
 - **Reference implementation** — `../omni_host/lib/omni_host/code`, `../omni_host/lib/host`, `../omni_host/lib/omni_host/mcp`, with `../omni_host/context/code-mode.md` as its design record and `../omni_host/context/mcp-spike.md` for what MCP clients actually do with instructions, descriptions and errors.
