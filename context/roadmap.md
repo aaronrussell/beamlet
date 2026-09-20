@@ -6,7 +6,7 @@ spec before implementation; the entry gives direction, not a
 contract. The reasoning behind the order and the context carried
 from the MCP spike are in `../omni_host/context/beamlet.md`.
 
-**Last updated:** 2026-09-18 (step 16 done, after 17; operator config file is step 19)
+**Last updated:** 2026-09-20 (step 18 done; operator config file is step 19)
 
 ---
 
@@ -129,13 +129,22 @@ the end.
     yet. *Done 2026-09-18, after step 17.*
 17. **Server app and Docker image.** The release ships `bin/beamlet`
     calling `Beamlet.CLI.main/1`. *Done 2026-09-18.*
-18. **Verify** against the M14 walkthrough over MCP.
+18. **Verify** against the M14 walkthrough over MCP. *Done
+    2026-09-20.*
 19. **Operator config file.** A config provider merging an optional
     `config.exs` from the data dir into application config at boot,
     so a container declares policies without a rebuild; decided in
-    principle at step 9 (design § 3).
+    principle at step 9 (design § 3). Step 18 found the trap it
+    removes in development too: a policy declared in the library's
+    `config/dev.exs` is seen by `mix beamlet` from the library root,
+    which creates the token, and not by the server booting from
+    `server/config`, which answers the plug's 403; until then the
+    `explorer` policy is declared in both dev configs for testing.
 20. **Beyond the port:** supervised processes, agent-installed
-    dependencies and who grants them, static assets, the admin UI.
+    dependencies and who grants them, static assets, the admin UI,
+    and a first-use page: a default route at `/` on a fresh beamlet
+    with the MCP URL and how to add it to a few clients, served
+    until an agent mounts something there.
 
 ## Done
 
@@ -397,6 +406,42 @@ the end.
   annotation were declined, and a CLI command for reading the copy
   is noted as a likely small addition. Design § 2 MCP records the
   ladder and the first-paragraph rule; § 3 and § 4 updated.
+- **Step 18** (2026-09-18 to 20): a fixed ten-prompt script on a
+  local server, the spike's five-prompt M14 shape in the middle
+  (orientation; events table and schema; a required column under
+  the pending rule; a webhook storing a row and a count; a live
+  page over PubSub) extended with files, a replace in place, a
+  teardown, a restart and an eval-only token. Three sessions on
+  wiped data dirs: Raycast with GPT 5.6 Terra, Raycast with
+  DeepSeek V4.1 Flash, and the claude.ai app with Opus 5 over a
+  custom connector beside many others, chosen as the least
+  favourable configuration. Every surface worked in every session
+  and no model hit a known slip; the differences were disposition
+  (one re-read docs and linked without looking, one read once and
+  asked, one tidied up after itself and warned about the open
+  webhook). Findings, each fixed before the next session: the
+  instructions did not name `print_source`; the eval-only refusal
+  and the policy's tools line were blind to the token, so two
+  models concluded "no define" only by trial; the claude.ai app
+  delivers no server instructions and cuts each description to
+  about eighty characters until the tool loads (the same connector
+  in Claude Code delivers them whole), after which a blind model
+  probed with `:code.all_loaded`, `Host.help()` and
+  `Code.ensure_loaded` over guessed `Host.*` names and was sent the
+  wrong way by every refusal, so each description now opens with a
+  short sentence, the `eval` description carries the orientation
+  and the slips as the floor with the instructions kept whole as a
+  bonus, and the discovery refusals point at `print_modules`
+  (design § 2 MCP); a running count asked for by the prompt was
+  built on KV by two models and on an upsert by the third, which
+  named the lost update, so `Host.KV` now says a total belongs in a
+  table and the prompt was reworded; the schema and migration
+  examples moved to `timestamps(type: :utc_datetime)`; no time zone
+  database, decided the host's choice, so the server ships `tz`.
+  Two operator notes: the connector caches tool descriptions, so a
+  change needs a refresh in its settings as well as a restart; and
+  the dev config placement trap now on step 19. A run on a local
+  model is a follow-up on the same script, not a condition.
 - **Step 17** (2026-09-18): `server/` with `BeamletServer`, the
   smallest Phoenix app that runs a beamlet, landed first for testing
   with an MCP client, and `Beamlet.Assets` moved the static plugs

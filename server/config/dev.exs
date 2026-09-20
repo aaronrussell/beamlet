@@ -4,6 +4,11 @@ import Config
 # project manages the same users and tokens.
 config :beamlet, data_dir: Path.expand("../../data", __DIR__)
 
+# Policies are read from the config the server boots with, so a
+# policy for a token created with `mix beamlet` from `..` must be
+# declared here as well until the operator config file arrives.
+config :beamlet, policies: [explorer: [tools: [:eval]]]
+
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #
