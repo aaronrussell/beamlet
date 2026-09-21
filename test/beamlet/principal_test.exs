@@ -11,7 +11,7 @@ defmodule Beamlet.PrincipalTest do
              user_id: user.id,
              user_name: "alice",
              token_id: token.id,
-             token_name: "test",
+             token_label: "test",
              policy: "default"
            }
   end
@@ -21,14 +21,32 @@ defmodule Beamlet.PrincipalTest do
     {:ok, token} = Users.create_token(user, name: "phone", policy: "restricted")
     {:ok, authenticated} = Users.authenticate(token.secret)
 
-    assert %Principal{token_name: "phone", policy: "restricted"} =
+    assert %Principal{token_label: "phone", policy: "restricted"} =
              Principal.from_token(authenticated)
+  end
+
+  test "an oauth token is carried by its client's host", %{user: user} do
+    {:ok, token} =
+      Users.create_token(user, oauth_attrs("https://claude.ai/.well-known/client.json"))
+
+    {:ok, authenticated} = Users.authenticate(token.secret)
+
+    assert %Principal{token_label: "claude.ai"} = principal = Principal.from_token(authenticated)
+    assert {:ok, ^principal} = Principal.from_trailers(Principal.to_trailers(principal))
+    assert {:ok, ^principal} = principal |> Principal.to_map() |> Principal.from_map()
   end
 
   test "system/0 is the beamlet acting on its own behalf, and round-trips" do
     system = Principal.system()
 
-    assert %Principal{user_id: 0, user_name: "beamlet", token_id: 0, policy: "default"} = system
+    assert %Principal{
+             user_id: 0,
+             user_name: "beamlet",
+             token_id: 0,
+             token_label: "beamlet",
+             policy: "default"
+           } = system
+
     assert {:ok, ^system} = Principal.from_trailers(Principal.to_trailers(system))
   end
 
@@ -68,7 +86,7 @@ defmodule Beamlet.PrincipalTest do
 
       assert map == %{
                "user" => %{"id" => principal.user_id, "name" => "alice"},
-               "token" => %{"id" => principal.token_id, "name" => "test"},
+               "token" => %{"id" => principal.token_id, "label" => "test"},
                "policy" => "default"
              }
 
@@ -82,7 +100,7 @@ defmodule Beamlet.PrincipalTest do
       assert :error =
                Principal.from_map(%{
                  "user" => %{"id" => "1", "name" => "alice"},
-                 "token" => %{"id" => 1, "name" => "t"},
+                 "token" => %{"id" => 1, "label" => "t"},
                  "policy" => "default"
                })
     end
@@ -96,5 +114,10 @@ defmodule Beamlet.PrincipalTest do
 
     assert :ok = Principal.put_current(principal)
     assert Principal.current() == principal
+  end
+
+  defp oauth_attrs(client) do
+    later = DateTime.add(DateTime.utc_now(), 3600, :second)
+    %{kind: :oauth, client: client, expires_at: later, refresh_expires_at: later}
   end
 end

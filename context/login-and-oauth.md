@@ -1,6 +1,6 @@
 # Beamlet — login and OAuth
 
-**Status:** Design pass for roadmap 0.1 steps 1 to 4, completed 2026-09-21; phase 1 landed the same day and its settled items are in `design.md` § 2 Web. It records what the pass settled, why, and what each implementation phase still has to decide. As each phase lands, its settled items move into `design.md` § 2 and this note stays as the record of the reasoning.
+**Status:** Design pass for roadmap 0.1 steps 1 to 4, completed 2026-09-21; phases 1 and 2 landed the same day and their settled items are in `design.md` § 2. It records what the pass settled, why, and what each implementation phase still has to decide. As each phase lands, its settled items move into `design.md` § 2 and this note stays as the record of the reasoning. Where a phase's planning pass reversed the design pass, the section says so and keeps the original reasoning beside the reversal.
 
 **Last updated:** 2026-09-21
 
@@ -24,15 +24,15 @@ So the two hosted chat clients need OAuth, and the audience's own agents need a 
 - **A hosted authorization server** such as Clerk, Auth0 or WorkOS. Removes the whole issuing half below: Beamlet becomes a resource server with a JWT validator and a mapping from subject to user. The cost is a third-party identity account as a hard runtime dependency of a self-hosted server, policy attaching to the user rather than the token because the provider's consent screen offers no choice, and an internet connection for local development. Rejected for 0.1, and kept in view: Beamlet's resource-server side is issuer-agnostic, so a beamlet could later point at an external issuer without touching the validator.
 - **Elixir libraries.** None fits a SQLite-backed single-tenant server issuing opaque tokens. `boruta` depends on Postgres and is beta on its main line; `attesto_phoenix` is weeks old, JWT-only and Postgres-shaped; `ash_authentication_oauth2_server` needs Ash; `ex_oauth2_provider` has no PKCE. `jose` and `joken` sign JWTs, which Beamlet does not issue. Anubis 2.0 covers the resource-server half and nothing of the issuing half.
 
-**The decision:** roll the authorization server ourselves and let Anubis be the resource server. The issuing half is a login, two OAuth endpoints, a consent page, a code store and a client-document fetch. Mapped out, it is a couple of days.
+**The decision:** roll the authorization server ourselves and let Anubis be the resource server. The issuing half is a login, two OAuth endpoints, a consent page, a code store and a client-document fetch. Mapped out, it is a couple of days. (The resource-server half moved into Beamlet's own plug at the phase 2 planning pass; § 3 records why.)
 
 ## 2. Vocabulary
 
 The words the spec uses, since they do the work below.
 
 - The **client** is the app connecting: ChatGPT, claude.ai, Claude Code. It identifies itself by a **client id**.
-- The **resource server** is the MCP endpoint. Anubis plays it.
-- The **authorization server** issues tokens. Beamlet plays it, at the same origin.
+- The **resource server** is the MCP endpoint. Beamlet plays it, in its own plug in front of Anubis's transport (revised at phase 2, § 3).
+- The **authorization server** issues tokens. Beamlet plays it too, at the same origin.
 - **Protected resource metadata** (RFC 9728) is the JSON document the resource server publishes naming its authorization server. **Authorization server metadata** (RFC 8414) is the document the authorization server publishes naming its endpoints and what it supports.
 - A **client ID metadata document** (CIMD) is how a client registers without registering: its client id is an https URL on its own domain, and the authorization server fetches a JSON document from it to learn the client's name and redirect URIs. **Dynamic client registration** (RFC 7591) is the older alternative, an unauthenticated endpoint that stores clients in a table. The 2026-07-28 revision of the MCP spec deprecates it. All three clients try CIMD first.
 - **PKCE** binds an authorization to the client that started it: the client sends a hash of a secret when asking, and the secret itself when redeeming.
@@ -42,26 +42,26 @@ The words the spec uses, since they do the work below.
 
 ## 3. Settled
 
-### Beamlet is the authorization server, Anubis is the resource server
+### Beamlet plays both OAuth roles; Anubis is the transport
 
-The step 5 decision to write `Beamlet.MCP.Plug` rested on two reasons: Anubis's `authorization:` option needed `authorization_servers` and `resource` URLs Beamlet had no honest values for, and its claims are absent from `init/2` and task-style tool calls. The first reason is gone once Beamlet is an authorization server. The second still holds in Anubis 2.0.0 and costs nothing today: `init/2` reads no principal and Beamlet uses no tasks. Worth a look before the concurrency work in 0.2.
+Revised at the phase 2 planning pass. The design pass chose to make Anubis the resource server: mount its transport plug directly with the `authorization:` option, write a `Beamlet.MCP.Validator` for its validator behaviour, read the claims from the frame's context, and drop `Beamlet.MCP.Plug`. Its reasoning was that the step 5 objections to Anubis's authorization, that it needed `authorization_servers` and `resource` URLs Beamlet had no honest values for and that its claims are absent from `init/2` and task-style tool calls, lost their force once Beamlet was an authorization server, and that riding what Anubis offers would remove code.
 
-So the transport plug is Anubis's, mounted directly, with the `authorization:` option passed at start time from runtime config. Anubis then extracts the bearer, calls the validator, checks expiry and audience, answers a missing or bad token with a 401 carrying the `resource_metadata` challenge, and puts the claims in the frame's context on every request. `Beamlet.MCP.Validator` implements Anubis's validator behaviour: hash the presented secret, find the row, check its expiry, return claims with the audience set to the MCP URL and the principal alongside. The three places that read `frame.assigns.principal` read the context instead. `Beamlet.MCP.Plug` goes.
+Read against Anubis 2.0.0 and the router, the trade did not hold. What Anubis's authorization does is extract the bearer, call the validator, check expiry and audience, send the 401 with the `resource_metadata` challenge, and put the claims on the frame. Matching that in Beamlet's own plug is one header parameter and one expiry clause; audience is a no-op, since a Beamlet token is only ever for this beamlet. What the validator route would have cost, each found in the code: a wrapper plug anyway, because the transport's `request_timeout` is a plug init option fixed when the router compiles while Beamlet's limits are runtime config; the public URL at server start, because Anubis parses its option when the server supervisor starts, before the endpoint exists, which would have forced a new config key; a guard in `handle_request` for a `tools/call` carrying task metadata, which Anubis dispatches with a frame that has no claims; an idle Finch pool Anubis starts for its HTTP-calling validators; a persistent term per server module for tests to respect; and the 403 with its teaching line, since a validator failure is always a 401.
 
-What is lost: the 403 with a teaching line for a token naming a policy the beamlet no longer declares. A validator failure is always a 401. Accepted.
+So `Beamlet.MCP.Plug` stays and is where both roles meet the transport: it authenticates the bearer through `Beamlet.Users`, refuses an `oauth` token past its expiry, and answers a missing or bad token with a 401 whose challenge names the protected resource metadata document. `Beamlet.OAuth` holds the shared facts, the issuer, the resource and the two documents, built at request time from the endpoint's `url` config. Anubis stays the transport and nothing else.
 
-Anubis keeps the parsed authorization config in one persistent term per server module per VM. Tests use a fixed public URL so beamlets started per test do not overwrite each other's.
+Two things the pass found in passing, for the code review step or upstream: the transport plug's own 30-second default bounds every request today, so the longer `request_timeout` the child spec computes has never applied; and Anubis has a server-level `request_timeout` its HTTP plug ignores in favour of its own, which a one-line upstream patch would fix.
 
-### Tokens: opaque, one table, two kinds
+### Tokens: opaque, one table, two kinds, two columns
 
 Argued without reference to the existing table. A JWT access token needs a signing key that survives restarts and a JOSE dependency, and cannot be revoked before expiry without a denylist, so it needs short lifetimes and therefore stored refresh tokens. The table comes back holding refresh tokens instead of access tokens. What a JWT buys is validation by a process that cannot reach the store, which a single-node beamlet never needs. An opaque secret with its hash in a local SQLite file validates in one indexed read, needs no key, and gives CLI and OAuth tokens one row shape. Opaque, on its merits.
 
-One table, `tokens`, with a `kind`: an `Ecto.Enum` of `:cli` and `:oauth` stored as strings. The kind is a column and not a reading of which fields are null, because the two kinds differ in three columns already and an implicit rule breaks the day a fourth arrives.
+One table, `tokens`, with a `kind`: an `Ecto.Enum` of `:cli` and `:oauth` stored as strings. The kind is a column and not a reading of which fields are null, because the two kinds differ in several columns already and an implicit rule breaks the day another arrives.
 
-- **`cli`**: minted by `tokens.create USER LABEL [--policy NAME]`, the secret shown once. `client` holds the label, validated by the existing name rule since it lands in a git trailer. `expires_at` and the refresh fields are null: a CLI token never expires and is revoked by delete. This is how the operator's own code connects.
-- **`oauth`**: minted by the token endpoint after consent. `client` holds the client id URL verbatim, the identity the redirect was verified against; the document's `client_name` is display only and anyone can host a document that says "ChatGPT". `expires_at`, `refresh_hash` and `refresh_expires_at` required. Refresh rotates in place: new secret and refresh hashes on the same row, so the token id stays stable for provenance. This is how a chat client connects.
+- **`cli`**: minted by `tokens.create NAME --user USER [--policy NAME]`, the secret shown once. `name` holds the label, required, unique per user and validated by the existing name rule since it lands in a git trailer. `expires_at` and the refresh fields are null: a CLI token never expires and is revoked by delete. This is how the operator's own code connects.
+- **`oauth`**: minted by the token endpoint after consent. `client` holds the client id URL verbatim, the identity the redirect was verified against; the document's `client_name` is display only and anyone can host a document that says "ChatGPT". `expires_at`, `refresh_hash` and `refresh_expires_at` required; `name` null. Refresh rotates in place: new secret and refresh hashes on the same row, so the token id stays stable for provenance. This is how a chat client connects.
 
-`name` goes; `client` replaces it in the principal and the provenance trailers, rendered as the label or as the client id's host. Nothing is unique on `client`: a person may authorize the same client twice. Two changeset functions, `cli_changeset/2` and `oauth_changeset/2`, each readable on its own; the context picks by kind. `tokens.delete` and `tokens.update` address a token by the id `tokens.list` prints, since there is no name. The token endpoint refuses to refresh a `cli` token.
+Two columns, `name` and `client`, each required by one kind (revised at the phase 2 planning pass from one `client` column holding either; two honest columns read better than one overloaded, and the kind still says which applies). `Beamlet.Token.label/1` is the display form of either, the name or the client URL's host, and is what the principal carries as `token_label` and what the provenance trailers and the listing print: `Token: laptop (3)` or `Token: claude.ai (7)`. Nothing is unique on `client`: a person may authorize the same client twice. Two changeset functions, `cli_changeset/2` and `oauth_changeset/2`, each readable on its own; the context picks by kind. Tokens are addressed by the id the listing prints, since an OAuth token has no name: `tokens [--user USER]`, `tokens.update ID` for CLI tokens only, `tokens.delete ID` for either. The token endpoint refuses to refresh a `cli` token.
 
 Policy stays on the token. For an OAuth token it is chosen on the consent page; for a CLI token it is the flag. Beamlet advertises no scopes: OAuth scopes are strings the client asks for and the server may grant in part, and the consent page is entirely the server's to design, so a radio list of the declared policies is legitimate and the choice never needs to be a scope. Clients cope with an empty scope set.
 
@@ -91,7 +91,7 @@ CIMD only. No dynamic registration, no clients table, no unauthenticated write e
 
 The beamlet's own routes live under one named segment, `/beamlet`, and the reservation rule in design § 2 becomes "a first segment that is `beamlet`"; the underscore rule goes and `~` is unchanged. Revised at the phase 1 planning pass from the `/_/` this pass first chose: the underscore was a marker for paths no person types, and once the beamlet had pages for a browser, `/_/login` read as a mistake where `/beamlet/login` reads as what it is. `/beamlet/mcp`, `/beamlet/live` and `/beamlet/assets` move; `/beamlet/login`, `/beamlet/logout`, `/beamlet/authorize` and `/beamlet/token` arrive; the admin pages come later under the same segment. The rule is exact, the router gets one scope, and an operator reading logs sees every beamlet-owned path share a prefix. The beamlet's own paths never take the operator's prefix, which fences agent routes only. The well-known documents stay at the root, where the spec fixes them, and the protected resource one is served both bare and with the MCP path appended, since clients try the suffixed form first.
 
-The public URL comes from the endpoint's `url` config through `Beamlet.Config`, not a new key. `resource` is that origin plus `/beamlet/mcp`, byte for byte what the client uses; `issuer` is the origin.
+The public URL comes from the endpoint's `url` config, not a new key: `Beamlet.OAuth` reads `Endpoint.url/0` at request time, the way `Host.Router.url/1` does, which is why it can never be needed at boot (see the first section above). `resource` is that origin plus `/beamlet/mcp`, byte for byte what the client uses; `issuer` is the origin.
 
 ### Namespaces
 
@@ -126,18 +126,17 @@ Roadmap step 2, plus the router restructure that everything after needs. Landed 
 
 ### Phase 2 — The resource server
 
-The half of roadmap step 3 that makes Anubis the edge. After it, CLI tokens still work, through Anubis's plug rather than Beamlet's, and a missing token gets the spec-shaped 401.
+The half of roadmap step 3 that gives the edge its OAuth shape. Landed 2026-09-21; the settled items are in `design.md` § 2 under "Users, tokens and principals", "MCP" and "Web". After it, CLI tokens work as before and a missing token gets the spec-shaped 401.
 
-**Scope.** The tokens migration edited: `kind`, `client` in place of `name`, `expires_at`, `refresh_hash`, `refresh_expires_at`. `Beamlet.Token` with the two changesets. `Beamlet.Users` mint and list functions taking the new shape; `tokens.create USER LABEL`, `tokens.list` printing id, kind, client, policy and expiry, `tokens.delete` and `tokens.update` by id. `Beamlet.Principal` carrying `client` in place of the token name, and the provenance encodings rendering it. The public URL in `Beamlet.Config`. The `authorization:` option built at runtime and passed to the server's child spec. `Beamlet.MCP.Validator`. The three call sites reading the context. `Beamlet.MCP.Plug` removed and the router mounting Anubis's plug at `/beamlet/mcp`. `MetadataController` serving the protected resource document bare and suffixed, and the authorization server document. `Beamlet.Case` minting a `cli` token. Tests asserting the 401 challenge, both metadata documents, and that a `cli` token authenticates as before.
+**Scope as landed.** The tokens migration edited: `kind`, `name` nullable, `client`, `expires_at`, `refresh_hash`, `refresh_expires_at`. `Beamlet.Token` with the two changesets and `label/1`. `Beamlet.Users` minting by kind, `list_tokens/0`, `find_token/1`, `update_token/2` refusing an `oauth` token, `authenticate/1` refusing an expired one. The CLI reshaped: `tokens [--user USER]` with the columns id, kind, user, label, policy and created, `tokens.create NAME --user USER`, `tokens.update ID` and `tokens.delete ID`. `Beamlet.Principal` carrying `token_label`. `Beamlet.MCP.Plug` kept, its 401 challenge naming the protected resource metadata document under the realm `beamlet`. `Beamlet.OAuth` with the issuer, the resource and both documents; `Beamlet.OAuth.MetadataController` serving the protected resource document bare and with the MCP path appended, and the authorization server document, as three exact routes at the root of `Beamlet.Router`. Tests through `Plug.Test` and `Phoenix.ConnTest`.
 
-**Decided:** everything in § 3 on the authorization server split, tokens, and the metadata contents.
+**Settled at the planning pass:**
 
-**Open:**
-
-- How the validator hands the principal to the components: under a key in the claims map Anubis stores as raw claims, or rebuilt from the token id it returns. The former is one lookup per request, the latter two.
-- Whether `Beamlet.MCP.Server`'s `handle_request` override needs any change beyond the read, given the claims are absent from `init/2`.
-- The exact field list of both documents, checked against what claude.ai and ChatGPT read, including whether `scopes_supported` is omitted or empty.
-- Whether the suffixed protected resource path is reachable through the root forward as the router is shaped, or needs its own route ahead of it.
+- The reversal recorded in § 3: Beamlet's own plug, no validator, no `authorization:` option, no URL config key.
+- Two columns, `name` and `client`, and the label; see § 3 Tokens.
+- The documents omit `scopes_supported`. Claude Code requests the scopes a protected resource document lists and works without any; ChatGPT requests every scope the authorization server document lists and expects an exact echo; so listing none is what makes the consent page's policy choice the whole story. The authorization server document is published now and names endpoints that answer 404 until phase 3.
+- The three well-known routes are exact paths ahead of the root forward, and `.well-known` is not a reserved segment: an agent may have its own use for the directory, and the three paths win by order.
+- Anubis's task-style dispatch is moot with the principal in the conn's assigns, which Anubis merges into the frame on every message.
 
 ### Phase 3 — The authorization server
 
@@ -154,7 +153,7 @@ The other half of roadmap step 3: issuing.
 - The SSRF guard's mechanics: whether the address check happens on the resolved IP before connecting, and how Req is told to do that.
 - Whether the flow completes against plain http on localhost from Claude Code. Claude Code runs discovery against http origins and documents no restriction, but no report confirms a completed flow. One check, once the endpoints exist. If it fails, local Claude Code use is by CLI token and the flow is verified on Fly.
 - Consent copy, and whether the page shows a client's `client_name` at all given it is untrusted.
-- What `tokens.list` shows for an OAuth token's client: the URL, or its host with the path.
+- Whether the listing gains an expiry column once OAuth tokens exist.
 
 ### Phase 4 — The home page
 

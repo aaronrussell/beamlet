@@ -9,12 +9,14 @@ defmodule Beamlet.MCP.PlugTest do
   alias Beamlet.Users
 
   @plug_opts Beamlet.MCP.Plug.init([])
+  @challenge ~s(Bearer realm="beamlet", ) <>
+               ~s(resource_metadata="http://localhost:4000/.well-known/oauth-protected-resource")
 
-  test "a request with no token is a 401 with a Bearer challenge" do
+  test "a request with no token is a 401 whose challenge names the metadata document" do
     conn = MCPClient.rpc(nil, "tools/list", %{})
 
     assert conn.status == 401
-    assert get_resp_header(conn, "www-authenticate") == ["Bearer"]
+    assert get_resp_header(conn, "www-authenticate") == [@challenge]
     assert conn.resp_body =~ "Authorization: Bearer <token>"
   end
 
@@ -29,6 +31,29 @@ defmodule Beamlet.MCP.PlugTest do
   test "a deleted token's secret is a 401", %{token: token} do
     {:ok, _} = Users.delete_token(token)
     assert unauthorized?(request("Bearer " <> token.secret))
+  end
+
+  test "an expired oauth token's secret is a 401", %{user: user} do
+    now = DateTime.utc_now()
+
+    {:ok, expired} =
+      Users.create_token(user,
+        kind: :oauth,
+        client: "https://claude.ai/client.json",
+        expires_at: DateTime.add(now, -1, :second),
+        refresh_expires_at: DateTime.add(now, 3600, :second)
+      )
+
+    {:ok, live} =
+      Users.create_token(user,
+        kind: :oauth,
+        client: "https://claude.ai/client.json",
+        expires_at: DateTime.add(now, 3600, :second),
+        refresh_expires_at: DateTime.add(now, 7200, :second)
+      )
+
+    assert unauthorized?(request("Bearer " <> expired.secret))
+    assert request("Bearer " <> live.secret).status == 200
   end
 
   test "a GET with no token is a 401" do
@@ -80,7 +105,7 @@ defmodule Beamlet.MCP.PlugTest do
   end
 
   defp unauthorized?(conn) do
-    conn.status == 401 and get_resp_header(conn, "www-authenticate") == ["Bearer"]
+    conn.status == 401 and get_resp_header(conn, "www-authenticate") == [@challenge]
   end
 
   defp initialize_params do

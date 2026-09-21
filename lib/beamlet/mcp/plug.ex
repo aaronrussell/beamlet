@@ -16,12 +16,17 @@ defmodule Beamlet.MCP.Plug do
   `Beamlet.Principal` in the conn's assigns under `:principal`, and
   hands the request to the MCP transport, which carries the assigns
   into the frame every server callback receives. Identity is per
-  request: nothing is remembered between one request and the next. A
-  request with no token, another scheme, or a secret that matches no
-  token is a 401 with a `Bearer` challenge. A token naming a policy
-  the beamlet does not declare, one removed from config since the
-  token was created, is a 403 with a line naming the token and the
-  policy: the credential is real but insufficient.
+  request: nothing is remembered between one request and the next.
+
+  This is where the beamlet's two OAuth roles meet the transport
+  (`Beamlet.OAuth`). A request with no token, another scheme, a secret
+  that matches no token, or an `oauth` token past its expiry is a 401
+  whose `Bearer` challenge names the protected resource metadata
+  document, which is how a chat client discovers that this beamlet is
+  its own authorization server and starts the flow. A token naming a
+  policy the beamlet does not declare, one removed from config since
+  the token was created, is a 403 with a line naming the token and
+  the policy: the credential is real but insufficient.
   """
 
   @behaviour Plug
@@ -29,6 +34,7 @@ defmodule Beamlet.MCP.Plug do
   import Plug.Conn
 
   alias Anubis.Server.Transport.StreamableHTTP
+  alias Beamlet.OAuth
   alias Beamlet.Policies
   alias Beamlet.Principal
   alias Beamlet.Token
@@ -68,18 +74,21 @@ defmodule Beamlet.MCP.Plug do
   end
 
   defp unauthorized(conn) do
+    challenge =
+      ~s(Bearer realm="beamlet", resource_metadata="#{OAuth.resource_metadata_url()}")
+
     conn
-    |> put_resp_header("www-authenticate", "Bearer")
+    |> put_resp_header("www-authenticate", challenge)
     |> put_resp_content_type("text/plain")
     |> send_resp(401, @body)
   end
 
-  defp forbidden(conn, %Token{name: name, policy: policy}) do
+  defp forbidden(conn, %Token{policy: policy} = token) do
     conn
     |> put_resp_content_type("text/plain")
     |> send_resp(
       403,
-      "Token #{name} names policy #{policy}, which this beamlet does not declare."
+      "Token #{Token.label(token)} names policy #{policy}, which this beamlet does not declare."
     )
   end
 end

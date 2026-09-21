@@ -28,7 +28,7 @@ defmodule Beamlet.CLIColdTest do
 
     assert {:ok, output} =
              with_io(fn ->
-               CLI.main(["tokens.create", "cold", "laptop", "--policy", "restricted"])
+               CLI.main(["tokens.create", "laptop", "--user", "cold", "--policy", "restricted"])
              end)
 
     assert output =~ "Created token laptop for cold (policy restricted)."

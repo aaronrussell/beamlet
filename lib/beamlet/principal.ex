@@ -10,12 +10,15 @@ defmodule Beamlet.Principal do
 
       %Beamlet.Principal{
         user_id: 1, user_name: "alice",
-        token_id: 3, token_name: "laptop",
+        token_id: 3, token_label: "laptop",
         policy: "default"
       }
 
   Names and ids both, since a reader wants the name and a program
-  wants the id after a rename.
+  wants the id after a rename. The token is carried by its label
+  (`Beamlet.Token.label/1`): a `cli` token's name, or the host of an
+  `oauth` token's client id, so a commit reads `Token: laptop (3)` or
+  `Token: claude.ai (7)`.
 
   Provenance is this struct written down. A commit the code server
   makes carries it as git trailers (`to_trailers/1`), which git parses
@@ -27,7 +30,7 @@ defmodule Beamlet.Principal do
       Token: laptop (3)
       Policy: default
 
-      {"user": {"id": 1, "name": "alice"}, "token": {"id": 3, "name": "laptop"},
+      {"user": {"id": 1, "name": "alice"}, "token": {"id": 3, "label": "laptop"},
        "policy": "default"}
 
   A principal is a token acting through a tool. A web request has no
@@ -53,7 +56,7 @@ defmodule Beamlet.Principal do
   alias Beamlet.Token
   alias Beamlet.User
 
-  defstruct [:user_id, :user_name, :token_id, :token_name, :policy]
+  defstruct [:user_id, :user_name, :token_id, :token_label, :policy]
 
   @key {Beamlet, :principal}
 
@@ -62,7 +65,7 @@ defmodule Beamlet.Principal do
           user_id: non_neg_integer(),
           user_name: String.t(),
           token_id: non_neg_integer(),
-          token_name: String.t(),
+          token_label: String.t(),
           policy: String.t()
         }
 
@@ -73,7 +76,7 @@ defmodule Beamlet.Principal do
       user_id: user.id,
       user_name: user.name,
       token_id: token.id,
-      token_name: token.name,
+      token_label: Token.label(token),
       policy: token.policy
     }
   end
@@ -85,7 +88,7 @@ defmodule Beamlet.Principal do
       user_id: 0,
       user_name: "beamlet",
       token_id: 0,
-      token_name: "beamlet",
+      token_label: "beamlet",
       policy: "default"
     }
   end
@@ -94,7 +97,7 @@ defmodule Beamlet.Principal do
   @spec to_trailers(t()) :: String.t()
   def to_trailers(%__MODULE__{} = principal) do
     "User: #{principal.user_name} (#{principal.user_id})\n" <>
-      "Token: #{principal.token_name} (#{principal.token_id})\n" <>
+      "Token: #{principal.token_label} (#{principal.token_id})\n" <>
       "Policy: #{principal.policy}\n"
   end
 
@@ -102,14 +105,14 @@ defmodule Beamlet.Principal do
   @spec from_trailers(String.t()) :: {:ok, t()} | :error
   def from_trailers(text) when is_binary(text) do
     with [_, user_name, user_id] <- Regex.run(~r/^User: (\S+) \((\d+)\)$/m, text),
-         [_, token_name, token_id] <- Regex.run(~r/^Token: (\S+) \((\d+)\)$/m, text),
+         [_, token_label, token_id] <- Regex.run(~r/^Token: (\S+) \((\d+)\)$/m, text),
          [_, policy] <- Regex.run(~r/^Policy: (\S+)$/m, text) do
       {:ok,
        %__MODULE__{
          user_id: String.to_integer(user_id),
          user_name: user_name,
          token_id: String.to_integer(token_id),
-         token_name: token_name,
+         token_label: token_label,
          policy: policy
        }}
     else
@@ -122,7 +125,7 @@ defmodule Beamlet.Principal do
   def to_map(%__MODULE__{} = principal) do
     %{
       "user" => %{"id" => principal.user_id, "name" => principal.user_name},
-      "token" => %{"id" => principal.token_id, "name" => principal.token_name},
+      "token" => %{"id" => principal.token_id, "label" => principal.token_label},
       "policy" => principal.policy
     }
   end
@@ -131,17 +134,17 @@ defmodule Beamlet.Principal do
   @spec from_map(map()) :: {:ok, t()} | :error
   def from_map(%{
         "user" => %{"id" => user_id, "name" => user_name},
-        "token" => %{"id" => token_id, "name" => token_name},
+        "token" => %{"id" => token_id, "label" => token_label},
         "policy" => policy
       })
       when is_integer(user_id) and is_binary(user_name) and is_integer(token_id) and
-             is_binary(token_name) and is_binary(policy) do
+             is_binary(token_label) and is_binary(policy) do
     {:ok,
      %__MODULE__{
        user_id: user_id,
        user_name: user_name,
        token_id: token_id,
-       token_name: token_name,
+       token_label: token_label,
        policy: policy
      }}
   end

@@ -13,7 +13,12 @@ defmodule Beamlet.RouterTest do
       conn |> put_req_header("content-type", "application/json") |> post("/beamlet/mcp", "{}")
 
     assert conn.status == 401
-    assert get_resp_header(conn, "www-authenticate") == ["Bearer"]
+
+    assert get_resp_header(conn, "www-authenticate") == [
+             ~s(Bearer realm="beamlet", ) <>
+               ~s(resource_metadata="http://localhost:4000/.well-known/oauth-protected-resource")
+           ]
+
     assert conn.resp_body =~ "A beamlet token is required"
   end
 

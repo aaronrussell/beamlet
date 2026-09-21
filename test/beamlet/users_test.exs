@@ -99,7 +99,7 @@ defmodule Beamlet.UsersTest do
 
   describe "create_token/2" do
     test "returns the secret once and stores only its hash", %{user: user} do
-      assert {:ok, %Token{id: id, name: "laptop", secret: secret, secret_hash: hash}} =
+      assert {:ok, %Token{id: id, kind: :cli, name: "laptop", secret: secret, secret_hash: hash}} =
                Users.create_token(user, name: "laptop")
 
       assert is_binary(secret)
@@ -161,6 +161,66 @@ defmodule Beamlet.UsersTest do
       assert {:error, changeset} = Users.create_token(user, name: "laptop")
       assert %{name: ["is already a token name for this user"]} = errors_on(changeset)
     end
+
+    test "a cli token never expires and has no refresh secret", %{user: user} do
+      assert {:ok, %Token{expires_at: nil, refresh_secret: nil, refresh_hash: nil}} =
+               Users.create_token(user, name: "laptop")
+    end
+
+    test "an oauth token takes the client id and both expiries, and returns two secrets", %{
+      user: user
+    } do
+      attrs = oauth_attrs("https://claude.ai/.well-known/client.json")
+
+      assert {:ok,
+              %Token{
+                id: id,
+                kind: :oauth,
+                name: nil,
+                client: "https://claude.ai/.well-known/client.json",
+                secret: secret,
+                secret_hash: hash,
+                refresh_secret: refresh,
+                refresh_hash: refresh_hash
+              } = token} = Users.create_token(user, attrs)
+
+      assert token.expires_at == attrs.expires_at
+      assert token.refresh_expires_at == attrs.refresh_expires_at
+      assert secret != refresh
+      assert hash == :crypto.hash(:sha256, secret)
+      assert refresh_hash == :crypto.hash(:sha256, refresh)
+
+      assert {:ok, %Token{id: ^id, secret: nil, refresh_secret: nil}} = Users.find_token(id)
+      assert {:ok, %Token{id: ^id}} = Users.authenticate(secret)
+    end
+
+    test "an oauth token requires the client and both expiries", %{user: user} do
+      assert {:error, changeset} = Users.create_token(user, kind: :oauth)
+
+      assert %{
+               client: ["can't be blank"],
+               expires_at: ["can't be blank"],
+               refresh_expires_at: ["can't be blank"]
+             } = errors_on(changeset)
+    end
+
+    test "two oauth tokens for the same client may coexist", %{user: user} do
+      attrs = oauth_attrs("https://claude.ai/.well-known/client.json")
+      assert {:ok, _} = Users.create_token(user, attrs)
+      assert {:ok, _} = Users.create_token(user, attrs)
+    end
+  end
+
+  describe "label/1" do
+    test "is the name of a cli token and the host of an oauth token's client", %{user: user} do
+      {:ok, cli} = Users.create_token(user, name: "laptop")
+      {:ok, oauth} = Users.create_token(user, oauth_attrs("https://claude.ai/.well-known/c.json"))
+      {:ok, odd} = Users.create_token(user, oauth_attrs("not a url"))
+
+      assert Token.label(cli) == "laptop"
+      assert Token.label(oauth) == "claude.ai"
+      assert Token.label(odd) == "not a url"
+    end
   end
 
   describe "update_token/2" do
@@ -173,6 +233,11 @@ defmodule Beamlet.UsersTest do
 
       assert {:ok, %Token{id: ^id, policy: "restricted"}} = Users.authenticate(secret)
     end
+
+    test "refuses an oauth token", %{user: user} do
+      {:ok, token} = Users.create_token(user, oauth_attrs("https://claude.ai/c.json"))
+      assert {:error, :oauth_token} = Users.update_token(token, policy: "default")
+    end
   end
 
   describe "delete_token/1" do
@@ -184,30 +249,39 @@ defmodule Beamlet.UsersTest do
     end
   end
 
-  describe "list_tokens/1" do
-    test "lists a user's tokens oldest first", %{user: user, token: %Token{id: t}} do
+  describe "list_tokens/0 and list_tokens/1" do
+    test "lists a user's tokens oldest first, with the user loaded", %{
+      user: user,
+      token: %Token{id: t}
+    } do
       {:ok, bob} = Users.create(name: "bob")
       {:ok, %Token{id: b}} = Users.create_token(user, name: "b")
       {:ok, %Token{id: a}} = Users.create_token(user, name: "a")
       {:ok, _} = Users.create_token(bob, name: "phone")
 
-      assert [%Token{id: ^t}, %Token{id: ^b}, %Token{id: ^a}] = Users.list_tokens(user)
+      assert [%Token{id: ^t, user: %User{name: "alice"}}, %Token{id: ^b}, %Token{id: ^a}] =
+               Users.list_tokens(user)
+    end
+
+    test "lists every token on the beamlet oldest first", %{user: user, token: %Token{id: t}} do
+      {:ok, bob} = Users.create(name: "bob")
+      {:ok, %Token{id: p}} = Users.create_token(bob, name: "phone")
+      {:ok, %Token{id: a}} = Users.create_token(user, name: "a")
+
+      assert [
+               %Token{id: ^t, user: %User{name: "alice"}},
+               %Token{id: ^p, user: %User{name: "bob"}},
+               %Token{id: ^a}
+             ] = Users.list_tokens()
     end
   end
 
-  describe "find_token_by/2" do
-    test "finds a user's token by name", %{user: user, token: %Token{id: id}} do
-      assert {:ok, %Token{id: ^id, secret: nil}} = Users.find_token_by(user, name: "test")
-      assert {:error, :not_found} = Users.find_token_by(user, name: "laptop")
-    end
+  describe "find_token/1" do
+    test "finds a token by id with the user loaded", %{token: %Token{id: id}} do
+      assert {:ok, %Token{id: ^id, secret: nil, user: %User{name: "alice"}}} =
+               Users.find_token(id)
 
-    test "does not see another user's token of the same name", %{user: user} do
-      {:ok, bob} = Users.create(name: "bob")
-      {:ok, phone} = Users.create_token(bob, name: "phone")
-
-      assert {:error, :not_found} = Users.find_token_by(user, name: "phone")
-      assert {:ok, %Token{id: id}} = Users.find_token_by(bob, name: "phone")
-      assert id == phone.id
+      assert {:error, :not_found} = Users.find_token(id + 1)
     end
   end
 
@@ -240,6 +314,20 @@ defmodule Beamlet.UsersTest do
       assert {:error, :unknown_token} = Users.authenticate(token.secret_hash)
       assert {:error, :unknown_token} = Users.authenticate(nil)
       assert {:error, :unknown_token} = Users.authenticate(42)
+    end
+
+    test "an oauth token past its expiry is expired, and its refresh secret is not a secret", %{
+      user: user
+    } do
+      attrs = oauth_attrs("https://claude.ai/c.json")
+      {:ok, live} = Users.create_token(user, attrs)
+      {:ok, %Token{id: id}} = Users.authenticate(live.secret)
+      assert id == live.id
+      assert {:error, :unknown_token} = Users.authenticate(live.refresh_secret)
+
+      past = DateTime.add(DateTime.utc_now(), -1, :second)
+      {:ok, expired} = Users.create_token(user, %{attrs | expires_at: past})
+      assert {:error, :expired_token} = Users.authenticate(expired.secret)
     end
   end
 
@@ -300,5 +388,16 @@ defmodule Beamlet.UsersTest do
       assert {:error, :invalid_credentials} = Users.authenticate_password(nil, "correct horse")
       assert {:error, :invalid_credentials} = Users.authenticate_password("alice", nil)
     end
+  end
+
+  defp oauth_attrs(client) do
+    now = DateTime.utc_now(:second)
+
+    %{
+      kind: :oauth,
+      client: client,
+      expires_at: DateTime.add(now, 3600, :second),
+      refresh_expires_at: DateTime.add(now, 7 * 86_400, :second)
+    }
   end
 end

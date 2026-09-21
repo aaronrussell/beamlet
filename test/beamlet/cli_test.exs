@@ -10,8 +10,8 @@ defmodule Beamlet.CLITest do
     test "prints usage with no arguments or --help" do
       assert {:ok, output} = with_io(fn -> CLI.main([]) end)
       assert output =~ "Usage: beamlet COMMAND"
-      assert output =~ "tokens.create USER TOKEN [--policy POLICY]"
-      assert output =~ "tokens.update USER TOKEN [--name NEW_NAME] [--policy POLICY]"
+      assert output =~ "tokens.create NAME --user USER [--policy POLICY]"
+      assert output =~ "tokens.update ID [--name NEW_NAME] [--policy POLICY]"
       assert output =~ "policies.show POLICY"
 
       assert {:ok, output} = with_io(fn -> CLI.main(["--help"]) end)
@@ -34,8 +34,8 @@ defmodule Beamlet.CLITest do
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["users.create"]) end)
       assert output =~ "beamlet users.create takes: users.create USER"
 
-      assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens.delete", "alice"]) end)
-      assert output =~ "beamlet tokens.delete takes: tokens.delete USER TOKEN"
+      assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens.delete"]) end)
+      assert output =~ "beamlet tokens.delete takes: tokens.delete ID"
     end
   end
 
@@ -218,102 +218,148 @@ defmodule Beamlet.CLITest do
   end
 
   describe "tokens" do
-    test "lists a user's tokens with their policy", %{token: token} do
-      assert {:ok, output} = with_io(fn -> CLI.main(["tokens", "alice"]) end)
-      assert [header, row] = String.split(output, "\n", trim: true)
-      assert header =~ ~r/^ID\s+NAME\s+POLICY\s+CREATED$/
-      assert row =~ ~r/^#{token.id}\s+test\s+default\s+\d{4}-/
+    test "lists every token with its kind, user and label", %{user: alice, token: token} do
+      {:ok, bob} = Users.create(name: "bob")
+      {:ok, phone} = Users.create_token(bob, name: "phone")
+      {:ok, chat} = Users.create_token(alice, oauth_attrs("https://claude.ai/client.json"))
+
+      assert {:ok, output} = with_io(fn -> CLI.main(["tokens"]) end)
+      assert [header, row1, row2, row3] = String.split(output, "\n", trim: true)
+      assert header =~ ~r/^ID\s+KIND\s+USER\s+LABEL\s+POLICY\s+CREATED$/
+      assert row1 =~ ~r/^#{token.id}\s+cli\s+alice\s+test\s+default\s+\d{4}-/
+      assert row2 =~ ~r/^#{phone.id}\s+cli\s+bob\s+phone\s+default\s+\d{4}-/
+      assert row3 =~ ~r/^#{chat.id}\s+oauth\s+alice\s+claude.ai\s+default\s+\d{4}-/
+    end
+
+    test "--user narrows the listing to one user", %{token: token} do
+      {:ok, bob} = Users.create(name: "bob")
+      {:ok, _} = Users.create_token(bob, name: "phone")
+
+      assert {:ok, output} = with_io(fn -> CLI.main(["tokens", "--user", "alice"]) end)
+      assert [_header, row] = String.split(output, "\n", trim: true)
+      assert row =~ ~r/^#{token.id}\s+cli\s+alice\s+test/
     end
 
     test "says how to create the first token when there are none", %{token: token} do
       {:ok, _} = Users.delete_token(token)
 
-      assert {:ok, output} = with_io(fn -> CLI.main(["tokens", "alice"]) end)
-      assert output =~ "alice has no tokens. Create one with: beamlet tokens.create alice NAME"
+      assert {:ok, output} = with_io(fn -> CLI.main(["tokens"]) end)
+      assert output =~ "No tokens yet. Create one with: beamlet tokens.create NAME --user USER"
+
+      assert {:ok, output} = with_io(fn -> CLI.main(["tokens", "--user", "alice"]) end)
+
+      assert output =~
+               "alice has no tokens. Create one with: beamlet tokens.create NAME --user alice"
     end
 
     test "creates a token and prints its secret once", %{user: alice} do
-      assert {:ok, output} = with_io(fn -> CLI.main(["tokens.create", "alice", "laptop"]) end)
+      assert {:ok, output} =
+               with_io(fn -> CLI.main(["tokens.create", "laptop", "--user", "alice"]) end)
+
       assert output =~ "Created token laptop for alice (policy default)."
       assert [_, secret] = Regex.run(~r/Secret \(shown once\): (\S+)/, output)
 
-      assert {:ok, %{name: "laptop", policy: "default", user: %{id: user_id}}} =
+      assert {:ok, %{kind: :cli, name: "laptop", policy: "default", user: %{id: user_id}}} =
                Users.authenticate(secret)
 
       assert user_id == alice.id
     end
 
+    test "create needs --user" do
+      assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens.create", "laptop"]) end)
+      assert output =~ "beamlet tokens.create needs --user USER."
+    end
+
     test "prints validation errors on create" do
       assert {:error, output} =
-               with_io(:stderr, fn -> CLI.main(["tokens.create", "alice", "test"]) end)
+               with_io(:stderr, fn -> CLI.main(["tokens.create", "test", "--user", "alice"]) end)
 
       assert output =~ "name is already a token name for this user"
 
       assert {:error, output} =
-               with_io(:stderr, fn -> CLI.main(["tokens.create", "alice", "My Laptop"]) end)
+               with_io(:stderr, fn ->
+                 CLI.main(["tokens.create", "My Laptop", "--user", "alice"])
+               end)
 
       assert output =~ "name must be lowercase letters"
     end
 
-    test "renames a token with --name", %{user: alice, token: token} do
-      assert {:ok, output} =
-               with_io(fn -> CLI.main(["tokens.update", "alice", "test", "--name", "phone"]) end)
+    test "renames a token with --name", %{token: token} do
+      id = to_string(token.id)
 
-      assert output =~ "Updated token test for alice: name phone."
-      assert {:ok, %{id: id}} = Users.find_token_by(alice, name: "phone")
-      assert id == token.id
+      assert {:ok, output} =
+               with_io(fn -> CLI.main(["tokens.update", id, "--name", "phone"]) end)
+
+      assert output =~ "Updated token test (#{id}) for alice: name phone."
+      assert {:ok, %{name: "phone"}} = Users.find_token(token.id)
     end
 
     @tag policies: [restricted: [tools: [:eval]]]
-    test "changes a token's policy with --policy, alone or with --name", %{user: alice} do
-      assert {:ok, output} =
-               with_io(fn ->
-                 CLI.main(["tokens.update", "alice", "test", "--policy", "restricted"])
-               end)
-
-      assert output =~ "Updated token test for alice: policy restricted."
-      assert {:ok, %{policy: "restricted"}} = Users.find_token_by(alice, name: "test")
+    test "changes a token's policy with --policy, alone or with --name", %{token: token} do
+      id = to_string(token.id)
 
       assert {:ok, output} =
+               with_io(fn -> CLI.main(["tokens.update", id, "--policy", "restricted"]) end)
+
+      assert output =~ "Updated token test (#{id}) for alice: policy restricted."
+      assert {:ok, %{policy: "restricted"}} = Users.find_token(token.id)
+
+      assert {:ok, output} =
                with_io(fn ->
-                 CLI.main([
-                   "tokens.update",
-                   "alice",
-                   "test",
-                   "--name",
-                   "phone",
-                   "--policy",
-                   "default"
-                 ])
+                 CLI.main(["tokens.update", id, "--name", "phone", "--policy", "default"])
                end)
 
-      assert output =~ "Updated token test for alice: name phone, policy default."
-      assert {:ok, %{policy: "default"}} = Users.find_token_by(alice, name: "phone")
+      assert output =~ "Updated token test (#{id}) for alice: name phone, policy default."
+      assert {:ok, %{name: "phone", policy: "default"}} = Users.find_token(token.id)
     end
 
-    test "update needs --name or --policy" do
+    test "update needs --name or --policy", %{token: token} do
       assert {:error, output} =
-               with_io(:stderr, fn -> CLI.main(["tokens.update", "alice", "test"]) end)
+               with_io(:stderr, fn -> CLI.main(["tokens.update", to_string(token.id)]) end)
 
       assert output =~ "beamlet tokens.update needs --name NEW_NAME or --policy POLICY."
     end
 
-    @tag policies: [restricted: [tools: [:eval]]]
-    test "creates a token under a declared policy", %{user: alice} do
-      assert {:ok, output} =
-               with_io(fn ->
-                 CLI.main(["tokens.create", "alice", "laptop", "--policy", "restricted"])
+    test "update refuses an oauth token", %{user: alice} do
+      {:ok, chat} = Users.create_token(alice, oauth_attrs("https://chatgpt.com/client.json"))
+
+      assert {:error, output} =
+               with_io(:stderr, fn ->
+                 CLI.main(["tokens.update", to_string(chat.id), "--policy", "default"])
                end)
 
-      assert output =~ "Created token laptop for alice (policy restricted)."
-      assert {:ok, %{policy: "restricted"}} = Users.find_token_by(alice, name: "laptop")
+      assert output =~
+               "Token #{chat.id} is an OAuth token (chatgpt.com): its client is verified " <>
+                 "identity and its policy was chosen at consent. Delete it and connect " <>
+                 "again to change either."
+
+      assert {:ok, %{policy: "default"}} = Users.find_token(chat.id)
     end
 
     @tag policies: [restricted: [tools: [:eval]]]
-    test "an undeclared policy is the changeset's error" do
+    test "creates a token under a declared policy" do
+      assert {:ok, output} =
+               with_io(fn ->
+                 CLI.main([
+                   "tokens.create",
+                   "laptop",
+                   "--user",
+                   "alice",
+                   "--policy",
+                   "restricted"
+                 ])
+               end)
+
+      assert output =~ "Created token laptop for alice (policy restricted)."
+      assert [_, secret] = Regex.run(~r/Secret \(shown once\): (\S+)/, output)
+      assert {:ok, %{policy: "restricted"}} = Users.authenticate(secret)
+    end
+
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "an undeclared policy is the changeset's error", %{token: token} do
       assert {:error, output} =
                with_io(:stderr, fn ->
-                 CLI.main(["tokens.create", "alice", "laptop", "--policy", "gone"])
+                 CLI.main(["tokens.create", "laptop", "--user", "alice", "--policy", "gone"])
                end)
 
       assert output =~
@@ -321,33 +367,48 @@ defmodule Beamlet.CLITest do
 
       assert {:error, output} =
                with_io(:stderr, fn ->
-                 CLI.main(["tokens.update", "alice", "test", "--policy", "gone"])
+                 CLI.main(["tokens.update", to_string(token.id), "--policy", "gone"])
                end)
 
       assert output =~ "policy gone is not a policy on this beamlet"
     end
 
-    test "deletes a token and its secret stops authenticating", %{user: alice, token: token} do
-      assert {:ok, output} = with_io(fn -> CLI.main(["tokens.delete", "alice", "test"]) end)
-      assert output =~ "Deleted token test for alice."
-      assert Users.list_tokens(alice) == []
+    test "deletes a token by id and its secret stops authenticating", %{
+      user: alice,
+      token: token
+    } do
+      {:ok, chat} = Users.create_token(alice, oauth_attrs("https://claude.ai/client.json"))
+
+      assert {:ok, output} = with_io(fn -> CLI.main(["tokens.delete", to_string(token.id)]) end)
+      assert output =~ "Deleted token test (#{token.id}) for alice."
       assert {:error, :unknown_token} = Users.authenticate(token.secret)
+
+      assert {:ok, output} = with_io(fn -> CLI.main(["tokens.delete", to_string(chat.id)]) end)
+      assert output =~ "Deleted token claude.ai (#{chat.id}) for alice."
+      assert Users.list_tokens(alice) == []
     end
 
-    test "an unknown token says how to list them" do
-      for args <- [
-            ["tokens.delete", "alice", "laptop"],
-            ["tokens.update", "alice", "laptop", "--name", "phone"]
-          ] do
-        assert {:error, output} = with_io(:stderr, fn -> CLI.main(args) end)
+    test "an unknown or malformed id says how to list tokens", %{token: token} do
+      missing = to_string(token.id + 1)
 
-        assert output =~
-                 "alice has no token named laptop. Run `beamlet tokens alice` to list them."
+      for args <- [["tokens.delete", missing], ["tokens.update", missing, "--name", "phone"]] do
+        assert {:error, output} = with_io(:stderr, fn -> CLI.main(args) end)
+        assert output =~ "No token with id #{missing}. Run `beamlet tokens` to list them."
       end
+
+      assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens.delete", "test"]) end)
+      assert output =~ "Token ids are numbers; run `beamlet tokens` to list them."
     end
 
     test "an unknown user on a token command says how to list users" do
-      assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens", "bob"]) end)
+      assert {:error, output} =
+               with_io(:stderr, fn -> CLI.main(["tokens", "--user", "bob"]) end)
+
+      assert output =~ "No user named bob. Run `beamlet users` to list them."
+
+      assert {:error, output} =
+               with_io(:stderr, fn -> CLI.main(["tokens.create", "laptop", "--user", "bob"]) end)
+
       assert output =~ "No user named bob. Run `beamlet users` to list them."
     end
   end
@@ -381,5 +442,10 @@ defmodule Beamlet.CLITest do
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["policies.show", "nope"]) end)
       assert output =~ "No policy named nope. Run `beamlet policies` to list them."
     end
+  end
+
+  defp oauth_attrs(client) do
+    later = DateTime.add(DateTime.utc_now(:second), 3600, :second)
+    %{kind: :oauth, client: client, expires_at: later, refresh_expires_at: later}
   end
 end

@@ -21,8 +21,11 @@ defmodule Beamlet.Router do
   `/beamlet/login` and `/beamlet/logout` (`Beamlet.Web.SessionController`),
   the home page at `/beamlet` (`Beamlet.Web.HomeLive`, behind the
   login), and on the host's endpoint the socket and asset paths
-  below. Everything else forwards to the router generated from the
-  routes agents mount (`Beamlet.Routes`), so `/` is an agent's to
+  below. The one exception is the pair of OAuth discovery documents
+  (`Beamlet.OAuth.MetadataController`), which the specs fix under
+  `/.well-known` at the root; they are exact paths, matched ahead of
+  the forward. Everything else forwards to the router generated from
+  the routes agents mount (`Beamlet.Routes`), so `/` is an agent's to
   build and answers 404 until one does.
 
   ## What the host carries
@@ -90,6 +93,18 @@ defmodule Beamlet.Router do
       live "/", HomeLive
     end
   end
+
+  get "/.well-known/oauth-protected-resource",
+      Beamlet.OAuth.MetadataController,
+      :protected_resource
+
+  get "/.well-known/oauth-protected-resource/beamlet/mcp",
+      Beamlet.OAuth.MetadataController,
+      :protected_resource
+
+  get "/.well-known/oauth-authorization-server",
+      Beamlet.OAuth.MetadataController,
+      :authorization_server
 
   forward "/beamlet/mcp", Beamlet.MCP.Plug
   forward "/", Beamlet.DynamicRouter
