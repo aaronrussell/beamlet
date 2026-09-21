@@ -321,31 +321,40 @@ defmodule Host.RouterTest do
       mod = define_live!(ctx)
       controller = define_controller!(ctx)
 
-      error = assert_raise RuntimeError, fn -> Host.Router.live("/_admin/pages", mod) end
+      error = assert_raise RuntimeError, fn -> Host.Router.live("/beamlet/pages", mod) end
 
-      assert error.message =~ "first segment starts with _ or ~ are your beamlet's own"
-      assert error.message =~ "(/_mcp, /_live, /_assets)"
-      assert error.message =~ "/_admin/pages cannot be mounted"
-      assert error.message =~ "e.g. /admin/pages"
+      assert error.message =~ "first segment is beamlet are your beamlet's own"
+      assert error.message =~ "(/beamlet/login, /beamlet/mcp)"
+      assert error.message =~ "/beamlet/pages cannot be mounted"
 
-      assert_raise RuntimeError, ~r/\/~alice\/notes cannot be mounted/, fn ->
-        Host.Router.post("/~alice/notes", controller, :create)
+      error =
+        assert_raise RuntimeError, fn ->
+          Host.Router.post("/~alice/notes", controller, :create)
+        end
+
+      assert error.message =~ "first segment starts with ~ are reserved"
+      assert error.message =~ "/~alice/notes cannot be mounted"
+      assert error.message =~ "e.g. /alice/notes"
+
+      assert_raise RuntimeError, ~r/\/beamlet\/mcp cannot be mounted/, fn ->
+        Host.Router.live("/beamlet/mcp", mod)
       end
 
-      assert_raise RuntimeError, ~r/\/_mcp cannot be mounted/, fn ->
-        Host.Router.live("/_mcp", mod)
+      assert_raise RuntimeError, ~r/\/beamlet cannot be mounted/, fn ->
+        Host.Router.live("/beamlet", mod)
       end
 
       assert Routes.list() == []
     end
 
-    test "an underscore past the first character is an ordinary path", ctx do
+    test "an underscore anywhere, a leading one included, is an ordinary path", ctx do
       mod = define_live!(ctx)
 
       quietly(fn -> Host.Router.live("/my_notes/_drafts", mod) end)
       quietly(fn -> Host.Router.live("/x_/y", mod) end)
+      quietly(fn -> Host.Router.live("/_admin/pages", mod) end)
 
-      assert [_first, _second] = Routes.list()
+      assert [_first, _second, _third] = Routes.list()
     end
 
     @tag web: [prefix: "/app"]
@@ -461,8 +470,8 @@ defmodule Host.RouterTest do
     end
 
     test "rejects a reserved path" do
-      assert_raise RuntimeError, ~r/\/_mcp cannot be mounted/, fn ->
-        Host.Router.unmount("/_mcp")
+      assert_raise RuntimeError, ~r/\/beamlet\/mcp cannot be mounted/, fn ->
+        Host.Router.unmount("/beamlet/mcp")
       end
     end
 
@@ -530,8 +539,8 @@ defmodule Host.RouterTest do
     end
 
     test "both reject a reserved path" do
-      assert_raise RuntimeError, ~r/\/_assets\/app\.js cannot be mounted/, fn ->
-        Host.Router.path("/_assets/app.js")
+      assert_raise RuntimeError, ~r/\/beamlet\/assets\/app\.js cannot be mounted/, fn ->
+        Host.Router.path("/beamlet/assets/app.js")
       end
 
       assert_raise RuntimeError, ~r/\/~bob cannot be mounted/, fn ->
@@ -796,8 +805,8 @@ defmodule Host.RouterTest do
         Host.Router.call(:get, "rt/echo")
       end
 
-      assert_raise RuntimeError, ~r/\/_mcp cannot be mounted/, fn ->
-        Host.Router.call(:post, "/_mcp")
+      assert_raise RuntimeError, ~r/\/beamlet\/mcp cannot be mounted/, fn ->
+        Host.Router.call(:post, "/beamlet/mcp")
       end
 
       assert_raise RuntimeError, ~r/data must be a map or a string/, fn ->

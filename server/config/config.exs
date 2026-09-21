@@ -19,7 +19,7 @@ config :beamlet_server, BeamletServer.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: Beamlet.ErrorView, json: Beamlet.ErrorView],
+    formats: [html: Beamlet.Web.ErrorView, json: Beamlet.Web.ErrorView],
     layout: false
   ],
   pubsub_server: Beamlet.PubSub,

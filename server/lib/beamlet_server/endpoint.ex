@@ -11,9 +11,11 @@ defmodule BeamletServer.Endpoint do
     same_site: "Lax"
   ]
 
-  socket "/_live", Phoenix.LiveView.Socket,
+  socket "/beamlet/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
+
+  plug Plug.RewriteOn, [:x_forwarded_proto]
 
   plug Beamlet.Assets
 

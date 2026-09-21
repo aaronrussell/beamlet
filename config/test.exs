@@ -20,5 +20,10 @@ config :beamlet, Beamlet.TestEndpoint,
   secret_key_base: "beamlet-test-secret-key-base-that-is-long-enough-for-phoenix-to-accept-it",
   live_view: [signing_salt: "beamlet-test-lv"],
   pubsub_server: Beamlet.PubSub,
-  render_errors: [formats: [html: Beamlet.ErrorView, json: Beamlet.ErrorView], layout: false],
+  render_errors: [
+    formats: [html: Beamlet.Web.ErrorView, json: Beamlet.Web.ErrorView],
+    layout: false
+  ],
   server: false
+
+config :pbkdf2_elixir, rounds: 1

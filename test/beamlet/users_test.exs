@@ -242,4 +242,63 @@ defmodule Beamlet.UsersTest do
       assert {:error, :unknown_token} = Users.authenticate(42)
     end
   end
+
+  describe "update_password/2" do
+    test "stores a hash and never the password", %{user: user} do
+      assert {:ok, %User{password: nil, password_hash: hash}} =
+               Users.update_password(user, "correct horse")
+
+      assert String.starts_with?(hash, "$pbkdf2-sha512$")
+      refute hash =~ "correct horse"
+      assert {:ok, %User{password: nil, password_hash: ^hash}} = Users.find(user.id)
+    end
+
+    test "takes 8 to 128 characters", %{user: user} do
+      assert {:error, changeset} = Users.update_password(user, "seven77")
+      assert %{password: ["should be at least 8 character(s)"]} = errors_on(changeset)
+
+      assert {:error, changeset} = Users.update_password(user, String.duplicate("a", 129))
+      assert %{password: ["should be at most 128 character(s)"]} = errors_on(changeset)
+
+      assert {:error, changeset} = Users.update_password(user, "")
+      assert %{password: ["can't be blank"]} = errors_on(changeset)
+
+      assert {:ok, _user} = Users.update_password(user, "eight888")
+      assert {:ok, _user} = Users.update_password(user, String.duplicate("a", 128))
+    end
+
+    test "replaces an earlier password", %{user: user} do
+      {:ok, _user} = Users.update_password(user, "first one")
+      {:ok, _user} = Users.update_password(user, "second one")
+      assert {:ok, _user} = Users.authenticate_password("alice", "second one")
+      assert {:error, :invalid_credentials} = Users.authenticate_password("alice", "first one")
+    end
+  end
+
+  describe "authenticate_password/2" do
+    test "finds the user by name and password", %{user: user} do
+      {:ok, _user} = Users.update_password(user, "correct horse")
+      user_id = user.id
+
+      assert {:ok, %User{id: ^user_id, name: "alice", password: nil}} =
+               Users.authenticate_password("alice", "correct horse")
+    end
+
+    test "fails the same way for a wrong password, an unknown name and no password", %{
+      user: user
+    } do
+      {:ok, _user} = Users.update_password(user, "correct horse")
+      {:ok, _bob} = Users.create(name: "bob")
+
+      assert {:error, :invalid_credentials} = Users.authenticate_password("alice", "wrong")
+
+      assert {:error, :invalid_credentials} =
+               Users.authenticate_password("carol", "correct horse")
+
+      assert {:error, :invalid_credentials} = Users.authenticate_password("bob", "correct horse")
+      assert {:error, :invalid_credentials} = Users.authenticate_password("bob", "")
+      assert {:error, :invalid_credentials} = Users.authenticate_password(nil, "correct horse")
+      assert {:error, :invalid_credentials} = Users.authenticate_password("alice", nil)
+    end
+  end
 end

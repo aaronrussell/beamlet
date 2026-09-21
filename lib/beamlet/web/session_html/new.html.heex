@@ -1,0 +1,36 @@
+<main class="mx-auto mt-16 max-w-sm px-4">
+  <h1 class="text-2xl font-semibold">Sign in to your beamlet</h1>
+
+  <p :if={@flash["error"]} id="flash-error" class="mt-4 rounded bg-red-50 p-3 text-sm text-red-800">
+    {@flash["error"]}
+  </p>
+  <p :if={@flash["info"]} id="flash-info" class="mt-4 rounded bg-blue-50 p-3 text-sm text-blue-800">
+    {@flash["info"]}
+  </p>
+
+  <.form for={@form} action="/beamlet/login" id="login-form" class="mt-6 flex flex-col gap-4">
+    <label class="flex flex-col gap-1 text-sm">
+      Name
+      <input
+        type="text"
+        name={@form[:name].name}
+        value={@form[:name].value}
+        autocomplete="username"
+        autofocus
+        required
+        class="rounded border px-3 py-2"
+      />
+    </label>
+    <label class="flex flex-col gap-1 text-sm">
+      Password
+      <input
+        type="password"
+        name={@form[:password].name}
+        autocomplete="current-password"
+        required
+        class="rounded border px-3 py-2"
+      />
+    </label>
+    <button type="submit" class="rounded bg-zinc-900 px-4 py-2 text-white">Sign in</button>
+  </.form>
+</main>

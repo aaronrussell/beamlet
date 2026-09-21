@@ -20,6 +20,13 @@ defmodule Beamlet.Users do
   it names none, and the name must be a policy the beamlet declares
   (`Beamlet.Policies`).
 
+  A user signs in on the web with a password the operator sets
+  (`update_password/2`); `authenticate_password/2` is how the sign-in
+  form finds the user, and a user with no password cannot sign in.
+  The password is stored only as a hash. A web sign-in is a user on a
+  request and nothing more: no token and no policy, since a browser
+  authors no code.
+
   Operator-only. Nothing under `Host.*` reaches these functions, and
   deleting a user deletes their tokens with them. The command line
   over these functions is `Beamlet.CLI`, reached as `mix beamlet` in
@@ -60,9 +67,40 @@ defmodule Beamlet.Users do
   @spec find(pos_integer()) :: {:ok, User.t()} | {:error, :not_found}
   def find(id), do: wrap(Repo.get(User, id))
 
-  @doc "Finds the one user matching the clauses, such as `name: \"aaron\"`."
+  @doc "Finds the one user matching the clauses, such as `name: \"alice\"`."
   @spec find_by(keyword()) :: {:ok, User.t()} | {:error, :not_found}
   def find_by(clauses), do: wrap(Repo.get_by(User, clauses))
+
+  @doc "Sets or resets a user's password, 8 to 128 characters; only its hash is stored."
+  @spec update_password(User.t(), String.t()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  def update_password(%User{} = user, password) do
+    user
+    |> User.password_changeset(%{password: password})
+    |> Repo.update()
+  end
+
+  @doc """
+  Turns a name and password into the user, for the sign-in form.
+
+  A wrong password, an unknown name and a user with no password all
+  fail the same way, `{:error, :invalid_credentials}`, and take the
+  same time, so the reply reveals nothing about which.
+  """
+  @spec authenticate_password(term(), term()) :: {:ok, User.t()} | {:error, :invalid_credentials}
+  def authenticate_password(name, password) when is_binary(name) and is_binary(password) do
+    case Repo.get_by(User, name: name) do
+      %User{password_hash: hash} = user when is_binary(hash) ->
+        if Pbkdf2.verify_pass(password, hash),
+          do: {:ok, user},
+          else: {:error, :invalid_credentials}
+
+      _other ->
+        Pbkdf2.no_user_verify()
+        {:error, :invalid_credentials}
+    end
+  end
+
+  def authenticate_password(_name, _password), do: {:error, :invalid_credentials}
 
   @doc """
   Creates a token for a user from `name` and an optional `policy`.

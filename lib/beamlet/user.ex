@@ -3,7 +3,10 @@ defmodule Beamlet.User do
   A user on a beamlet: the durable name the operator creates and the
   history refers to.
 
-  Nothing else lives here. No roles, no email, no login. Credentials
+  A user who has a password can sign in on the web
+  (`Beamlet.Web.SessionController`); one without cannot, and the
+  operator sets or resets it with `beamlet users.update --password`.
+  Nothing else lives here: no roles, no email. Credentials for agents
   are tokens (`Beamlet.Token`), and a user has as many as they have
   clients. Rows are managed through `Beamlet.Users`.
   """
@@ -14,13 +17,17 @@ defmodule Beamlet.User do
 
   schema "users" do
     field(:name, :string)
+    field(:password, :string, virtual: true, redact: true)
+    field(:password_hash, :string, redact: true)
     timestamps()
   end
 
-  @typedoc "A stored user."
+  @typedoc "A stored user; `password` is virtual and never set on a loaded struct."
   @type t :: %__MODULE__{
           id: pos_integer() | nil,
           name: String.t() | nil,
+          password: String.t() | nil,
+          password_hash: String.t() | nil,
           inserted_at: NaiveDateTime.t() | nil,
           updated_at: NaiveDateTime.t() | nil
         }
@@ -37,6 +44,31 @@ defmodule Beamlet.User do
     |> validate_name()
     |> validate_exclusion(:name, ["beamlet"], message: "is reserved for the beamlet itself")
     |> unique_constraint(:name)
+  end
+
+  @doc """
+  Changeset for setting a password: 8 to 128 characters, stored only
+  as a PBKDF2 hash.
+  """
+  @spec password_changeset(t(), map()) :: Ecto.Changeset.t()
+  def password_changeset(user, attrs) do
+    user
+    |> cast(attrs, [:password])
+    |> validate_required([:password])
+    |> validate_length(:password, min: 8, max: 128)
+    |> hash_password()
+  end
+
+  defp hash_password(changeset) do
+    case fetch_change(changeset, :password) do
+      {:ok, password} when changeset.valid? ->
+        changeset
+        |> put_change(:password_hash, Pbkdf2.hash_pwd_salt(password))
+        |> delete_change(:password)
+
+      _other ->
+        changeset
+    end
   end
 
   @doc """

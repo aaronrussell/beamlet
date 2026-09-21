@@ -21,7 +21,7 @@ defmodule Beamlet.CLIColdTest do
     Application.put_env(:beamlet, :policies, restricted: [tools: [:eval]])
     assert Process.whereis(Beamlet) == nil
 
-    assert {:ok, output} = with_io(fn -> CLI.main(["users.create", "cold"]) end)
+    assert {:ok, output} = with_io(fn -> CLI.main(["users.create", "cold", "--no-password"]) end)
     assert output =~ "Created user cold."
     assert Process.whereis(Beamlet) == nil
     assert Process.whereis(Beamlet.Repo) == nil

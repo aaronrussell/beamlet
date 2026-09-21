@@ -90,6 +90,12 @@ defmodule Beamlet.Case do
   @spec act_as(Token.t()) :: :ok
   def act_as(%Token{} = token), do: token |> principal() |> Principal.put_current()
 
+  @doc "Signs the user in on the conn's test session, as `Beamlet.Web.Auth.log_in/2` would."
+  @spec sign_in(Plug.Conn.t(), Beamlet.User.t()) :: Plug.Conn.t()
+  def sign_in(conn, %Beamlet.User{id: id}) do
+    Plug.Test.init_test_session(conn, user_id: id)
+  end
+
   @doc "A module namespace unique to one test, e.g. `BeamletT42`, so defined modules never collide."
   @spec unique_namespace() :: String.t()
   def unique_namespace, do: "BeamletT#{System.unique_integer([:positive])}"

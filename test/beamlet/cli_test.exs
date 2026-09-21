@@ -45,9 +45,14 @@ defmodule Beamlet.CLITest do
 
       assert {:ok, output} = with_io(fn -> CLI.main(["users"]) end)
       assert [header, row1, row2] = String.split(output, "\n", trim: true)
-      assert header =~ ~r/^ID\s+NAME\s+CREATED$/
-      assert row1 =~ ~r/^#{alice.id}\s+alice\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
-      assert row2 =~ ~r/^#{bob.id}\s+bob\s+/
+      assert header =~ ~r/^ID\s+NAME\s+LOGIN\s+CREATED$/
+      assert row1 =~ ~r/^#{alice.id}\s+alice\s+no\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
+      assert row2 =~ ~r/^#{bob.id}\s+bob\s+no\s+/
+
+      {:ok, _bob} = Users.update_password(bob, "correct horse")
+      assert {:ok, output} = with_io(fn -> CLI.main(["users"]) end)
+      assert [_header, _row1, row2] = String.split(output, "\n", trim: true)
+      assert row2 =~ ~r/^#{bob.id}\s+bob\s+yes\s+/
     end
 
     test "says how to create the first user when there are none", %{user: alice} do
@@ -57,10 +62,113 @@ defmodule Beamlet.CLITest do
       assert output =~ "No users yet. Create one with: beamlet users.create NAME"
     end
 
-    test "creates a user" do
-      assert {:ok, output} = with_io(fn -> CLI.main(["users.create", "bob"]) end)
+    test "creates a user with the password from two prompts" do
+      assert {:ok, output} =
+               with_io([input: "correct horse\ncorrect horse\n"], fn ->
+                 CLI.main(["users.create", "bob"])
+               end)
+
       assert output =~ "Created user bob."
-      assert {:ok, %{name: "bob"}} = Users.find_by(name: "bob")
+      assert output =~ "Password: "
+      assert output =~ "Again: "
+      assert output =~ "Set password for bob."
+      assert {:ok, %{name: "bob"}} = Users.authenticate_password("bob", "correct horse")
+    end
+
+    test "--no-password creates a user who cannot sign in, without prompting" do
+      assert {:ok, output} =
+               with_io([input: "not read\n"], fn ->
+                 CLI.main(["users.create", "bob", "--no-password"])
+               end)
+
+      assert output =~ "Created user bob."
+      refute output =~ "Password: "
+
+      assert output =~
+               "No password: bob cannot sign in on the web until beamlet users.update bob --password"
+
+      assert {:ok, %{password_hash: nil}} = Users.find_by(name: "bob")
+    end
+
+    test "a bad or missing password at creation leaves the user in place and fails" do
+      for {name, input, message} <- [
+            {"bob", "one two three\nfour five six\n", "Passwords do not match."},
+            {"carol", "short\nshort\n", "password should be at least 8 character(s)"},
+            {"dave", "\n", "No password given."},
+            {"erin", "", "No password given."}
+          ] do
+        assert {{:error, stdout}, stderr} =
+                 with_io(:stderr, fn ->
+                   with_io([input: input], fn -> CLI.main(["users.create", name]) end)
+                 end)
+
+        assert stdout =~ "Created user #{name}."
+        assert stderr =~ message
+
+        assert stderr =~
+                 "#{name} has no password; set one with: beamlet users.update #{name} --password"
+
+        assert {:ok, %{password_hash: nil}} = Users.find_by(name: name)
+      end
+    end
+
+    test "resets a password with --password", %{user: alice} do
+      assert {:ok, output} =
+               with_io([input: "correct horse\ncorrect horse\n"], fn ->
+                 CLI.main(["users.update", "alice", "--password"])
+               end)
+
+      assert output =~ "Password: "
+      assert output =~ "Again: "
+      assert output =~ "Set password for alice."
+      refute output =~ "Renamed"
+      assert {:ok, %{id: id}} = Users.authenticate_password("alice", "correct horse")
+      assert id == alice.id
+    end
+
+    test "renames and resets the password in one command" do
+      assert {:ok, output} =
+               with_io([input: "correct horse\ncorrect horse\n"], fn ->
+                 CLI.main(["users.update", "alice", "--name", "alicia", "--password"])
+               end)
+
+      assert output =~ "Renamed user alice to alicia."
+      assert output =~ "Set password for alicia."
+      assert {:ok, _user} = Users.authenticate_password("alicia", "correct horse")
+    end
+
+    test "a reset refuses a mismatch, a short password and an empty answer" do
+      for {input, message} <- [
+            {"one two three\nfour five six\n", "Passwords do not match."},
+            {"short\nshort\n", "password should be at least 8 character(s)"},
+            {"\n", "No password given."},
+            {"", "No password given."}
+          ] do
+        assert {{:error, _stdout}, stderr} =
+                 with_io(:stderr, fn ->
+                   with_io([input: input], fn ->
+                     CLI.main(["users.update", "alice", "--password"])
+                   end)
+                 end)
+
+        assert stderr =~ message
+      end
+
+      assert {:error, :invalid_credentials} = Users.authenticate_password("alice", "short")
+    end
+
+    test "a failed rename does not go on to ask for a password" do
+      {:ok, _bob} = Users.create(name: "bob")
+
+      assert {{:error, stdout}, stderr} =
+               with_io(:stderr, fn ->
+                 with_io([input: "correct horse\ncorrect horse\n"], fn ->
+                   CLI.main(["users.update", "alice", "--name", "bob", "--password"])
+                 end)
+               end)
+
+      assert stderr =~ "name has already been taken"
+      refute stdout =~ "Password: "
     end
 
     test "prints validation errors on create" do
@@ -81,7 +189,7 @@ defmodule Beamlet.CLITest do
 
     test "update needs --name" do
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["users.update", "alice"]) end)
-      assert output =~ "beamlet users.update needs --name NEW_NAME."
+      assert output =~ "beamlet users.update needs --name NEW_NAME or --password."
     end
 
     test "deletes a user and reports their tokens", %{user: alice, token: token} do

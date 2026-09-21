@@ -4,8 +4,8 @@ defmodule Beamlet.CLI do
   beamlet.
 
       beamlet users                                 list users
-      beamlet users.create USER                     create a user
-      beamlet users.update USER --name NEW_NAME     rename a user
+      beamlet users.create USER [--no-password]     create a user, prompting for a password
+      beamlet users.update USER [--name NEW_NAME] [--password]
       beamlet users.delete USER                     delete a user and their tokens
       beamlet tokens USER                           list a user's tokens
       beamlet tokens.create USER TOKEN [--policy POLICY]
@@ -17,7 +17,13 @@ defmodule Beamlet.CLI do
   Everything addresses users and tokens by name; a token's name is
   unique per user, so every token command names the user first. A
   token runs under `default` unless `--policy` names one of the
-  policies declared in config (`Beamlet.Policy`). The commands are the
+  policies declared in config (`Beamlet.Policy`). A password is
+  prompted for, never taken as an argument, so it stays out of the
+  shell history: `users.create` asks for one unless `--no-password`
+  says the user will not sign in on the web, which is all a user
+  whose only credentials are tokens needs; `users.update --password`
+  sets or resets one. Piped input is read as the answer, one line per
+  prompt. The commands are the
   public functions of `Beamlet.Users` and `Beamlet.Policies` with
   plain text output, and `main/1` is the whole surface: it takes the
   arguments as a list, prints, and returns `:ok` or `:error`. In
@@ -38,8 +44,9 @@ defmodule Beamlet.CLI do
 
   @commands [
     {"users", "", "list users"},
-    {"users.create", "USER", "create a user"},
-    {"users.update", "USER --name NEW_NAME", "rename a user"},
+    {"users.create", "USER [--no-password]", "create a user, prompting for a password"},
+    {"users.update", "USER [--name NEW_NAME] [--password]",
+     "rename a user or reset their password"},
     {"users.delete", "USER", "delete a user and their tokens"},
     {"tokens", "USER", "list a user's tokens"},
     {"tokens.create", "USER TOKEN [--policy POLICY]", "create a token, printing its secret once"},
@@ -75,7 +82,7 @@ defmodule Beamlet.CLI do
   def main(argv) when is_list(argv) do
     parsed =
       OptionParser.parse(argv,
-        strict: [name: :string, policy: :string, help: :boolean],
+        strict: [name: :string, password: :boolean, policy: :string, help: :boolean],
         aliases: [h: :help]
       )
 
@@ -94,12 +101,16 @@ defmodule Beamlet.CLI do
   end
 
   defp run("users", [], _opts), do: with_beamlet(&list_users/0)
-  defp run("users.create", [name], _opts), do: with_beamlet(fn -> create_user(name) end)
+
+  defp run("users.create", [name], opts) do
+    with_beamlet(fn -> create_user(name, Keyword.get(opts, :password, true)) end)
+  end
 
   defp run("users.update", [name], opts) do
-    with_name("users.update", opts, fn new_name ->
-      with_beamlet(fn -> update_user(name, new_name) end)
-    end)
+    case Keyword.take(opts, [:name, :password]) do
+      [] -> fail("beamlet users.update needs --name NEW_NAME or --password.")
+      changes -> with_beamlet(fn -> update_user(name, changes) end)
+    end
   end
 
   defp run("users.delete", [name], _opts), do: with_beamlet(fn -> delete_user(name) end)
@@ -139,25 +150,102 @@ defmodule Beamlet.CLI do
         puts("No users yet. Create one with: beamlet users.create NAME")
 
       users ->
-        table(["ID", "NAME", "CREATED"], Enum.map(users, &[&1.id, &1.name, &1.inserted_at]))
+        table(
+          ["ID", "NAME", "LOGIN", "CREATED"],
+          Enum.map(users, &[&1.id, &1.name, login(&1), &1.inserted_at])
+        )
     end
   end
 
-  defp create_user(name) do
+  # The user is created before the password is asked for, so a bad
+  # name fails before anyone types anything; a password that then
+  # fails leaves the user in place and says how to set one.
+  defp create_user(name, password?) do
     case Users.create(name: name) do
-      {:ok, user} -> puts("Created user #{user.name}.")
+      {:ok, user} ->
+        puts("Created user #{user.name}.")
+
+        cond do
+          not password? -> no_password(user)
+          set_password(user) == :ok -> :ok
+          true -> fail("#{user.name} has no password; set one with: " <> update_hint(user))
+        end
+
+      {:error, changeset} ->
+        fail(changeset)
+    end
+  end
+
+  defp no_password(user) do
+    puts("No password: #{user.name} cannot sign in on the web until " <> update_hint(user))
+  end
+
+  defp update_hint(user), do: "beamlet users.update #{user.name} --password"
+
+  defp update_user(name, changes) do
+    with_user(name, fn user ->
+      with {:ok, user} <- rename_user(user, Keyword.fetch(changes, :name)) do
+        if Keyword.get(changes, :password, false), do: set_password(user), else: :ok
+      end
+    end)
+  end
+
+  defp rename_user(user, :error), do: {:ok, user}
+
+  defp rename_user(user, {:ok, new_name}) do
+    case Users.update(user, name: new_name) do
+      {:ok, updated} ->
+        puts("Renamed user #{user.name} to #{updated.name}.")
+        {:ok, updated}
+
+      {:error, changeset} ->
+        fail(changeset)
+    end
+  end
+
+  defp set_password(user) do
+    case read_password("Password: ") do
+      {:ok, ""} -> fail("No password given.")
+      {:error, message} -> fail(message)
+      {:ok, password} -> confirm_and_set(user, password)
+    end
+  end
+
+  defp confirm_and_set(user, password) do
+    with {:ok, ^password} <- read_password("Again: "),
+         {:ok, _user} <- Users.update_password(user, password) do
+      puts("Set password for #{user.name}.")
+    else
+      {:ok, _other} -> fail("Passwords do not match.")
+      {:error, message} when is_binary(message) -> fail(message)
       {:error, changeset} -> fail(changeset)
     end
   end
 
-  defp update_user(name, new_name) do
-    with_user(name, fn user ->
-      case Users.update(user, name: new_name) do
-        {:ok, updated} -> puts("Renamed user #{user.name} to #{updated.name}.")
-        {:error, changeset} -> fail(changeset)
-      end
-    end)
+  # A password read from a terminal must not echo, and the terminal
+  # under -noshell (mix, elixir -e, a release's eval) stays in cooked
+  # mode where the OS echoes every line; OTP 28's raw no-shell mode
+  # turns that off for the read. That only applies when this process
+  # reads from the terminal's own io server: piped input, or a test's
+  # captured io, reads a plain line, which nothing echoes anyway.
+  defp read_password(prompt) do
+    if Process.group_leader() == Process.whereis(:user) and
+         :shell.start_interactive({:noshell, :raw}) == :ok do
+      IO.write(prompt)
+      password = :io.get_password()
+      :shell.start_interactive({:noshell, :cooked})
+      IO.write("\n")
+      password_line(password)
+    else
+      line = IO.gets(prompt)
+      IO.write("\n")
+      password_line(line)
+    end
   end
+
+  defp password_line(line) when is_binary(line), do: {:ok, String.trim_trailing(line, "\n")}
+  defp password_line(line) when is_list(line), do: password_line(List.to_string(line))
+  defp password_line(_eof_or_error), do: {:error, "No password given."}
 
   defp delete_user(name) do
     with_user(name, fn user ->
@@ -255,13 +343,6 @@ defmodule Beamlet.CLI do
     end)
   end
 
-  defp with_name(command, opts, fun) do
-    case Keyword.fetch(opts, :name) do
-      {:ok, name} -> fun.(name)
-      :error -> fail("beamlet #{command} needs --name NEW_NAME.")
-    end
-  end
-
   defp with_beamlet(fun) do
     if Process.whereis(Beamlet), do: fun.(), else: start_and_run(fun)
   end
@@ -305,6 +386,9 @@ defmodule Beamlet.CLI do
     end)
     |> puts()
   end
+
+  defp login(%{password_hash: nil}), do: "no"
+  defp login(_user), do: "yes"
 
   defp plural(1, noun), do: "1 #{noun}"
   defp plural(count, noun), do: "#{count} #{noun}s"

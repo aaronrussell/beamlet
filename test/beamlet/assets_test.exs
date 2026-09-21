@@ -10,10 +10,10 @@ defmodule Beamlet.AssetsTest do
 
   test "serves the modules the root layout imports, with their source maps", %{conn: conn} do
     for path <- [
-          "/_assets/phoenix/phoenix.mjs",
-          "/_assets/phoenix/phoenix.mjs.map",
-          "/_assets/phoenix_live_view/phoenix_live_view.esm.js",
-          "/_assets/phoenix_live_view/phoenix_live_view.esm.js.map"
+          "/beamlet/assets/phoenix/phoenix.mjs",
+          "/beamlet/assets/phoenix/phoenix.mjs.map",
+          "/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js",
+          "/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js.map"
         ] do
       conn = get(conn, path)
 
@@ -21,14 +21,14 @@ defmodule Beamlet.AssetsTest do
       assert byte_size(conn.resp_body) > 0
     end
 
-    assert conn |> get("/_assets/phoenix/phoenix.mjs") |> get_resp_header("content-type") ==
+    assert conn |> get("/beamlet/assets/phoenix/phoenix.mjs") |> get_resp_header("content-type") ==
              ["text/javascript"]
   end
 
   test "the other builds shipped beside them are not reachable", %{conn: conn} do
     assert File.exists?(Application.app_dir(:phoenix, "priv/static/phoenix.js"))
 
-    assert conn |> get("/_assets/phoenix/phoenix.js") |> response(404)
-    assert conn |> get("/_assets/phoenix_live_view/phoenix_live_view.js") |> response(404)
+    assert conn |> get("/beamlet/assets/phoenix/phoenix.js") |> response(404)
+    assert conn |> get("/beamlet/assets/phoenix_live_view/phoenix_live_view.js") |> response(404)
   end
 end

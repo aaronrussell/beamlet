@@ -4,6 +4,7 @@ defmodule Beamlet.Repo.Migrations.CreateUsersAndTokens do
   def change do
     create table(:users) do
       add :name, :string, null: false
+      add :password_hash, :string
       timestamps()
     end
 

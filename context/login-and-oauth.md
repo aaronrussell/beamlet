@@ -1,6 +1,6 @@
 # Beamlet — login and OAuth
 
-**Status:** Design pass for roadmap 0.1 steps 1 to 4, completed 2026-09-21. It records what the pass settled, why, and what each implementation phase still has to decide. As each phase lands, its settled items move into `design.md` § 2 and this note stays as the record of the reasoning.
+**Status:** Design pass for roadmap 0.1 steps 1 to 4, completed 2026-09-21; phase 1 landed the same day and its settled items are in `design.md` § 2 Web. It records what the pass settled, why, and what each implementation phase still has to decide. As each phase lands, its settled items move into `design.md` § 2 and this note stays as the record of the reasoning.
 
 **Last updated:** 2026-09-21
 
@@ -67,7 +67,7 @@ Policy stays on the token. For an OAuth token it is chosen on the consent page; 
 
 ### Login
 
-A user gains a nullable `password_hash`. `users.create NAME` creates a user who cannot sign in yet and says so; `users.password NAME` prompts for one, so it never lands in shell history, and is also the reset command. `authenticate_password/2` refuses a null hash. No native hashing dependency, so the Dockerfile is untouched; the exact PBKDF2 library is a phase 1 detail.
+A user gains a nullable `password_hash`. `users.create NAME` prompts for a password unless `--no-password` is given; `users.update NAME --password` resets it. Prompted, so it never lands in shell history. `authenticate_password/2` refuses a null hash. No native hashing dependency, so the Dockerfile is untouched; phase 1 chose `pbkdf2_elixir`.
 
 The session is the cookie session the host's endpoint already carries. Beamlet's router grows a browser pipeline that fetches it and protects forms from forgery, a `require_login` plug that stores the return path and redirects to the login page, and a LiveView `on_mount` that reads the signed-in user. A web identity remains a user on a request with no token and no policy, exactly as design § 2 has it; the login is how the authorize endpoint knows who is consenting, and nothing more.
 
@@ -79,27 +79,27 @@ CIMD only. No dynamic registration, no clients table, no unauthenticated write e
 
 ### The flow, endpoint by endpoint
 
-1. **Discovery.** A client calls `/_/mcp` with no token and gets a 401 naming the protected resource metadata URL. It fetches that document, which names this origin as the authorization server, then fetches the authorization server metadata at `/.well-known/oauth-authorization-server`, which names the two endpoints below and declares S256, the code and refresh grants, `none` auth, CIMD support and `iss` support.
-2. **Authorize.** `GET /_/authorize` with `client_id`, `redirect_uri`, `state`, `code_challenge`, `code_challenge_method=S256` and `resource`. Every parameter is validated; a request the beamlet cannot redirect for, an unknown client or a bad redirect URI, renders an error page rather than redirecting. `resource` must equal the MCP URL. A signed-out user goes to the login page and returns. The consent page names the client's host, warns when the redirect is loopback only, and lists the declared policies with `default` selected.
-3. **Consent.** `POST /_/authorize` stores a code and redirects the browser to the client with `code`, `state` and `iss`.
-4. **Exchange.** `POST /_/token`, form-encoded, `grant_type=authorization_code`. The beamlet looks the code up, deletes it, checks the client id, redirect URI and `resource` match what the code was issued for, checks the SHA-256 of the `code_verifier` against the stored challenge, and calls `Users.create_token` with the consented policy. The JSON reply carries the access token, `token_type`, `expires_in` and the refresh token. Errors are OAuth error bodies, `invalid_grant` and friends, because the client reads them.
+1. **Discovery.** A client calls `/beamlet/mcp` with no token and gets a 401 naming the protected resource metadata URL. It fetches that document, which names this origin as the authorization server, then fetches the authorization server metadata at `/.well-known/oauth-authorization-server`, which names the two endpoints below and declares S256, the code and refresh grants, `none` auth, CIMD support and `iss` support.
+2. **Authorize.** `GET /beamlet/authorize` with `client_id`, `redirect_uri`, `state`, `code_challenge`, `code_challenge_method=S256` and `resource`. Every parameter is validated; a request the beamlet cannot redirect for, an unknown client or a bad redirect URI, renders an error page rather than redirecting. `resource` must equal the MCP URL. A signed-out user goes to the login page and returns. The consent page names the client's host, warns when the redirect is loopback only, and lists the declared policies with `default` selected.
+3. **Consent.** `POST /beamlet/authorize` stores a code and redirects the browser to the client with `code`, `state` and `iss`.
+4. **Exchange.** `POST /beamlet/token`, form-encoded, `grant_type=authorization_code`. The beamlet looks the code up, deletes it, checks the client id, redirect URI and `resource` match what the code was issued for, checks the SHA-256 of the `code_verifier` against the stored challenge, and calls `Users.create_token` with the consented policy. The JSON reply carries the access token, `token_type`, `expires_in` and the refresh token. Errors are OAuth error bodies, `invalid_grant` and friends, because the client reads them.
 5. **Refresh.** Same endpoint, `grant_type=refresh_token`. Look up the refresh hash, check its expiry, rotate in place, reply with the new pair. A used or expired refresh token is `invalid_grant`, which is what the clients expect.
 
 `Beamlet.OAuth.Codes` is the store for step 3 to step 4: a GenServer holding a map of pending codes, each with the user, policy, client id, redirect URI, challenge and resource, a ten-minute expiry checked at lookup, single use by the lookup deleting the entry, and a periodic sweep so abandoned flows do not accumulate. A restart mid-flow means the client gets `invalid_grant` and the person clicks connect again.
 
 ### URLs
 
-The beamlet's own routes live under one segment, `/_/`, and the reservation rule in design § 2 changes from "a first segment starting with an underscore" to "a first segment that is `_`"; `~` is unchanged. `/_/mcp`, `/_/live` and `/_/assets` move; `/_/login`, `/_/logout`, `/_/authorize` and `/_/token` arrive; `/_/admin` comes later. The rule is exact, the router gets one scope, and an operator reading logs sees every beamlet-owned path share a prefix. The well-known documents stay at the root, where the spec fixes them, and the protected resource one is served both bare and with the MCP path appended, since clients try the suffixed form first.
+The beamlet's own routes live under one named segment, `/beamlet`, and the reservation rule in design § 2 becomes "a first segment that is `beamlet`"; the underscore rule goes and `~` is unchanged. Revised at the phase 1 planning pass from the `/_/` this pass first chose: the underscore was a marker for paths no person types, and once the beamlet had pages for a browser, `/_/login` read as a mistake where `/beamlet/login` reads as what it is. `/beamlet/mcp`, `/beamlet/live` and `/beamlet/assets` move; `/beamlet/login`, `/beamlet/logout`, `/beamlet/authorize` and `/beamlet/token` arrive; the admin pages come later under the same segment. The rule is exact, the router gets one scope, and an operator reading logs sees every beamlet-owned path share a prefix. The beamlet's own paths never take the operator's prefix, which fences agent routes only. The well-known documents stay at the root, where the spec fixes them, and the protected resource one is served both bare and with the MCP path appended, since clients try the suffixed form first.
 
-The public URL comes from the endpoint's `url` config through `Beamlet.Config`, not a new key. `resource` is that origin plus `/_/mcp`, byte for byte what the client uses; `issuer` is the origin.
+The public URL comes from the endpoint's `url` config through `Beamlet.Config`, not a new key. `resource` is that origin plus `/beamlet/mcp`, byte for byte what the client uses; `issuer` is the origin.
 
 ### Namespaces
 
-Web pieces live under `Beamlet.Web`: the existing `Layouts` and `ErrorView` move there, beside `SessionController` and `HomeLive`. OAuth pieces live under `Beamlet.OAuth`. The validator sits with the MCP pieces under `Beamlet.MCP`.
+Web pieces live under `Beamlet.Web`: the existing `Layouts` and `ErrorView` move there, beside `Auth`, `SessionController` and `HomeLive`. OAuth pieces live under `Beamlet.OAuth`. The validator sits with the MCP pieces under `Beamlet.MCP`.
 
 ### Home page
 
-`/` serves a page only while no agent route is mounted there, so the check belongs in the dynamic router's fallback and not in a static route ahead of it. Phase 1 lands it as a stub that shows the signed-in user's name; phase 4 makes it the setup page.
+The home page is `/beamlet`, the root of the beamlet's own segment, and it requires the login: the person setting up a client is the person with an account, and nobody else has business there. Phase 1 lands it as a stub that shows the signed-in user's name; phase 4 makes it the setup page; 0.5 grows the admin pages beside it. `/` belongs to agents and is empty by default: nothing in the beamlet's router touches it, so the generated router, its placeholder and the boot shortcut are as they were, and the default 404 says where the beamlet has its own pages. This replaced the pass's first shape, a home page at `/` served only while nothing was mounted there, which needed a fallback route in the generated router, a placeholder that carried it and a boot check that knew it, and left the post-login redirect pointing at a page that might not exist.
 
 ### Pre-release
 
@@ -109,27 +109,26 @@ The existing users and tokens migration is edited in place and the dev data dir 
 
 Each phase is one agent session, starts with its own planning pass, and ends with `mix precommit` green and its settled items moved into `design.md`.
 
-### Phase 1 — Login, sessions, the `/_/` scope and the home stub
+### Phase 1 — Login, sessions, the `/beamlet` namespace and the home page
 
-Roadmap step 2, plus the router restructure that everything after needs.
+Roadmap step 2, plus the router restructure that everything after needs. Landed 2026-09-21; the settled items are in `design.md` § 2 Web under "Root by default", "Two routers", "What the host carries" and "Login".
 
-**Scope.** The `/_/` scope with the existing three paths moved and the mount-time reservation check updated. The `Beamlet.Web` namespace with `Layouts` and `ErrorView` moved. `password_hash` on users, `users.password` with a prompt, `users.create` reporting that no password is set, `users.list` showing who can sign in. `authenticate_password/2`. The browser pipeline, `require_login`, the `on_mount` hook. `GET` and `POST /_/login` as `SessionController` `:new` and `:create`, `POST /_/logout` as `:delete`, a login form in the layout. `HomeLive` at `/` when nothing is mounted there, showing the user's name when signed in. Tests through `Plug.Test` and LiveView tests.
+**Scope.** The `/beamlet` segment with the existing three paths moved and the mount-time reservation check updated, the underscore rule dropped. The `Beamlet.Web` namespace with `Layouts` and `ErrorView` moved. `password_hash` on users, `users.create` prompting for a password and `users.update --password` resetting it, `users` showing who can sign in. `authenticate_password/2`. The browser pipeline, `Beamlet.Web.Auth` with `fetch_current_user`, `require_login` and the `on_mount` hook. `GET` and `POST /beamlet/login` as `SessionController` `:new` and `:create`, `POST /beamlet/logout` as `:delete`. `HomeLive` at `/beamlet` behind the login, showing the user's name. Tests through `Plug.Test` and LiveView tests.
 
-**Decided:** everything in § 3 Login, URLs, Namespaces and Home page.
+**Settled at the planning pass:**
 
-**Open, to settle in the planning pass:**
-
-- The PBKDF2 library: `Plug.Crypto`'s key generator with a stored salt and iteration count, or `pbkdf2_elixir`, which is pure Elixir and built for passwords.
-- How `require_login` stores the return path, and where the login form sends a user who arrived directly.
-- What the endpoint contract in `Beamlet.Router`'s moduledoc gains: the session plug is already required, and the server's signing salt is a placeholder worth replacing.
-- Whether the login page rate-limits attempts. Probably not in 0.1; the README's posture section says why.
-- How the dynamic router's fallback decides that nothing is mounted at `/`.
+- `pbkdf2_elixir` over `Plug.Crypto`'s key generator: the format, the dummy verify and the rounds setting are its job. Eight to 128 characters.
+- The prompt: `:io.get_password/0` answers `enotsup` under `-noshell`, so the CLI switches to OTP 28's raw no-shell mode for the read and back after; a pipe reads a plain line. Hex's line-clearing trick lost because the characters echo before they are erased.
+- `require_login` stores a GET's path in the session; the login lands there or on `/beamlet`. Login lasts until sign-out or the browser drops the cookie; a password reset ends no other session.
+- The endpoint contract was wrong to say JSON only: it parses JSON and form bodies. The server endpoint gained `Plug.RewriteOn` so the session cookie is marked secure behind Fly's proxy. The signing salts stay: a salt is not a secret, and replacing one constant with another changes nothing.
+- No rate limiting in 0.1.
+- The dev data dir was wiped for the edited migration.
 
 ### Phase 2 — The resource server
 
 The half of roadmap step 3 that makes Anubis the edge. After it, CLI tokens still work, through Anubis's plug rather than Beamlet's, and a missing token gets the spec-shaped 401.
 
-**Scope.** The tokens migration edited: `kind`, `client` in place of `name`, `expires_at`, `refresh_hash`, `refresh_expires_at`. `Beamlet.Token` with the two changesets. `Beamlet.Users` mint and list functions taking the new shape; `tokens.create USER LABEL`, `tokens.list` printing id, kind, client, policy and expiry, `tokens.delete` and `tokens.update` by id. `Beamlet.Principal` carrying `client` in place of the token name, and the provenance encodings rendering it. The public URL in `Beamlet.Config`. The `authorization:` option built at runtime and passed to the server's child spec. `Beamlet.MCP.Validator`. The three call sites reading the context. `Beamlet.MCP.Plug` removed and the router mounting Anubis's plug at `/_/mcp`. `MetadataController` serving the protected resource document bare and suffixed, and the authorization server document. `Beamlet.Case` minting a `cli` token. Tests asserting the 401 challenge, both metadata documents, and that a `cli` token authenticates as before.
+**Scope.** The tokens migration edited: `kind`, `client` in place of `name`, `expires_at`, `refresh_hash`, `refresh_expires_at`. `Beamlet.Token` with the two changesets. `Beamlet.Users` mint and list functions taking the new shape; `tokens.create USER LABEL`, `tokens.list` printing id, kind, client, policy and expiry, `tokens.delete` and `tokens.update` by id. `Beamlet.Principal` carrying `client` in place of the token name, and the provenance encodings rendering it. The public URL in `Beamlet.Config`. The `authorization:` option built at runtime and passed to the server's child spec. `Beamlet.MCP.Validator`. The three call sites reading the context. `Beamlet.MCP.Plug` removed and the router mounting Anubis's plug at `/beamlet/mcp`. `MetadataController` serving the protected resource document bare and suffixed, and the authorization server document. `Beamlet.Case` minting a `cli` token. Tests asserting the 401 challenge, both metadata documents, and that a `cli` token authenticates as before.
 
 **Decided:** everything in § 3 on the authorization server split, tokens, and the metadata contents.
 
@@ -161,12 +160,12 @@ The other half of roadmap step 3: issuing.
 
 Roadmap step 4.
 
-**Scope.** `HomeLive` becomes the setup page: the MCP URL, how to add the beamlet in claude.ai, ChatGPT and Claude Code and sign in, the `mcp-remote` line for Claude Desktop, and the CLI commands for code that takes a header. Signed out, it shows the URL and a sign-in link; signed in, the rest.
+**Scope.** `HomeLive` at `/beamlet` becomes the setup page: the MCP URL, how to add the beamlet in claude.ai, ChatGPT and Claude Code and sign in, the `mcp-remote` line for Claude Desktop, and the CLI commands for code that takes a header. It sits behind the login, so a signed-out visitor sees the login page first.
 
-**Decided:** what it lists, and that it serves only while nothing is mounted at `/`.
+**Decided:** what it lists, and that it lives at `/beamlet` behind the login.
 
 **Open:**
 
 - The exact copy per client, written after phase 3's verification so it matches what each dialog actually shows.
 - Whether the page offers to mint a CLI token for the signed-in user, or points at the CLI only. The design's line is that management is operator-only; the planning pass decides whether a page minting a token for its own user crosses it.
-- Whether the page also lists the user's tokens for revocation, or leaves that to `/_/admin` in 0.5.
+- Whether the page also lists the user's tokens for revocation, or leaves that to `/beamlet/admin` in 0.5.

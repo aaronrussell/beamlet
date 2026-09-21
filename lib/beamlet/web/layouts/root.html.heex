@@ -8,11 +8,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
     </script>
     <script type="module">
-      import {Socket} from "/_assets/phoenix/phoenix.mjs"
-      import {LiveSocket} from "/_assets/phoenix_live_view/phoenix_live_view.esm.js"
+      import {Socket} from "/beamlet/assets/phoenix/phoenix.mjs"
+      import {LiveSocket} from "/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js"
 
       const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
-      const liveSocket = new LiveSocket("/_live", Socket, {params: {_csrf_token: csrfToken}})
+      const liveSocket = new LiveSocket("/beamlet/live", Socket, {params: {_csrf_token: csrfToken}})
       liveSocket.connect()
       window.liveSocket = liveSocket
     </script>

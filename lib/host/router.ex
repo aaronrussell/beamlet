@@ -14,9 +14,9 @@ defmodule Host.Router do
   operator may have configured. A *URL* is what you give people or
   external services; `url/1` builds it. In a template, `~p"/todos"`
   (imported by `use Host.Web`) turns a path into the browser path a
-  link needs. A path whose first segment starts with `_` or `~` is
-  your beamlet's own (`/_mcp`, `/_live`, `/_assets`) and cannot be
-  mounted.
+  link needs. A path whose first segment is `beamlet` is your
+  beamlet's own (`/beamlet/login`, `/beamlet/mcp`), and one whose
+  first segment starts with `~` is reserved; neither can be mounted.
 
   Mounting prints the route and its URL and returns `:ok`;
   `unmount/1` prints what it removed. `print_routes/0` prints the
@@ -454,11 +454,15 @@ defmodule Host.Router do
 
   defp reject_reserved!(path) do
     case first_segment(path) do
-      <<mark, _rest::binary>> = segment when mark in [?_, ?~] ->
-        raise "paths whose first segment starts with _ or ~ are your beamlet's own " <>
-                "(/_mcp, /_live, /_assets) — #{path} cannot be mounted. Use a first " <>
-                "segment that starts with a letter or a digit, e.g. " <>
-                "#{String.replace_prefix(path, "/" <> segment, "/" <> String.slice(segment, 1..-1//1))}"
+      "beamlet" ->
+        raise "paths whose first segment is beamlet are your beamlet's own " <>
+                "(/beamlet/login, /beamlet/mcp) — #{path} cannot be mounted. " <>
+                "Use another first segment"
+
+      "~" <> rest = segment ->
+        raise "paths whose first segment starts with ~ are reserved — #{path} cannot " <>
+                "be mounted. Use a first segment that starts with a letter or a digit, " <>
+                "e.g. #{String.replace_prefix(path, "/" <> segment, "/" <> rest)}"
 
       _segment ->
         :ok

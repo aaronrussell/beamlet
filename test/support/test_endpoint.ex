@@ -2,9 +2,10 @@ defmodule Beamlet.TestEndpoint do
   @moduledoc """
   The endpoint the suite serves a beamlet's routes through, and the
   written form of what a host's endpoint must carry (`Beamlet.Router`):
-  the session, the LiveView socket at `/_live`, `Beamlet.Assets` for
-  the LiveView JavaScript under `/_assets`, the JSON parser, and a
-  router whose last line forwards to `Beamlet.Router` at the root.
+  the session, the LiveView socket at `/beamlet/live`,
+  `Beamlet.Assets` for the LiveView JavaScript under
+  `/beamlet/assets`, the JSON and urlencoded parsers, and a router
+  whose last line forwards to `Beamlet.Router` at the root.
   `Beamlet.Case` starts it after the beamlet.
   """
 
@@ -17,14 +18,14 @@ defmodule Beamlet.TestEndpoint do
     same_site: "Lax"
   ]
 
-  socket "/_live", Phoenix.LiveView.Socket,
+  socket "/beamlet/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
   plug Beamlet.Assets
 
   plug Plug.Parsers,
-    parsers: [:json],
+    parsers: [:urlencoded, :json],
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 
