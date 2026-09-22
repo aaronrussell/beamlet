@@ -50,8 +50,8 @@ defmodule Beamlet.Router do
       layout (`Beamlet.Web.Layouts`) connects to:
       `socket "/beamlet/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]`.
     * `plug Beamlet.Assets` before the parsers, serving the LiveView
-      JavaScript under `/beamlet/assets` from the deps' precompiled
-      bundles.
+      JavaScript and the beamlet's own stylesheet under
+      `/beamlet/assets`.
     * `Plug.Parsers` with the JSON and urlencoded parsers: JSON for
       controller routes, urlencoded for the sign-in form.
     * `Plug.Session`, which carries the sign-in and which the browser
@@ -80,7 +80,7 @@ defmodule Beamlet.Router do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :fetch_live_flash
-    plug :put_root_layout, html: {Beamlet.Web.Layouts, :root}
+    plug :put_root_layout, html: {Beamlet.Web.Layouts, :beamlet}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_user

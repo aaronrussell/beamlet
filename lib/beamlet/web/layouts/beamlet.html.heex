@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={get_csrf_token()} />
+    <.live_title default="beamlet">{assigns[:page_title]}</.live_title>
+    <link rel="stylesheet" href="/beamlet/assets/beamlet.css" />
+    <script type="module">
+      import {Socket} from "/beamlet/assets/phoenix/phoenix.mjs"
+      import {LiveSocket} from "/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js"
+
+      const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+      const liveSocket = new LiveSocket("/beamlet/live", Socket, {params: {_csrf_token: csrfToken}})
+      liveSocket.connect()
+      window.liveSocket = liveSocket
+    </script>
+  </head>
+  <body class="text-zinc-900 antialiased">
+    {@inner_content}
+  </body>
+</html>

@@ -200,6 +200,16 @@ defmodule Beamlet.RoutesTest do
       assert html =~ "id=7"
     end
 
+    test "an agent page renders in the agent layout, styled from the CDN", ctx do
+      add_hello!(ctx)
+      assert :ok = Routes.regenerate()
+
+      html = ctx.conn |> get("/hello/7") |> html_response(200)
+
+      assert html =~ "cdn.jsdelivr.net/npm/@tailwindcss/browser"
+      refute html =~ "/beamlet/assets/beamlet.css"
+    end
+
     test "a live action reaches the page", ctx do
       {:ok, _route} = Routes.create(Map.put(ctx.live_attrs, :action, "edit"))
       assert :ok = Routes.regenerate()

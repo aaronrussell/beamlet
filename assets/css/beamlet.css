@@ -1,0 +1,5 @@
+/* The stylesheet for the beamlet's own pages. Tailwind scans the
+   library's modules and templates for the classes it uses; the pages
+   agents build are styled from Tailwind's CDN instead (Beamlet.Web.Layouts). */
+@import "tailwindcss" source(none);
+@source "../../lib/beamlet";

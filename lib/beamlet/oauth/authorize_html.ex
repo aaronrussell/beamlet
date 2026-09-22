@@ -3,5 +3,7 @@ defmodule Beamlet.OAuth.AuthorizeHTML do
 
   use Phoenix.Component
 
+  alias Beamlet.Web.Layouts
+
   embed_templates "authorize_html/*"
 end

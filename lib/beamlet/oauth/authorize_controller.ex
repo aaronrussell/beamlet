@@ -18,6 +18,12 @@ defmodule Beamlet.OAuth.AuthorizeController do
   page. Every other fault is answered the way the client expects:
   a redirect carrying `error`, `error_description`, the client's
   `state` and this beamlet's `iss`.
+
+  The way back to the client depends on its redirect URI. An http or
+  https one is a plain redirect. A custom scheme, which is how a
+  desktop app such as Raycast receives its code, is a page that sends
+  the browser on and says the app has been opened, since a redirect
+  there opens the app and leaves the tab on whatever page it was on.
   """
 
   use Phoenix.Controller, formats: [:html]
@@ -124,8 +130,18 @@ defmodule Beamlet.OAuth.AuthorizeController do
   defp back_to_client(conn, request, params) do
     params = params ++ [iss: OAuth.issuer()]
     params = if request.state, do: params ++ [state: request.state], else: params
-    url = request.redirect_uri |> URI.parse() |> URI.append_query(URI.encode_query(params))
-    redirect(conn, external: URI.to_string(url))
+    uri = request.redirect_uri |> URI.parse() |> URI.append_query(URI.encode_query(params))
+
+    if uri.scheme in ["http", "https"] do
+      redirect(conn, external: URI.to_string(uri))
+    else
+      conn
+      |> assign(:page_title, "Sending you back")
+      |> render(:sent,
+        location: URI.to_string(uri),
+        client_host: URI.parse(request.client_id).host
+      )
+    end
   end
 
   defp validate(params) do

@@ -40,3 +40,11 @@ config :phoenix_live_view,
   debug_attributes: true,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
+
+# Rebuilds the stylesheet for the beamlet's own pages as the library's
+# templates change. The build is the library's (`mix tailwind beamlet`
+# from `..`), so the server declares no Tailwind config of its own.
+config :beamlet_server, BeamletServer.Endpoint,
+  watchers: [
+    mix: ["tailwind", "beamlet", "--watch", cd: Path.expand("../..", __DIR__)]
+  ]

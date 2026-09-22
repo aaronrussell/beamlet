@@ -1,9 +1,12 @@
-<main class="mx-auto mt-16 max-w-md px-4">
+<Layouts.app current_user={@current_user}>
   <h1 class="text-2xl font-semibold">Connect {@client_host} to your beamlet</h1>
   <p id="client-id" class="mt-2 break-all text-xs text-zinc-500">{@request.client_id}</p>
+  <p class="mt-4">
+    {@client_host} is asking to work on your beamlet as you. Choose what it may do, then allow it.
+  </p>
 
   <p :if={@loopback?} id="loopback-warning" class="mt-4 rounded bg-amber-50 p-3 text-sm text-amber-900">
-    This app runs on your own computer: allowing sends a code to {@request.redirect_uri}.
+    This app is running on your own computer. Allowing sends it a code at {@request.redirect_uri}.
   </p>
 
   <.form for={%{}} as={:none} action="/beamlet/authorize" method="post" id="consent-form" class="mt-6 flex flex-col gap-4">
@@ -27,11 +30,4 @@
       </button>
     </div>
   </.form>
-
-  <div class="mt-10 flex items-center gap-3 text-sm text-zinc-500">
-    <span id="signed-in">Signed in as {@current_user.name}.</span>
-    <.form for={%{}} as={:none} action="/beamlet/logout" method="post" id="logout-form">
-      <button type="submit" class="underline">Sign out</button>
-    </.form>
-  </div>
-</main>
+</Layouts.app>

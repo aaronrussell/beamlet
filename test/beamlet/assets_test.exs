@@ -25,6 +25,14 @@ defmodule Beamlet.AssetsTest do
              ["text/javascript"]
   end
 
+  test "serves the stylesheet for the beamlet's own pages", %{conn: conn} do
+    conn = get(conn, "/beamlet/assets/beamlet.css")
+
+    assert conn.status == 200
+    assert conn.resp_body =~ "tailwindcss"
+    assert get_resp_header(conn, "content-type") == ["text/css"]
+  end
+
   test "the other builds shipped beside them are not reachable", %{conn: conn} do
     assert File.exists?(Application.app_dir(:phoenix, "priv/static/phoenix.js"))
 

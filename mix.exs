@@ -44,7 +44,8 @@ defmodule Beamlet.MixProject do
       {:phoenix_pubsub, "~> 2.1"},
       {:plug, "~> 1.20"},
       {:req, "~> 0.6"},
-      {:req_ssrf, "~> 0.2"}
+      {:req_ssrf, "~> 0.2"},
+      {:tailwind, "~> 0.5", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -59,9 +60,11 @@ defmodule Beamlet.MixProject do
         "ecto.drop -r Beamlet.Repo -r Host.Repo",
         "ecto.setup"
       ],
+      "assets.build": ["tailwind beamlet"],
       precommit: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",
+        "assets.build",
         "format",
         "test"
       ]

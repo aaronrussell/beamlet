@@ -17,7 +17,8 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
     "redirect_uris" => [
       @redirect_uri,
       "http://localhost/callback",
-      "https://chat.example/cb?app=1"
+      "https://chat.example/cb?app=1",
+      "chat-app://oauth/callback"
     ]
   }
   @challenge "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
@@ -227,6 +228,30 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
 
       assert %{"error" => "access_denied", "state" => "xyz", "iss" => @iss} = query
       refute Map.has_key?(query, "code")
+    end
+
+    test "a custom-scheme redirect is a page that sends the browser on", %{
+      conn: conn,
+      params: params
+    } do
+      params =
+        Map.merge(params, %{
+          redirect_uri: "chat-app://oauth/callback",
+          decision: "allow",
+          policy: "default"
+        })
+
+      html = conn |> post("/beamlet/authorize", params) |> html_response(200)
+
+      assert html =~ "Sending you back to chat.example"
+      assert [location] = Regex.run(~r{content="0;url=([^"]+)"}, html, capture: :all_but_first)
+      assert html =~ ~s(href="#{location}")
+
+      assert %URI{scheme: "chat-app", host: "oauth", path: "/callback", query: query} =
+               location |> String.replace("&amp;", "&") |> URI.parse()
+
+      assert %{"code" => code, "state" => "xyz", "iss" => @iss} = URI.decode_query(query)
+      assert {:ok, %{policy: "default"}} = Codes.take(code)
     end
 
     test "a redirect URI with a query keeps it", %{conn: conn, params: params} do

@@ -1,6 +1,6 @@
 # Beamlet — login and OAuth
 
-**Status:** Design pass for roadmap 0.1 steps 1 to 3 and 5, completed 2026-09-21; phases 1 to 3 landed the same day and their settled items are in `design.md` § 2. It records what the pass settled, why, and what each implementation phase still has to decide. As each phase lands, its settled items move into `design.md` § 2 and this note stays as the record of the reasoning. Where a phase's planning pass reversed the design pass, the section says so and keeps the original reasoning beside the reversal.
+**Status:** Design pass for roadmap 0.1 steps 1 to 3 and 5, completed 2026-09-21; phases 1 to 3 landed the same day and phase 4 on 2026-09-22, and their settled items are in `design.md` § 2. It records what the pass settled, why, and what each implementation phase still has to decide. As each phase lands, its settled items move into `design.md` § 2 and this note stays as the record of the reasoning. Where a phase's planning pass reversed the design pass, the section says so and keeps the original reasoning beside the reversal.
 
 **Last updated:** 2026-09-22
 
@@ -167,14 +167,20 @@ No client asked for dynamic registration and none tripped on the scope echo. The
 
 ### Phase 4 — The home page
 
-Roadmap step 5, after step 4 bounds the policies a user may choose.
+Roadmap step 5, after step 4 bounded the policies a user may choose. Landed 2026-09-22; the settled items are in `design.md` § 2 under "Web" as "The beamlet's own pages are styled by a built stylesheet" and "The home page", and in "The authorization server" for the consent changes.
 
-**Scope.** `HomeLive` at `/beamlet` becomes the setup page: the MCP URL, how to add the beamlet in claude.ai, ChatGPT and Claude Code and sign in, the `mcp-remote` line for Claude Desktop, and the CLI commands for code that takes a header. It sits behind the login, so a signed-out visitor sees the login page first.
+**Scope as landed.** `HomeLive` at `/beamlet` as the setup page: the MCP URL, then apps, coding agents and code, each with the clients named and the commands or config to paste. The asset pipeline for the beamlet's own pages: the `tailwind` hex package, `assets/css/beamlet.css`, the committed `priv/static/beamlet.css` served by `Beamlet.Assets`, `mix assets.build` in `precommit`, and a watcher in the server's dev config. `Beamlet.Web.Layouts` with `root` for agent pages, `beamlet` for the beamlet's own and `app` for the signed-in ones. The consent page's copy reviewed and its footer moved to the app layout; a custom-scheme redirect renders a page that sends the browser on. Tests through `Plug.Test`, `Phoenix.ConnTest` and LiveView tests, asserting the presence of each section and snippet and never the wording.
 
-**Decided:** what it lists, and that it lives at `/beamlet` behind the login.
+**Settled at the planning pass:**
 
-**Open:**
+- Tailwind for the beamlet's pages, the CDN for agents'. The dependency dev and test only, never runtime; the built file committed, as `phoenix_live_dashboard` ships its stylesheet, so the hex package, a git dependency and the image need no build step; `precommit` refreshes it so it cannot drift. The server's watcher runs the library's task in the library directory, so one config owns the build. Building in the Dockerfile and at publish lost on breaking git dependencies and adding a network step to the image.
+- No JavaScript pipeline. An `app.js` entrypoint with esbuild was weighed and put off: without colocated hooks it would carry nothing the raw modules do not, and colocated pieces compile into whichever project's `_build` compiles the module, the server's for a path dependency, which a watcher in the library directory would not see. The question returns with the first hook, likely at the admin pages.
+- Three layouts in one module, the browser pipeline putting the `beamlet` root on every beamlet-owned route, the login page included, and the generated router keeping `root`.
+- The page lists and does not mint. Self-service tokens and the token list wait for 0.5; the page shows the operator's command with the signed-in name filled in.
+- OAuth where a client offers it, the header everywhere else. Codex joins Claude Code on the OAuth path, since it signs in with `codex mcp login`.
+- No plan or pricing claims on the page. Menu paths and form fields as of writing, nothing more.
+- A custom-scheme consent gets a page with a meta refresh and a link, so the no-JavaScript decision holds there too; http and https keep the 302.
+- `mcp-remote` is off the page until someone cannot connect without it.
+- Snippets checked against current docs at the planning pass, not written from memory: Claude Code's `--transport http` and `${VAR}` expansion in `.mcp.json`, Codex's `codex mcp add --url` and `codex mcp login`, Cursor's `headers` with `${env:VAR}`, the Claude API's `mcp-client-2025-11-20` beta with `mcp_servers` and an `mcp_toolset`, and the OpenAI Responses `mcp` tool with `authorization`.
 
-- The exact copy per client, written after phase 3's verification so it matches what each dialog actually shows.
-- Whether the page offers to mint a CLI token for the signed-in user, or points at the CLI only. The design's line is that management is operator-only; the planning pass decides whether a page minting a token for its own user crosses it.
-- Whether the page also lists the user's tokens for revocation, or leaves that to `/beamlet/admin` in 0.5.
+**To verify by hand** over the funnel, as phase 3 was: Claude Code's OAuth, which phase 3 never ran; Claude and ChatGPT once more against the written steps; Raycast for the sending-back page.
