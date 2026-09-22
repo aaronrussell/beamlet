@@ -93,6 +93,8 @@ defmodule Beamlet do
       {Phoenix.PubSub, name: Beamlet.PubSub},
       Beamlet.Code,
       Beamlet.Routes,
+      Beamlet.OAuth.Clients,
+      Beamlet.OAuth.Codes,
       {Beamlet.MCP.Server,
        transport: {:streamable_http, start: true},
        request_timeout: max(Config.eval()[:timeout], 2 * define_timeout + 5_000) + 5_000}

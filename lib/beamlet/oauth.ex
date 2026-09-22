@@ -17,9 +17,44 @@ defmodule Beamlet.OAuth do
   reached at `https://beamlet.example` protects
   `https://beamlet.example/beamlet/mcp` and nothing needs configuring
   twice.
+
+  The flow itself is four modules. A client identifies itself by an
+  https URL that serves its metadata document, which
+  `Beamlet.OAuth.Clients` fetches and checks. `GET /beamlet/authorize`
+  (`Beamlet.OAuth.AuthorizeController`) validates the request, sends
+  a signed-out person to the login, and shows the consent page, where
+  the policy is chosen; consenting stores a code in
+  `Beamlet.OAuth.Codes` and sends the browser back to the client.
+  `POST /beamlet/token` (`Beamlet.OAuth.TokenController`) redeems the
+  code for an `oauth` token (`Beamlet.Token`) and later a refresh
+  token for a new pair. The lifetimes are `access_ttl/0` and
+  `refresh_ttl/0`, and every refresh sets both afresh, so a client in
+  regular use never asks the person to consent again.
   """
 
   alias Beamlet.Config
+
+  @access_ttl 24 * 60 * 60
+  @refresh_ttl 30 * 24 * 60 * 60
+
+  @doc "How long an access token lives, in seconds: a day."
+  @spec access_ttl() :: pos_integer()
+  def access_ttl, do: @access_ttl
+
+  @doc "How long a refresh token lives, in seconds: thirty days from the last refresh."
+  @spec refresh_ttl() :: pos_integer()
+  def refresh_ttl, do: @refresh_ttl
+
+  @doc "Both expiries counted from now, as the attrs minting and rotation take."
+  @spec expiries() :: %{expires_at: DateTime.t(), refresh_expires_at: DateTime.t()}
+  def expiries do
+    now = DateTime.utc_now(:second)
+
+    %{
+      expires_at: DateTime.add(now, @access_ttl, :second),
+      refresh_expires_at: DateTime.add(now, @refresh_ttl, :second)
+    }
+  end
 
   @doc "The beamlet's origin, which is also its OAuth issuer."
   @spec issuer() :: String.t()

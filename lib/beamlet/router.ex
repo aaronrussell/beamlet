@@ -20,7 +20,11 @@ defmodule Beamlet.Router do
   `/beamlet/mcp` (`Beamlet.MCP.Plug`), the sign-in at
   `/beamlet/login` and `/beamlet/logout` (`Beamlet.Web.SessionController`),
   the home page at `/beamlet` (`Beamlet.Web.HomeLive`, behind the
-  login), and on the host's endpoint the socket and asset paths
+  login), the OAuth endpoints at `/beamlet/authorize` (behind the
+  login too, `Beamlet.OAuth.AuthorizeController`) and `/beamlet/token`
+  (`Beamlet.OAuth.TokenController`, which clients post to directly, so
+  no session and no CSRF check), and on the host's endpoint the
+  socket and asset paths
   below. The one exception is the pair of OAuth discovery documents
   (`Beamlet.OAuth.MetadataController`), which the specs fix under
   `/.well-known` at the root; they are exact paths, matched ahead of
@@ -70,7 +74,7 @@ defmodule Beamlet.Router do
   import Plug.Conn
   import Phoenix.Controller
   import Phoenix.LiveView.Router
-  import Beamlet.Web.Auth, only: [fetch_current_user: 2]
+  import Beamlet.Web.Auth, only: [fetch_current_user: 2, require_login: 2]
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -80,6 +84,10 @@ defmodule Beamlet.Router do
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_user
+  end
+
+  pipeline :login do
+    plug :require_login
   end
 
   scope "/beamlet", Beamlet.Web do
@@ -93,6 +101,15 @@ defmodule Beamlet.Router do
       live "/", HomeLive
     end
   end
+
+  scope "/beamlet", Beamlet.OAuth do
+    pipe_through [:browser, :login]
+
+    get "/authorize", AuthorizeController, :new
+    post "/authorize", AuthorizeController, :create
+  end
+
+  post "/beamlet/token", Beamlet.OAuth.TokenController, :create
 
   get "/.well-known/oauth-protected-resource",
       Beamlet.OAuth.MetadataController,

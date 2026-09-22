@@ -331,6 +331,60 @@ defmodule Beamlet.UsersTest do
     end
   end
 
+  describe "authenticate_refresh/1" do
+    test "turns a refresh secret into its oauth token with the user loaded", %{user: user} do
+      {:ok, token} = Users.create_token(user, oauth_attrs("https://claude.ai/c.json"))
+
+      assert {:ok, %Token{id: id, user: %User{name: "alice"}}} =
+               Users.authenticate_refresh(token.refresh_secret)
+
+      assert id == token.id
+    end
+
+    test "rejects an access secret, a cli secret and anything else", %{user: user, token: cli} do
+      {:ok, token} = Users.create_token(user, oauth_attrs("https://claude.ai/c.json"))
+
+      for secret <- [token.secret, cli.secret, "nonsense", nil] do
+        assert {:error, :unknown_token} = Users.authenticate_refresh(secret)
+      end
+    end
+
+    test "a refresh secret past its expiry is expired", %{user: user} do
+      attrs = oauth_attrs("https://claude.ai/c.json")
+      past = DateTime.add(DateTime.utc_now(), -1, :second)
+      {:ok, token} = Users.create_token(user, %{attrs | refresh_expires_at: past})
+      assert {:error, :expired_token} = Users.authenticate_refresh(token.refresh_secret)
+    end
+  end
+
+  describe "rotate_token/2" do
+    test "keeps the row and replaces both secrets and both expiries", %{user: user} do
+      {:ok, token} = Users.create_token(user, oauth_attrs("https://claude.ai/c.json"))
+      later = DateTime.add(DateTime.utc_now(:second), 7200, :second)
+
+      {:ok, rotated} = Users.rotate_token(token, expires_at: later, refresh_expires_at: later)
+
+      assert rotated.id == token.id
+      assert rotated.client == token.client
+      assert rotated.secret != token.secret
+      assert rotated.refresh_secret != token.refresh_secret
+      assert rotated.expires_at == later
+      assert rotated.refresh_expires_at == later
+      assert {:ok, %Token{id: id}} = Users.authenticate(rotated.secret)
+      assert id == token.id
+      assert {:error, :unknown_token} = Users.authenticate(token.secret)
+      assert {:error, :unknown_token} = Users.authenticate_refresh(token.refresh_secret)
+    end
+
+    test "requires both expiries and refuses a cli token", %{user: user, token: cli} do
+      {:ok, token} = Users.create_token(user, oauth_attrs("https://claude.ai/c.json"))
+      attrs = %{expires_at: nil, refresh_expires_at: nil}
+      assert {:error, %Ecto.Changeset{} = changeset} = Users.rotate_token(token, attrs)
+      assert %{expires_at: _, refresh_expires_at: _} = errors_on(changeset)
+      assert {:error, :cli_token} = Users.rotate_token(cli, %{})
+    end
+  end
+
   describe "update_password/2" do
     test "stores a hash and never the password", %{user: user} do
       assert {:ok, %User{password: nil, password_hash: hash}} =

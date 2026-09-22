@@ -186,6 +186,47 @@ defmodule Beamlet.Users do
 
   def authenticate(_other), do: {:error, :unknown_token}
 
+  @doc """
+  Turns a presented refresh secret into its `oauth` token, with the
+  user loaded, for the token endpoint.
+
+  Anything that is not the refresh secret of a stored token, a `cli`
+  token's secret among them, is `{:error, :unknown_token}`; a refresh
+  secret past `refresh_expires_at` is `{:error, :expired_token}`.
+  """
+  @spec authenticate_refresh(term()) ::
+          {:ok, Token.t()} | {:error, :unknown_token | :expired_token}
+  def authenticate_refresh(secret) when is_binary(secret) do
+    hash = hash(secret)
+
+    case Repo.one(from(t in Token, where: t.refresh_hash == ^hash, preload: :user)) do
+      nil -> {:error, :unknown_token}
+      %Token{refresh_expires_at: expires_at} = token -> expiring(token, expires_at)
+    end
+  end
+
+  def authenticate_refresh(_other), do: {:error, :unknown_token}
+
+  @doc """
+  Rotates an `oauth` token in place: new secrets, and the expiries
+  `attrs` carries (`expires_at` and `refresh_expires_at`). The row
+  and its id stay, so provenance keeps pointing at the same token;
+  the old secrets stop authenticating at once. The returned token
+  carries the new `secret` and `refresh_secret`. A `cli` token has
+  nothing to rotate and answers `{:error, :cli_token}`.
+  """
+  @spec rotate_token(Token.t(), map() | keyword()) ::
+          {:ok, Token.t()} | {:error, Ecto.Changeset.t() | :cli_token}
+  def rotate_token(%Token{kind: :cli}, _attrs), do: {:error, :cli_token}
+
+  def rotate_token(%Token{kind: :oauth} = token, attrs) do
+    token
+    |> Token.rotate_changeset(Map.new(attrs))
+    |> put_secret(:secret)
+    |> put_secret(:refresh_secret)
+    |> Repo.update()
+  end
+
   defp expiring(token, expires_at) do
     if DateTime.compare(expires_at, DateTime.utc_now()) == :gt,
       do: {:ok, token},

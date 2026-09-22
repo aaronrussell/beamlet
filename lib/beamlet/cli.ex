@@ -301,10 +301,18 @@ defmodule Beamlet.CLI do
 
   defp token_table(tokens) do
     table(
-      ["ID", "KIND", "USER", "LABEL", "POLICY", "CREATED"],
+      ["ID", "KIND", "USER", "LABEL", "POLICY", "EXPIRES", "CREATED"],
       Enum.map(
         tokens,
-        &[&1.id, &1.kind, &1.user.name, Token.label(&1), &1.policy, &1.inserted_at]
+        &[
+          &1.id,
+          &1.kind,
+          &1.user.name,
+          Token.label(&1),
+          &1.policy,
+          &1.expires_at || "-",
+          &1.inserted_at
+        ]
       )
     )
   end

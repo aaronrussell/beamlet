@@ -1,8 +1,8 @@
 # Beamlet — login and OAuth
 
-**Status:** Design pass for roadmap 0.1 steps 1 to 4, completed 2026-09-21; phases 1 and 2 landed the same day and their settled items are in `design.md` § 2. It records what the pass settled, why, and what each implementation phase still has to decide. As each phase lands, its settled items move into `design.md` § 2 and this note stays as the record of the reasoning. Where a phase's planning pass reversed the design pass, the section says so and keeps the original reasoning beside the reversal.
+**Status:** Design pass for roadmap 0.1 steps 1 to 3 and 5, completed 2026-09-21; phases 1 to 3 landed the same day and their settled items are in `design.md` § 2. It records what the pass settled, why, and what each implementation phase still has to decide. As each phase lands, its settled items move into `design.md` § 2 and this note stays as the record of the reasoning. Where a phase's planning pass reversed the design pass, the section says so and keeps the original reasoning beside the reversal.
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-09-22
 
 ---
 
@@ -140,24 +140,34 @@ The half of roadmap step 3 that gives the edge its OAuth shape. Landed 2026-09-2
 
 ### Phase 3 — The authorization server
 
-The other half of roadmap step 3: issuing.
+The other half of roadmap step 3: issuing. Landed 2026-09-21; the settled items are in `design.md` § 2 under "MCP" as "The authorization server" and in the path list under "Web". Verification by hand follows: locally over a Tailscale funnel, connecting the MCP Inspector, the Claude app, ChatGPT and Raycast by OAuth, to see what each dialog shows and sends.
 
-**Scope.** `Beamlet.OAuth.Clients` with the fetch, the guard, the cache and loopback matching. `Beamlet.OAuth.Codes`. `AuthorizeController` `:new` and `:create` with the consent page and the error page. `TokenController` `:create` with both grants and the OAuth error bodies. Refresh rotation in place. The `iss` parameter. Tests driving the whole flow through `Plug.Test` with `Req.Test` standing in for the client document, then verification by hand against Claude Code locally and, on Fly, against claude.ai and ChatGPT.
+**Scope as landed.** `Beamlet.OAuth.Clients` with the fetch, the guard, the hour-long cache and loopback matching. `Beamlet.OAuth.Codes`. `Beamlet.OAuth.AuthorizeController` `:new` and `:create` with the consent page and the error page, behind the login. `Beamlet.OAuth.TokenController` `:create` with both grants and the OAuth error bodies. `Beamlet.Users.authenticate_refresh/1` and `rotate_token/2`, rotation in place. The `iss` parameter. `beamlet tokens` with an `EXPIRES` column. The server reading `BEAMLET_URL` in every environment. Tests driving the whole flow through `Phoenix.ConnTest` with `Req.Test` standing in for the client document and a test resolver in place of DNS.
 
-**Decided:** everything in § 3 on client identity and the flow.
+**Settled at the planning pass:**
 
-**Open:**
+- Lifetimes: an access token lives a day, a refresh token thirty days, sliding, so a client in regular use never asks the person to consent again. Constants on `Beamlet.OAuth`, not config; revocation is delete, so a short access token would buy little.
+- Scopes: none advertised, none understood. A one-scope or per-tool scheme was weighed and lost: a scope that cannot be declined is decorative, and per-tool scopes put a second permission axis beside the policy. `scope` is accepted and ignored at authorize and echoed in the token reply when sent, which under RFC 6749 states what omitting it already implies, out loud for clients that read the field.
+- Login before the client fetch, so only a signed-in person can make the beamlet issue an outbound request; the stored return path carries the query string.
+- The SSRF guard is `req_ssrf`, over hand-rolled code and over `safeurl`, which is IPv4-only, checks one address and passes a failed lookup. Attached with https only and no address literals, plus no redirects, a five-second timeout and a 64KB body cap of the beamlet's own. The DNS rebinding window is accepted, as the library documents: pinning the connection to the checked address costs a Finch instance per hostname.
+- `resource` is optional and must equal the MCP URL byte for byte when present: a beamlet token is only ever for this beamlet, so requiring it would buy nothing and risk a client that omits it.
+- The consent page is provisional: the client's host in the heading, the client id URL in small text, no `client_name`, the declared policies as radios with `default` selected and each policy's tools on its line, a warning for a loopback redirect, Allow and Deny, and the signed-in name with a sign-out. To be polished after the first connections.
+- A token whose refresh has expired stays as a row until the operator deletes it; the listing shows the expiry.
+- The test seam is a module-keyed config entry, `config :beamlet, Beamlet.OAuth.Clients, req_options: [...]`, empty in production, carrying the `Req.Test` plug and the resolver in test. A `Beamlet.Config` key lost on putting a test seam on the operator surface.
+- No CORS until a client proves it needs it; the inspector, being browser-based, may. Dynamic registration likewise: added the day verification proves a client needs it.
 
-- Lifetimes. An access token of hours and a refresh token of weeks is the usual shape; the numbers are a planning-pass choice. ChatGPT is reported to break at access-token expiry when it cannot refresh, so the refresh path is verified against it specifically.
-- Scope handling. Clients send scopes they were never offered, `offline_access` among them. Accept any, grant none, echo none, or echo what was sent: to be decided by what the clients do with the reply.
-- The SSRF guard's mechanics: whether the address check happens on the resolved IP before connecting, and how Req is told to do that.
-- Whether the flow completes against plain http on localhost from Claude Code. Claude Code runs discovery against http origins and documents no restriction, but no report confirms a completed flow. One check, once the endpoints exist. If it fails, local Claude Code use is by CLI token and the flow is verified on Fly.
-- Consent copy, and whether the page shows a client's `client_name` at all given it is untrusted.
-- Whether the listing gains an expiry column once OAuth tokens exist.
+**Verified 2026-09-22**, locally over a Tailscale funnel, defaults left alone in every client:
+
+- **ChatGPT**: exposes a page of advanced OAuth settings, none needed. Connects and signs in smoothly; prompts that read the beamlet and call tools work.
+- **Claude** (set up from the desktop app): offers "use Claude's published identity" (CIMD, the default), "register automatically" (dynamic registration) and a client of one's own. The default works. The flow bounces through a claude.ai page before the beamlet's consent and back to the app: more steps than the others, but it lands.
+- **Raycast**: offers "dynamic" or "static" OAuth; the default works with no registration endpoint, so it reaches for the metadata document. Smooth, except that approving opens the Mac app by a custom-scheme redirect and leaves the browser tab sitting on the consent page with its buttons still showing.
+- **MCP Inspector**: detects the OAuth challenge but offers no way to run the flow itself, only pre-configured credentials. So it neither needed CORS nor proved it does; the question stays closed until a browser-based client turns up.
+
+No client asked for dynamic registration and none tripped on the scope echo. The one thing verification surfaced is the Raycast tab: a consent that redirects to a custom scheme needs a page that says the person is being sent back to the app, rather than the form left standing. Open for phase 4, where the per-client copy is written.
 
 ### Phase 4 — The home page
 
-Roadmap step 4.
+Roadmap step 5, after step 4 bounds the policies a user may choose.
 
 **Scope.** `HomeLive` at `/beamlet` becomes the setup page: the MCP URL, how to add the beamlet in claude.ai, ChatGPT and Claude Code and sign in, the `mcp-remote` line for Claude Desktop, and the CLI commands for code that takes a header. It sits behind the login, so a signed-out visitor sees the login page first.
 

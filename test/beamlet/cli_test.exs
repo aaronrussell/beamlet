@@ -225,10 +225,12 @@ defmodule Beamlet.CLITest do
 
       assert {:ok, output} = with_io(fn -> CLI.main(["tokens"]) end)
       assert [header, row1, row2, row3] = String.split(output, "\n", trim: true)
-      assert header =~ ~r/^ID\s+KIND\s+USER\s+LABEL\s+POLICY\s+CREATED$/
-      assert row1 =~ ~r/^#{token.id}\s+cli\s+alice\s+test\s+default\s+\d{4}-/
-      assert row2 =~ ~r/^#{phone.id}\s+cli\s+bob\s+phone\s+default\s+\d{4}-/
-      assert row3 =~ ~r/^#{chat.id}\s+oauth\s+alice\s+claude.ai\s+default\s+\d{4}-/
+      assert header =~ ~r/^ID\s+KIND\s+USER\s+LABEL\s+POLICY\s+EXPIRES\s+CREATED$/
+      assert row1 =~ ~r/^#{token.id}\s+cli\s+alice\s+test\s+default\s+-\s+\d{4}-/
+      assert row2 =~ ~r/^#{phone.id}\s+cli\s+bob\s+phone\s+default\s+-\s+\d{4}-/
+
+      assert row3 =~
+               ~r/^#{chat.id}\s+oauth\s+alice\s+claude.ai\s+default\s+\d{4}-\d\d-\d\d \d\d:\d\d:\d\dZ\s+\d{4}-/
     end
 
     test "--user narrows the listing to one user", %{token: token} do

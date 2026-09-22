@@ -43,7 +43,8 @@ defmodule Beamlet.MixProject do
       {:phoenix_live_view, "~> 1.2"},
       {:phoenix_pubsub, "~> 2.1"},
       {:plug, "~> 1.20"},
-      {:req, "~> 0.6"}
+      {:req, "~> 0.6"},
+      {:req_ssrf, "~> 0.2"}
     ]
   end
 

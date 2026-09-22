@@ -27,3 +27,11 @@ config :beamlet, Beamlet.TestEndpoint,
   server: false
 
 config :pbkdf2_elixir, rounds: 1
+
+# The client-document fetch goes to a Req.Test stub, and the address
+# check to a resolver that never touches DNS (Beamlet.TestResolver).
+config :beamlet, Beamlet.OAuth.Clients,
+  req_options: [
+    plug: {Req.Test, Beamlet.OAuth.Clients},
+    ssrf_check: [resolver: &Beamlet.TestResolver.resolve/3]
+  ]

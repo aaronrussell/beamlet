@@ -105,6 +105,18 @@ defmodule Beamlet.Token do
     |> validate_policy()
   end
 
+  @doc """
+  Changeset for refreshing an `oauth` token: both expiries anew. The
+  client and policy stay as consented, and the hashes are set by the
+  store.
+  """
+  @spec rotate_changeset(t(), map()) :: Ecto.Changeset.t()
+  def rotate_changeset(%__MODULE__{kind: :oauth} = token, attrs) do
+    token
+    |> cast(attrs, [:expires_at, :refresh_expires_at])
+    |> validate_required([:expires_at, :refresh_expires_at])
+  end
+
   @doc "The display form of a token: a `cli` token's name, or the host of an `oauth` token's client id."
   @spec label(t()) :: String.t()
   def label(%__MODULE__{kind: :cli, name: name}), do: name
