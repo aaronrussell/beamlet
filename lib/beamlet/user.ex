@@ -6,9 +6,16 @@ defmodule Beamlet.User do
   A user who has a password can sign in on the web
   (`Beamlet.Web.SessionController`); one without cannot, and the
   operator sets or resets it with `beamlet users.update --password`.
-  Nothing else lives here: no roles, no email. Credentials for agents
-  are tokens (`Beamlet.Token`), and a user has as many as they have
-  clients. Rows are managed through `Beamlet.Users`.
+  Credentials for agents are tokens (`Beamlet.Token`), and a user has
+  as many as they have clients.
+
+  `policies` bounds what those tokens may carry: a list of declared
+  policy names (`Beamlet.Policies`), and every declared policy when
+  the list is empty, which is what a new user has. The operator sets
+  it with `beamlet users.create --policy` and `users.update --policy`;
+  `Beamlet.Users` enforces it when a token is created or updated, and
+  `Beamlet.MCP.Plug` on every request. Nothing else lives here: no
+  roles, no email. Rows are managed through `Beamlet.Users`.
   """
 
   use Ecto.Schema
@@ -19,6 +26,7 @@ defmodule Beamlet.User do
     field(:name, :string)
     field(:password, :string, virtual: true, redact: true)
     field(:password_hash, :string, redact: true)
+    field(:policies, {:array, :string}, default: [])
     timestamps()
   end
 
@@ -28,22 +36,27 @@ defmodule Beamlet.User do
           name: String.t() | nil,
           password: String.t() | nil,
           password_hash: String.t() | nil,
+          policies: [String.t()],
           inserted_at: NaiveDateTime.t() | nil,
           updated_at: NaiveDateTime.t() | nil
         }
 
   @doc """
-  Changeset for creating or updating a user; the name must be unique,
-  and `beamlet` is reserved for the system principal
-  (`Beamlet.Principal.system/0`).
+  Changeset for creating or updating a user: the name and the policy
+  list. The name must be unique, and `beamlet` is reserved for the
+  system principal (`Beamlet.Principal.system/0`); every policy must
+  be one the beamlet declares.
   """
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(user, attrs) do
     user
-    |> cast(attrs, [:name])
+    |> cast(attrs, [:name, :policies])
     |> validate_name()
     |> validate_exclusion(:name, ["beamlet"], message: "is reserved for the beamlet itself")
     |> unique_constraint(:name)
+    |> validate_required([:policies])
+    |> update_change(:policies, &Enum.uniq/1)
+    |> validate_policies()
   end
 
   @doc """
@@ -57,6 +70,23 @@ defmodule Beamlet.User do
     |> validate_required([:password])
     |> validate_length(:password, min: 8, max: 128)
     |> hash_password()
+  end
+
+  defp validate_policies(changeset) do
+    validate_change(changeset, :policies, fn :policies, names ->
+      declared = Beamlet.Policies.names()
+
+      case Enum.reject(names, &(&1 in declared)) do
+        [] ->
+          []
+
+        [name | _rest] ->
+          [
+            policies:
+              "#{name} is not a policy on this beamlet (declared: #{Enum.join(declared, ", ")})"
+          ]
+      end
+    end)
   end
 
   defp hash_password(changeset) do

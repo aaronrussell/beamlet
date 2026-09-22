@@ -84,6 +84,25 @@ defmodule Beamlet.MCP.PlugTest do
     assert conn.status == 403
   end
 
+  @tag policies: [restricted: [tools: [:eval]]]
+  test "a token whose policy is outside its user's list is a 403 naming both, until the list changes" do
+    {:ok, bob} = Users.create(name: "bob")
+    {:ok, token} = Users.create_token(bob, name: "laptop")
+    assert request("Bearer " <> token.secret).status == 200
+
+    {:ok, bob} = Users.update(bob, policies: ["restricted"])
+    conn = request("Bearer " <> token.secret)
+    assert conn.status == 403
+    assert get_resp_header(conn, "www-authenticate") == []
+
+    assert conn.resp_body ==
+             "Token laptop names policy default, which its user bob may not use " <>
+               "(bob's policies: restricted)."
+
+    {:ok, _bob} = Users.update(bob, policies: [])
+    assert request("Bearer " <> token.secret).status == 200
+  end
+
   test "a valid token reaches the server with the principal in assigns", %{token: token} do
     conn = MCPClient.rpc(%MCPClient{secret: token.secret}, "initialize", initialize_params())
 

@@ -8,6 +8,7 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
 
   alias Beamlet.OAuth.Clients
   alias Beamlet.OAuth.Codes
+  alias Beamlet.Users
 
   @client_id "https://chat.example/client.json"
   @redirect_uri "https://chat.example/callback"
@@ -94,6 +95,29 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
       refute html =~ ~s(name="policy" value="explorer" checked)
       assert [_, after_explorer] = String.split(html, ~s(value="explorer"), parts: 2)
       assert after_explorer =~ ">eval<"
+    end
+
+    @tag policies: [explorer: [tools: [:eval]], restricted: [tools: [:eval]]]
+    test "offers a bounded user only their policies, the first selected unless default is among them",
+         %{params: params} do
+      {:ok, bob} = Users.create(name: "bob", policies: ["restricted", "explorer"])
+
+      html =
+        build_conn() |> sign_in(bob) |> get("/beamlet/authorize", params) |> html_response(200)
+
+      assert html =~ ~s(name="policy" value="restricted" checked)
+      assert html =~ ~s(name="policy" value="explorer")
+      refute html =~ ~s(name="policy" value="explorer" checked)
+      refute html =~ ~s(value="default")
+
+      {:ok, bob} = Users.update(bob, policies: ["explorer", "default"])
+
+      html =
+        build_conn() |> sign_in(bob) |> get("/beamlet/authorize", params) |> html_response(200)
+
+      assert html =~ ~s(name="policy" value="default" checked)
+      refute html =~ ~s(name="policy" value="explorer" checked)
+      refute html =~ ~s(value="restricted")
     end
 
     test "warns when the redirect is loopback", %{conn: conn, params: params} do
@@ -224,6 +248,18 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
 
       params = Map.put(params, :decision, "maybe")
       assert conn |> post("/beamlet/authorize", params) |> html_response(400) =~ "incomplete"
+    end
+
+    @tag policies: [explorer: [tools: [:eval]]]
+    test "a policy outside the user's list is an error page", %{params: params} do
+      {:ok, bob} = Users.create(name: "bob", policies: ["explorer"])
+      params = Map.merge(params, %{decision: "allow", policy: "default"})
+
+      assert build_conn()
+             |> sign_in(bob)
+             |> post("/beamlet/authorize", params)
+             |> html_response(400) =~
+               "not one this beamlet lets you use"
     end
 
     test "the form is validated again, so a tampered redirect URI is an error page", %{

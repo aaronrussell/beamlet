@@ -10,6 +10,11 @@ defmodule Beamlet.CLITest do
     test "prints usage with no arguments or --help" do
       assert {:ok, output} = with_io(fn -> CLI.main([]) end)
       assert output =~ "Usage: beamlet COMMAND"
+      assert output =~ "users.create USER [--no-password] [--policy POLICY ...]"
+
+      assert output =~
+               "users.update USER [--name NEW_NAME] [--password] [--policy POLICY ... | --all-policies]"
+
       assert output =~ "tokens.create NAME --user USER [--policy POLICY]"
       assert output =~ "tokens.update ID [--name NEW_NAME] [--policy POLICY]"
       assert output =~ "policies.show POLICY"
@@ -45,14 +50,113 @@ defmodule Beamlet.CLITest do
 
       assert {:ok, output} = with_io(fn -> CLI.main(["users"]) end)
       assert [header, row1, row2] = String.split(output, "\n", trim: true)
-      assert header =~ ~r/^ID\s+NAME\s+LOGIN\s+CREATED$/
-      assert row1 =~ ~r/^#{alice.id}\s+alice\s+no\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
-      assert row2 =~ ~r/^#{bob.id}\s+bob\s+no\s+/
+      assert header =~ ~r/^ID\s+NAME\s+LOGIN\s+POLICIES\s+CREATED$/
+
+      assert row1 =~
+               ~r/^#{alice.id}\s+alice\s+no\s+all\s+\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/
+
+      assert row2 =~ ~r/^#{bob.id}\s+bob\s+no\s+all\s+/
 
       {:ok, _bob} = Users.update_password(bob, "correct horse")
       assert {:ok, output} = with_io(fn -> CLI.main(["users"]) end)
       assert [_header, _row1, row2] = String.split(output, "\n", trim: true)
-      assert row2 =~ ~r/^#{bob.id}\s+bob\s+yes\s+/
+      assert row2 =~ ~r/^#{bob.id}\s+bob\s+yes\s+all\s+/
+    end
+
+    @tag policies: [restricted: [tools: [:eval]], explorer: [tools: [:eval]]]
+    test "creates a user with a policy list from repeated --policy and lists it" do
+      assert {:ok, output} =
+               with_io(fn ->
+                 CLI.main(
+                   ~w(users.create bob --no-password --policy restricted --policy explorer)
+                 )
+               end)
+
+      assert output =~ "Created user bob (policies restricted, explorer)."
+      assert {:ok, %{policies: ["restricted", "explorer"]}} = Users.find_by(name: "bob")
+
+      assert {:ok, output} = with_io(fn -> CLI.main(["users"]) end)
+      assert [_header, _alice, row] = String.split(output, "\n", trim: true)
+      assert row =~ ~r/\s+bob\s+no\s+restricted,explorer\s+/
+    end
+
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "an undeclared policy on a user is the changeset's error" do
+      assert {:error, output} =
+               with_io(:stderr, fn ->
+                 CLI.main(~w(users.create bob --no-password --policy gone))
+               end)
+
+      assert output =~
+               "policies gone is not a policy on this beamlet (declared: default, restricted)"
+
+      assert {:error, :not_found} = Users.find_by(name: "bob")
+
+      assert {:error, output} =
+               with_io(:stderr, fn -> CLI.main(~w(users.update alice --policy gone)) end)
+
+      assert output =~ "policies gone is not a policy on this beamlet"
+    end
+
+    @tag policies: [restricted: [tools: [:eval]], explorer: [tools: [:eval]]]
+    test "update --policy replaces the list and counts the tokens now outside it", %{
+      user: alice
+    } do
+      {:ok, _} = Users.create_token(alice, name: "laptop", policy: "explorer")
+      {:ok, _} = Users.create_token(alice, oauth_attrs("https://claude.ai/client.json"))
+
+      assert {:ok, output} =
+               with_io(fn -> CLI.main(~w(users.update alice --policy explorer)) end)
+
+      assert output =~ "Set policies for alice: explorer."
+
+      assert output =~
+               "2 tokens outside the list, refused until updated or deleted: " <>
+                 "test (default), claude.ai (default)."
+
+      assert {:ok, %{policies: ["explorer"]}} = Users.find(alice.id)
+
+      assert {:ok, output} =
+               with_io(fn ->
+                 CLI.main(~w(users.update alice --policy restricted --policy default))
+               end)
+
+      assert output =~ "Set policies for alice: restricted, default."
+
+      assert output =~
+               "1 token outside the list, refused until updated or deleted: laptop (explorer)."
+
+      assert {:ok, %{policies: ["restricted", "default"]}} = Users.find(alice.id)
+    end
+
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "--all-policies clears the list, and cannot be combined with --policy", %{user: alice} do
+      {:ok, _alice} = Users.update(alice, policies: ["restricted"])
+
+      assert {:ok, output} = with_io(fn -> CLI.main(~w(users.update alice --all-policies)) end)
+      assert output =~ "Set policies for alice: all."
+      refute output =~ "outside the list"
+      assert {:ok, %{policies: []}} = Users.find(alice.id)
+
+      assert {:error, output} =
+               with_io(:stderr, fn ->
+                 CLI.main(~w(users.update alice --all-policies --policy restricted))
+               end)
+
+      assert output =~ "beamlet users.update takes --policy or --all-policies, not both."
+      assert {:ok, %{policies: []}} = Users.find(alice.id)
+    end
+
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "renames and sets the policies in one command", %{user: alice} do
+      assert {:ok, output} =
+               with_io(fn ->
+                 CLI.main(~w(users.update alice --name alicia --policy restricted))
+               end)
+
+      assert output =~ "Renamed user alice to alicia."
+      assert output =~ "Set policies for alicia: restricted."
+      assert {:ok, %{name: "alicia", policies: ["restricted"]}} = Users.find(alice.id)
     end
 
     test "says how to create the first user when there are none", %{user: alice} do
@@ -187,9 +291,12 @@ defmodule Beamlet.CLITest do
       assert {:ok, %{name: "alicia"}} = Users.find(alice.id)
     end
 
-    test "update needs --name" do
+    test "update needs a change" do
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["users.update", "alice"]) end)
-      assert output =~ "beamlet users.update needs --name NEW_NAME or --password."
+
+      assert output =~
+               "beamlet users.update needs --name NEW_NAME, --password, --policy POLICY " <>
+                 "or --all-policies."
     end
 
     test "deletes a user and reports their tokens", %{user: alice, token: token} do
@@ -270,6 +377,61 @@ defmodule Beamlet.CLITest do
     test "create needs --user" do
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens.create", "laptop"]) end)
       assert output =~ "beamlet tokens.create needs --user USER."
+    end
+
+    @tag policies: [restricted: [tools: [:eval]], explorer: [tools: [:eval]]]
+    test "a bounded user's token needs --policy unless default is on their list", %{
+      token: token
+    } do
+      {:ok, _bob} = Users.create(name: "bob", policies: ["restricted", "explorer"])
+
+      assert {:error, output} =
+               with_io(:stderr, fn -> CLI.main(~w(tokens.create laptop --user bob)) end)
+
+      assert output =~
+               "bob's tokens must carry one of: restricted, explorer. Pick one with --policy POLICY."
+
+      assert {:error, output} =
+               with_io(:stderr, fn ->
+                 CLI.main(~w(tokens.create laptop --user bob --policy default))
+               end)
+
+      assert output =~
+               "policy default is not a policy bob may use (bob's policies: restricted, explorer)"
+
+      assert {:ok, output} =
+               with_io(fn -> CLI.main(~w(tokens.create laptop --user bob --policy explorer)) end)
+
+      assert output =~ "Created token laptop for bob (policy explorer)."
+
+      assert {:ok, %{policy: "explorer"}} = Users.find_token(token.id + 1)
+
+      {:ok, _carol} = Users.create(name: "carol", policies: ["default", "restricted"])
+
+      assert {:ok, output} = with_io(fn -> CLI.main(~w(tokens.create laptop --user carol)) end)
+      assert output =~ "Created token laptop for carol (policy default)."
+    end
+
+    @tag policies: [restricted: [tools: [:eval]]]
+    test "a token takes one --policy", %{token: token} do
+      assert {:error, output} =
+               with_io(:stderr, fn ->
+                 CLI.main(
+                   ~w(tokens.create laptop --user alice --policy default --policy restricted)
+                 )
+               end)
+
+      assert output =~ "beamlet tokens.create takes one --policy POLICY."
+
+      assert {:error, output} =
+               with_io(:stderr, fn ->
+                 CLI.main(
+                   ["tokens.update", to_string(token.id)] ++
+                     ~w(--policy default --policy restricted)
+                 )
+               end)
+
+      assert output =~ "beamlet tokens.update takes one --policy POLICY."
     end
 
     test "prints validation errors on create" do

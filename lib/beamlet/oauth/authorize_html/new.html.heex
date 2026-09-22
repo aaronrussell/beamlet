@@ -12,7 +12,7 @@
     <fieldset class="flex flex-col gap-2">
       <legend class="text-sm font-medium">What may it do on your beamlet?</legend>
       <label :for={{name, tools} <- @policies} class="flex items-center gap-2 text-sm">
-        <input type="radio" name="policy" value={name} checked={name == "default"} />
+        <input type="radio" name="policy" value={name} checked={name == @selected} />
         <span class="font-mono">{name}</span>
         <span class="text-zinc-500">{tools}</span>
       </label>

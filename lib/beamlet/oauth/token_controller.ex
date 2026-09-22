@@ -128,7 +128,7 @@ defmodule Beamlet.OAuth.TokenController do
         {:ok, token}
 
       {:error, _changeset} ->
-        {:error, "invalid_grant", "the consented policy is no longer declared"}
+        {:error, "invalid_grant", "the consented policy is no longer available to this user"}
     end
   end
 

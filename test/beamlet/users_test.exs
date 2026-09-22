@@ -45,6 +45,27 @@ defmodule Beamlet.UsersTest do
       assert {:error, changeset} = Users.create(name: "beamlet")
       assert %{name: ["is reserved for the beamlet itself"]} = errors_on(changeset)
     end
+
+    @tag policies: [restricted: [], explorer: []]
+    test "carries no policies by default and accepts declared ones, deduplicated" do
+      assert {:ok, %User{policies: []}} = Users.create(name: "bob")
+
+      assert {:ok, %User{id: id, policies: ["restricted", "explorer"]}} =
+               Users.create(name: "carol", policies: ["restricted", "explorer", "restricted"])
+
+      assert {:ok, %User{policies: ["restricted", "explorer"]}} = Users.find(id)
+    end
+
+    @tag policies: [restricted: []]
+    test "refuses a policy the beamlet does not declare" do
+      assert {:error, changeset} = Users.create(name: "bob", policies: ["restricted", "gone"])
+
+      assert %{policies: ["gone is not a policy on this beamlet (declared: default, restricted)"]} =
+               errors_on(changeset)
+
+      assert {:error, changeset} = Users.create(name: "bob", policies: nil)
+      assert %{policies: ["can't be blank"]} = errors_on(changeset)
+    end
   end
 
   describe "update/2" do
@@ -61,6 +82,27 @@ defmodule Beamlet.UsersTest do
       assert %{name: [_]} = errors_on(changeset)
       assert {:error, changeset} = Users.update(user, name: "bob")
       assert %{name: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    @tag policies: [restricted: [], explorer: []]
+    test "replaces the policy list whole, and an empty list means every policy" do
+      {:ok, user} = Users.create(name: "bob", policies: ["restricted"])
+      assert {:ok, user} = Users.update(user, policies: ["explorer", "default"])
+      assert user.policies == ["explorer", "default"]
+      assert {:error, changeset} = Users.update(user, policies: ["gone"])
+      assert %{policies: [_message]} = errors_on(changeset)
+      assert {:ok, %User{policies: []}} = Users.update(user, policies: [])
+    end
+  end
+
+  describe "policies/1" do
+    @tag policies: [restricted: [], explorer: []]
+    test "is the user's list in its own order, or every declared policy when empty", %{
+      user: alice
+    } do
+      assert Users.policies(alice) == ["default", "explorer", "restricted"]
+      {:ok, bob} = Users.create(name: "bob", policies: ["restricted", "explorer"])
+      assert Users.policies(bob) == ["restricted", "explorer"]
     end
   end
 
@@ -134,6 +176,36 @@ defmodule Beamlet.UsersTest do
       {:ok, token} = Users.create_token(user, name: "laptop")
       assert {:error, changeset} = Users.update_token(token, policy: "gone")
       assert %{policy: [_message]} = errors_on(changeset)
+    end
+
+    @tag policies: [restricted: [], explorer: []]
+    test "refuses a policy outside the user's list, the default among them" do
+      {:ok, bob} = Users.create(name: "bob", policies: ["restricted", "explorer"])
+
+      assert {:ok, %Token{policy: "restricted"}} =
+               Users.create_token(bob, name: "laptop", policy: "restricted")
+
+      assert {:error, changeset} = Users.create_token(bob, name: "phone", policy: "default")
+
+      assert %{
+               policy: [
+                 "default is not a policy bob may use (bob's policies: restricted, explorer)"
+               ]
+             } = errors_on(changeset)
+
+      assert {:error, changeset} = Users.create_token(bob, name: "phone")
+      assert %{policy: ["default is not a policy bob may use" <> _]} = errors_on(changeset)
+
+      assert {:error, changeset} = Users.create_token(bob, name: "phone", policy: "gone")
+      assert %{policy: ["gone is not a policy on this beamlet" <> _]} = errors_on(changeset)
+
+      attrs = oauth_attrs("https://claude.ai/c.json")
+      assert {:ok, _} = Users.create_token(bob, Map.put(attrs, :policy, "explorer"))
+      assert {:error, changeset} = Users.create_token(bob, Map.put(attrs, :policy, "default"))
+      assert %{policy: [_message]} = errors_on(changeset)
+
+      {:ok, carol} = Users.create(name: "carol", policies: ["default"])
+      assert {:ok, %Token{policy: "default"}} = Users.create_token(carol, name: "laptop")
     end
 
     test "requires a name under the name rules", %{user: user} do
@@ -237,6 +309,32 @@ defmodule Beamlet.UsersTest do
     test "refuses an oauth token", %{user: user} do
       {:ok, token} = Users.create_token(user, oauth_attrs("https://claude.ai/c.json"))
       assert {:error, :oauth_token} = Users.update_token(token, policy: "default")
+    end
+
+    @tag policies: [restricted: [], explorer: []]
+    test "checks the policy against the user's current list" do
+      {:ok, bob} = Users.create(name: "bob", policies: ["restricted", "explorer"])
+      {:ok, token} = Users.create_token(bob, name: "laptop", policy: "restricted")
+
+      assert {:ok, %Token{policy: "explorer"} = token} =
+               Users.update_token(token, policy: "explorer")
+
+      assert {:error, changeset} = Users.update_token(token, policy: "default")
+
+      assert %{
+               policy: [
+                 "default is not a policy bob may use (bob's policies: restricted, explorer)"
+               ]
+             } = errors_on(changeset)
+
+      {:ok, _bob} = Users.update(bob, policies: ["restricted"])
+      assert {:error, changeset} = Users.update_token(token, name: "phone")
+
+      assert %{policy: ["explorer is not a policy bob may use (bob's policies: restricted)"]} =
+               errors_on(changeset)
+
+      assert {:ok, %Token{name: "phone", policy: "restricted"}} =
+               Users.update_token(token, name: "phone", policy: "restricted")
     end
   end
 

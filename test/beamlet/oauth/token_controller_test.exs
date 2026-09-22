@@ -174,6 +174,17 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       {:ok, _} = Users.delete(user)
       assert code |> exchange(verifier) |> assert_error("invalid_grant") =~ "no longer exists"
     end
+
+    @tag policies: [explorer: [tools: [:eval]]]
+    test "a policy the user may no longer use is invalid_grant", %{conn: conn, user: user} do
+      {code, verifier} = authorize(conn)
+      {:ok, _} = Users.update(user, policies: ["explorer"])
+
+      assert code |> exchange(verifier) |> assert_error("invalid_grant") =~
+               "no longer available to this user"
+
+      assert [%Token{kind: :cli}] = Users.list_tokens(user)
+    end
   end
 
   describe "grant_type=refresh_token" do

@@ -26,7 +26,10 @@ defmodule Beamlet.MCP.Plug do
   its own authorization server and starts the flow. A token naming a
   policy the beamlet does not declare, one removed from config since
   the token was created, is a 403 with a line naming the token and
-  the policy: the credential is real but insufficient.
+  the policy: the credential is real but insufficient. So is a token
+  naming a policy outside its user's current list
+  (`Beamlet.Users.policies/1`), which is how narrowing a user's
+  policies takes effect on their existing tokens at once.
   """
 
   @behaviour Plug
@@ -49,12 +52,14 @@ defmodule Beamlet.MCP.Plug do
   def call(conn, transport_opts) do
     with {:ok, secret} <- bearer(conn),
          {:ok, token} <- Users.authenticate(secret),
-         :ok <- declared(token) do
+         :ok <- declared(token),
+         :ok <- granted(token) do
       conn
       |> assign(:principal, Principal.from_token(token))
       |> StreamableHTTP.Plug.call(transport_opts)
     else
-      {:error, {:no_policy, token}} -> forbidden(conn, token)
+      {:error, {:no_policy, token}} -> forbidden(conn, token, :undeclared)
+      {:error, {:not_granted, token}} -> forbidden(conn, token, :not_granted)
       {:error, _reason} -> unauthorized(conn)
     end
   end
@@ -73,6 +78,10 @@ defmodule Beamlet.MCP.Plug do
     end
   end
 
+  defp granted(%Token{policy: policy, user: user} = token) do
+    if policy in Users.policies(user), do: :ok, else: {:error, {:not_granted, token}}
+  end
+
   defp unauthorized(conn) do
     challenge =
       ~s(Bearer realm="beamlet", resource_metadata="#{OAuth.resource_metadata_url()}")
@@ -83,12 +92,19 @@ defmodule Beamlet.MCP.Plug do
     |> send_resp(401, @body)
   end
 
-  defp forbidden(conn, %Token{policy: policy} = token) do
+  defp forbidden(conn, token, reason) do
     conn
     |> put_resp_content_type("text/plain")
     |> send_resp(
       403,
-      "Token #{Token.label(token)} names policy #{policy}, which this beamlet does not declare."
+      "Token #{Token.label(token)} names policy #{token.policy}, " <> why(token, reason)
     )
+  end
+
+  defp why(_token, :undeclared), do: "which this beamlet does not declare."
+
+  defp why(%Token{user: user}, :not_granted) do
+    "which its user #{user.name} may not use (#{user.name}'s policies: " <>
+      Enum.join(user.policies, ", ") <> ")."
   end
 end

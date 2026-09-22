@@ -9,7 +9,9 @@ defmodule Beamlet.OAuth.AuthorizeController do
   person. `new/2` validates the request and renders the consent
   page; `create/2` validates it again from the form and either
   stores a code (`Beamlet.OAuth.Codes`) and sends the browser back
-  to the client, or sends it back with `access_denied`.
+  to the client, or sends it back with `access_denied`. The policies
+  on offer are the ones the signed-in user may carry
+  (`Beamlet.Users.policies/1`).
 
   A request the beamlet cannot safely redirect for, an unknown
   client or a redirect URI its document does not list, is an error
@@ -26,6 +28,7 @@ defmodule Beamlet.OAuth.AuthorizeController do
   alias Beamlet.OAuth.Clients
   alias Beamlet.OAuth.Codes
   alias Beamlet.Policies
+  alias Beamlet.Users
 
   @fields ~w(client_id redirect_uri state scope code_challenge code_challenge_method response_type resource)a
 
@@ -60,7 +63,7 @@ defmodule Beamlet.OAuth.AuthorizeController do
   end
 
   defp decide(conn, request, %{"decision" => "allow", "policy" => policy}) do
-    if policy in Policies.names() do
+    if policy in Users.policies(conn.assigns.current_user) do
       code =
         Codes.store(%{
           user_id: conn.assigns.current_user.id,
@@ -84,9 +87,15 @@ defmodule Beamlet.OAuth.AuthorizeController do
 
   defp decide(conn, _request, _params), do: error_page(conn, :bad_form)
 
+  # The page offers only what the user may carry, so the gate in
+  # `Users.create_token/2` never refuses a choice made here; `default`
+  # is preselected when it is on offer and the user's first policy
+  # otherwise.
   defp consent(conn, request) do
+    names = Users.policies(conn.assigns.current_user)
+
     policies =
-      for name <- Policies.names(), {:ok, policy} <- [Policies.fetch(name)] do
+      for name <- names, {:ok, policy} <- [Policies.fetch(name)] do
         {name, Enum.map_join(policy.tools, ", ", &to_string/1)}
       end
 
@@ -96,7 +105,8 @@ defmodule Beamlet.OAuth.AuthorizeController do
       request: request,
       client_host: URI.parse(request.client_id).host,
       loopback?: Clients.loopback?(request.redirect_uri),
-      policies: policies
+      policies: policies,
+      selected: if("default" in names, do: "default", else: List.first(names))
     )
   end
 
