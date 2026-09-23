@@ -21,6 +21,18 @@ defmodule Beamlet.Code.Audit do
 
   @committer [{"GIT_COMMITTER_NAME", "beamlet"}, {"GIT_COMMITTER_EMAIL", "beamlet@beamlet"}]
 
+  # A commit runs git's automatic maintenance, which git 2.47 and later
+  # detach into the background by default, so it would still be
+  # touching .git after the commit returns, racing a reset or a wipe.
+  # gc.autoDetach is the same setting on older gits.
+  @maintenance [
+    {"GIT_CONFIG_COUNT", "2"},
+    {"GIT_CONFIG_KEY_0", "maintenance.autoDetach"},
+    {"GIT_CONFIG_VALUE_0", "false"},
+    {"GIT_CONFIG_KEY_1", "gc.autoDetach"},
+    {"GIT_CONFIG_VALUE_1", "false"}
+  ]
+
   @spec check!() :: :ok
   def check! do
     if System.find_executable("git") == nil do
@@ -114,7 +126,7 @@ defmodule Beamlet.Code.Audit do
   defp git(code_dir, args, opts \\ []) do
     env =
       [{"GIT_CEILING_DIRECTORIES", Path.dirname(code_dir)} | @committer] ++
-        Keyword.get(opts, :env, [])
+        @maintenance ++ Keyword.get(opts, :env, [])
 
     System.cmd("git", args, cd: code_dir, stderr_to_stdout: true, env: env)
   end
