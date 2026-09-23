@@ -56,9 +56,10 @@ defmodule Beamlet.CLIResetTest do
   test "a bad config fails the command with the boot's own error" do
     Application.put_env(:beamlet, :eval, timeout: 0)
     on_exit(fn -> Application.delete_env(:beamlet, :eval) end)
+    File.mkdir_p!(Config.code_dir())
 
     assert {:error, output} = with_io(:stderr, fn -> CLI.main(["reset"]) end)
     assert output =~ "config :beamlet, :eval"
-    assert File.exists?(Config.system_db_file())
+    assert File.exists?(Config.code_dir())
   end
 end
