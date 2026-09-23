@@ -62,6 +62,14 @@ defmodule Beamlet.Config do
   @spec db_dir() :: Path.t()
   def db_dir, do: Path.join(data_dir(), "db")
 
+  @doc "The system database file (`Beamlet.Repo`): users and tokens."
+  @spec system_db_file() :: Path.t()
+  def system_db_file, do: Path.join(db_dir(), "beamlet.db")
+
+  @doc "The agent database file (`Host.Repo`): everything agents build, the route table included."
+  @spec agent_db_file() :: Path.t()
+  def agent_db_file, do: Path.join(db_dir(), "agent.db")
+
   @doc "Directory holding the defined modules: their sources, beams and git history."
   @spec code_dir() :: Path.t()
   def code_dir, do: Path.join(data_dir(), "code")

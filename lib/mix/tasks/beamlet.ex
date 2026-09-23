@@ -10,6 +10,7 @@ defmodule Mix.Tasks.Beamlet do
       $ mix beamlet tokens.create alice laptop --policy explorer
       $ mix beamlet tokens alice
       $ mix beamlet policies
+      $ mix beamlet reset
       $ mix beamlet --help
 
   The commands are `Beamlet.CLI`'s. This task loads the application

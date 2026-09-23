@@ -13,6 +13,7 @@ defmodule Beamlet.CLI do
       beamlet tokens.delete ID
       beamlet policies                              list policies
       beamlet policies.show POLICY                  show what a policy permits
+      beamlet reset                                 wipe everything agents built
 
   Users are addressed by name and tokens by the id the listing
   prints. The tokens created here are `cli` tokens, named by the
@@ -50,8 +51,17 @@ defmodule Beamlet.CLI do
   the command and stops it again, so it works beside a beamlet running
   in another VM or with none running at all. A beamlet running in the
   same VM is used as it is.
+
+  `reset` is the exception: it starts nothing and deletes the unit
+  agents build, the code dir with its git history, the files dir and
+  the agent database with the route table and key/value store in it,
+  so the next boot starts from nothing. Users, tokens, the operator
+  config file and the rest of the data dir are kept. It asks nothing
+  and checks for no running beamlet: a beamlet that is running keeps
+  what it has loaded until it restarts, so restart it right after.
   """
 
+  alias Beamlet.Config
   alias Beamlet.Policies
   alias Beamlet.Policy
   alias Beamlet.Token
@@ -71,7 +81,8 @@ defmodule Beamlet.CLI do
      "rename a CLI token or change its policy"},
     {"tokens.delete", "ID", "delete a token"},
     {"policies", "", "list policies"},
-    {"policies.show", "POLICY", "show what a policy permits"}
+    {"policies.show", "POLICY", "show what a policy permits"},
+    {"reset", "", "wipe everything agents built: code, files, agent database"}
   ]
 
   @shapes Enum.map(@commands, fn {command, args, description} ->
@@ -181,6 +192,7 @@ defmodule Beamlet.CLI do
 
   defp run("policies", [], _opts), do: with_beamlet(&list_policies/0)
   defp run("policies.show", [name], _opts), do: with_beamlet(fn -> show_policy(name) end)
+  defp run("reset", [], _opts), do: reset()
 
   defp run(command, _args, _opts) do
     case List.keyfind(@commands, command, 0) do
@@ -466,6 +478,41 @@ defmodule Beamlet.CLI do
 
       {:error, :not_found} ->
         fail("No policy named #{name}. Run `beamlet policies` to list them.")
+    end
+  end
+
+  # Nothing starts: the unit is files, and deleting them under a
+  # running beamlet does no lasting harm, since it keeps what it has
+  # loaded until it restarts and boots fresh after. The config is
+  # still checked, so a bad declaration fails here as it would at boot.
+  defp reset do
+    Config.validate!()
+    remove_dir(Config.code_dir(), "code dir and its history")
+    remove_dir(Config.files_dir(), "files dir")
+    remove_agent_db(Config.agent_db_file())
+
+    puts("Users, tokens and config.exs are kept. If a beamlet is running, restart it now.")
+  rescue
+    error in ArgumentError -> fail(Exception.message(error))
+  end
+
+  defp remove_dir(dir, label) do
+    if File.dir?(dir) do
+      File.rm_rf!(dir)
+      puts("Removed the #{label}: #{dir}")
+    else
+      puts("No #{label} at #{dir}")
+    end
+  end
+
+  defp remove_agent_db(db_file) do
+    files = Enum.filter([db_file, db_file <> "-wal", db_file <> "-shm"], &File.exists?/1)
+
+    if files == [] do
+      puts("No agent database at #{db_file}")
+    else
+      Enum.each(files, &File.rm!/1)
+      puts("Removed the agent database: #{db_file}")
     end
   end
 

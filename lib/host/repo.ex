@@ -43,15 +43,11 @@ defmodule Host.Repo do
 
   use Ecto.Repo, otp_app: :beamlet, adapter: Ecto.Adapters.SQLite3
 
-  @db_file "agent.db"
-
   @impl true
   def init(_context, config) do
-    db_file = Path.join(Beamlet.Config.db_dir(), @db_file)
-
     config =
       config
-      |> Keyword.put(:database, db_file)
+      |> Keyword.put(:database, Beamlet.Config.agent_db_file())
       |> Keyword.put(:journal_mode, :wal)
       |> Keyword.put(:after_connect, {Beamlet.SQLiteAuthorizer, :install, [[:attach, :detach]]})
 
