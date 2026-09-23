@@ -8,6 +8,7 @@ defmodule BeamletServer.MixProject do
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      listeners: [Phoenix.CodeReloader],
       aliases: aliases(),
       deps: deps(),
       releases: releases()
@@ -42,6 +43,7 @@ defmodule BeamletServer.MixProject do
       {:beamlet, path: ".."},
       {:phoenix, "~> 1.8"},
       {:phoenix_live_view, "~> 1.2"},
+      {:phoenix_live_reload, "~> 1.4", only: :dev},
       {:jason, "~> 1.4"},
       {:bandit, "~> 1.5"},
       {:tz, "~> 0.28"}

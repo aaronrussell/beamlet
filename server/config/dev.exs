@@ -41,10 +41,28 @@ config :phoenix_live_view,
   # Enable helpful, but potentially expensive runtime checks
   enable_expensive_runtime_checks: true
 
-# Rebuilds the stylesheet for the beamlet's own pages as the library's
-# templates change. The build is the library's (`mix tailwind beamlet`
-# from `..`), so the server declares no Tailwind config of its own.
+# The library is where the pages live, so development reloads it as
+# well as the server: the code reloader recompiles both on a request,
+# the Tailwind watcher rebuilds the stylesheet for the beamlet's own
+# pages as the library's templates change (the build is the
+# library's, `mix tailwind beamlet` from `..`, so the server declares
+# no Tailwind config of its own), and live reload watches the
+# library's directory beside the server's, by absolute path since
+# the watcher's default is the server's root alone.
+library_dir = Path.expand("../..", __DIR__)
+
 config :beamlet_server, BeamletServer.Endpoint,
+  code_reloader: true,
+  reloadable_apps: [:beamlet, :beamlet_server],
   watchers: [
-    mix: ["tailwind", "beamlet", "--watch", cd: Path.expand("../..", __DIR__)]
+    mix: ["tailwind", "beamlet", "--watch", cd: library_dir]
+  ],
+  live_reload: [
+    patterns: [
+      ~r"priv/static/beamlet\.css$",
+      ~r"lib/beamlet/.*(ex|heex)$",
+      ~r"lib/beamlet_server/.*(ex|heex)$"
+    ]
   ]
+
+config :phoenix_live_reload, :dirs, [Path.expand("..", __DIR__), library_dir]
