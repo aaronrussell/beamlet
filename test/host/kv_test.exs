@@ -120,9 +120,9 @@ defmodule Host.KVTest do
       assert Beamlet.Repo.query!(sql).rows == []
     end
 
-    test "creating the tables again is a no-op" do
-      assert Beamlet.Tables.create() == :ignore
-      assert Beamlet.Tables.create() == :ignore
+    test "upgrading the furniture at the current version is a no-op" do
+      assert Beamlet.Tables.upgrade() == :ignore
+      assert Beamlet.Tables.upgrade() == :ignore
 
       :ok = Host.KV.put("kv-test:after-boot", :ok)
       assert Host.KV.get("kv-test:after-boot") == :ok

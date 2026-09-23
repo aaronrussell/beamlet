@@ -8,7 +8,7 @@
 
 ## 0.1 — first release
 
-Steps 1 to 6 are done; design § 2 Login and OAuth, Users, tokens and principals, Web, Config and Deployment hold what they settled.
+Steps 1 to 7 are done; design § 2 Login and OAuth, Users, tokens and principals, Two databases, Web, Config and Deployment hold what they settled.
 
 1. **Login and OAuth, designed.** Done 2026-09-21. The shaping pass behind steps 2, 3 and 5: Beamlet as its own OAuth 2.1 authorization server with its own plug at the edge, opaque tokens of two kinds, client ID metadata documents only, the beamlet's own routes under one `/beamlet` segment.
 2. **Login and the `/beamlet` namespace.** Done 2026-09-21. Passwords on users with a no-echo prompt, the cookie session, `Beamlet.Web.Auth`, the sign-in and sign-out, `/beamlet` behind the login, the web pieces under `Beamlet.Web`.
@@ -16,7 +16,7 @@ Steps 1 to 6 are done; design § 2 Login and OAuth, Users, tokens and principals
 4. **User-bounded policies.** Done 2026-09-22. A user carries the policies its tokens may name; one gate in `Beamlet.Users` for the CLI, the consent page and the token endpoint; the plug refuses a token outside its user's list.
 5. **Home page and design pass.** Done 2026-09-23. The setup page with a tab per client; the built stylesheet carrying the design system's tokens and the shared components; live reload of the library in development; every view a LiveView, the sign-in and consent pages included.
 6. **Operator config file.** Done 2026-09-23. `Beamlet.Config.Provider` in the library merges an optional `<data_dir>/config.exs` into application config at boot, listed by the server's release, so a container declares policies without a rebuild (design § 2 Deployment). Both `dev.exs` files import `data/config.exs` when it exists, so the dev policy is declared once and the trap of `explorer` in both projects' dev config is gone.
-7. **Furniture upgrades.** `Beamlet.Tables` becomes an ordered list of up-only steps over `PRAGMA user_version`, run at boot (design § 2 Two databases). Step one creates `__kv` and `__routes` as today. A test proves a file at version zero reaches the current one.
+7. **Furniture upgrades.** Done 2026-09-23. `Beamlet.Tables` is an ordered list of up-only steps over `PRAGMA user_version`, run at boot, each step with its version bump in one transaction; a file above the current version fails the boot (design § 2 Two databases). Step one creates `__kv` and `__routes`. Tests prove a file at version zero reaches the current one and a newer file is refused.
 8. **`beamlet reset`.** A CLI command wiping the agent database, the code dir with its git history and the files dir. Refuses while a beamlet runs in the VM.
 9. **`beamlet eval`.** A CLI command evaluating a string of code on the running beamlet as the system principal and printing the result. Reaches the running node over distribution rather than booting its own beamlet. Lean: the operator's code skips the scanner, so it can print the instructions and descriptions straight off `Beamlet.MCP.*`.
 10. **CI.** One workflow running `mix precommit` on every push.
