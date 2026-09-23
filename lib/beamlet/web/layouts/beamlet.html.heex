@@ -14,9 +14,13 @@
       const liveSocket = new LiveSocket("/beamlet/live", Socket, {params: {_csrf_token: csrfToken}})
       liveSocket.connect()
       window.liveSocket = liveSocket
+
+      window.addEventListener("beamlet:copy", (event) => {
+        navigator.clipboard.writeText(event.target.textContent.trim())
+      })
     </script>
   </head>
-  <body class="text-zinc-900 antialiased">
+  <body class="bg-page text-body antialiased">
     {@inner_content}
   </body>
 </html>

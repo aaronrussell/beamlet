@@ -1,5 +1,208 @@
 /* The stylesheet for the beamlet's own pages. Tailwind scans the
    library's modules and templates for the classes it uses; the pages
-   agents build are styled from Tailwind's CDN instead (Beamlet.Web.Layouts). */
+   agents build are styled from Tailwind's CDN instead (Beamlet.Web.Layouts).
+
+   The design language is the Beamlet design system's foundations:
+   warm putty grounds, ink type, slate as the one action colour, rust
+   for errors, phosphor for what is live, and three fonts. The theme
+   replaces Tailwind's palette so those are the only colours a page
+   can name. */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap");
 @import "tailwindcss" source(none);
 @source "../../lib/beamlet";
+
+@theme {
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --color-putty-50: #faf8f5;
+  --color-putty-100: #f3efe9;
+  --color-putty-200: #e6e0d7;
+  --color-putty-300: #d3cbbe;
+  --color-putty-400: #a8a092;
+  --color-putty-450: #6b6559;
+  --color-putty-500: #7d766a;
+  --color-putty-600: #5a554c;
+  --color-putty-700: #3e3a34;
+  --color-putty-800: #2a2721;
+  --color-putty-900: #1a1814;
+
+  --color-slate-50: #eef3f5;
+  --color-slate-100: #dce6ea;
+  --color-slate-200: #c3d7df;
+  --color-slate-300: #a4c2cd;
+  --color-slate-400: #6b8f9e;
+  --color-slate-500: #4e768a;
+  --color-slate-600: #3f6272;
+  --color-slate-700: #2f5262;
+  --color-slate-800: #254251;
+
+  --color-rust-50: #fdeeea;
+  --color-rust-100: #fbded7;
+  --color-rust-400: #e0674c;
+  --color-rust-500: #c44a2e;
+  --color-rust-600: #a03a22;
+  --color-rust-800: #6b2415;
+
+  --color-phosphor-50: #eafaf1;
+  --color-phosphor-100: #d6f5e3;
+  --color-phosphor-300: #7ddba8;
+  --color-phosphor-400: #2fbf71;
+  --color-phosphor-600: #1e8a50;
+  --color-phosphor-800: #125733;
+
+  --color-ochre-50: #fdf6e7;
+  --color-ochre-200: #f0d596;
+  --color-ochre-300: #e8c270;
+  --color-ochre-400: #d9a441;
+
+  /* Surfaces */
+  --color-page: var(--color-putty-100);
+  --color-card: #fffdfa;
+  --color-sunken: var(--color-putty-200);
+  --color-raised: #ffffff;
+  --color-terminal: var(--color-putty-900);
+  --color-terminal-alt: #221f1a;
+
+  /* Text: strong doubles as the ink border on anything interactive */
+  --color-strong: var(--color-putty-900);
+  --color-body: var(--color-putty-800);
+  --color-muted: var(--color-putty-600);
+  --color-faint: var(--color-putty-450);
+  --color-inverse: var(--color-putty-50);
+  --color-on-primary: #f2f7f9;
+  --color-link: var(--color-slate-700);
+  --color-on-terminal: #e9e3d6;
+  --color-on-terminal-dim: #938b7c;
+
+  /* Borders */
+  --color-hairline: var(--color-putty-200);
+  --color-line: var(--color-putty-300);
+  --color-terminal-line: #37332c;
+
+  /* Fills */
+  --color-primary: var(--color-slate-600);
+  --color-primary-hover: var(--color-slate-500);
+  --color-primary-press: var(--color-slate-700);
+  --color-danger: var(--color-rust-500);
+  --color-danger-hover: var(--color-rust-400);
+  --color-danger-text: var(--color-rust-600);
+  --color-live: var(--color-phosphor-400);
+
+  --font-display: "Instrument Sans", system-ui, sans-serif;
+  --font-body: "Schibsted Grotesk", "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --text-*: initial;
+  --text-3xs: 10px;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 17px;
+  --text-lg: 20px;
+  --text-xl: 25px;
+  --text-2xl: 31px;
+  --text-3xl: 39px;
+  --text-4xl: 49px;
+  --text-5xl: 61px;
+
+  --leading-tight: 1.06;
+  --leading-snug: 1.2;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+  --leading-code: 1.55;
+
+  --tracking-display: -0.03em;
+  --tracking-heading: -0.015em;
+  --tracking-label: 0.09em;
+  --tracking-mono: -0.01em;
+
+  --radius-*: initial;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-full: 999px;
+
+  /* Hard offset shadows are the signature; soft ones only for what floats */
+  --shadow-*: initial;
+  --shadow-lift-1: 1px 1px 0 var(--color-putty-300);
+  --shadow-lift-2: 2px 2px 0 var(--color-putty-800);
+  --shadow-lift-3: 3px 3px 0 var(--color-putty-800);
+  --shadow-lift-press: 1px 1px 0 var(--color-putty-800);
+  --shadow-lift-danger: 2px 2px 0 var(--color-rust-800);
+  --shadow-inset-top: inset 0 1px 0 rgb(255 255 255 / 0.6);
+  --shadow-soft: 0 1px 2px rgb(42 39 33 / 0.06), 0 4px 12px rgb(42 39 33 / 0.08);
+  --shadow-float: 0 2px 4px rgb(42 39 33 / 0.08), 0 12px 32px rgb(42 39 33 / 0.14);
+  --shadow-focus: 0 0 0 2px var(--color-card), 0 0 0 4px var(--color-slate-400);
+  --shadow-field-focus: 0 0 0 3px var(--color-slate-100);
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --default-transition-duration: 130ms;
+  --default-transition-timing-function: var(--ease-out);
+}
+
+@layer base {
+  body {
+    background: var(--color-page);
+    color: var(--color-body);
+    font-family: var(--font-body);
+    font-size: var(--text-base);
+    line-height: var(--leading-relaxed);
+    -webkit-font-smoothing: antialiased;
+    text-wrap: pretty;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: var(--tracking-heading);
+    line-height: var(--leading-snug);
+    color: var(--color-strong);
+  }
+
+  a {
+    color: var(--color-link);
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+    text-decoration-color: var(--color-slate-300);
+  }
+
+  a:hover {
+    color: var(--color-strong);
+    text-decoration-color: var(--color-strong);
+  }
+
+  code, kbd, pre, samp {
+    font-family: var(--font-mono);
+  }
+
+  :not(pre) > code {
+    padding: 1px 4px;
+    border-radius: var(--radius-xs);
+    background: var(--color-sunken);
+    font-size: 0.9em;
+    color: var(--color-strong);
+  }
+
+  ::selection {
+    background: var(--color-ochre-200);
+    color: var(--color-strong);
+  }
+
+  :focus-visible {
+    outline: none;
+    box-shadow: var(--shadow-focus);
+  }
+}
+
+/* The dotted grid behind the sign-in panel, graph paper on the putty ground */
+@utility bg-dots {
+  background-image: radial-gradient(var(--color-putty-300) 1px, transparent 1px);
+  background-size: 16px 16px;
+}

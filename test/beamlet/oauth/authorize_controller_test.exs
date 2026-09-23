@@ -67,7 +67,7 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
     test "renders the consent page", %{conn: conn, params: params} do
       html = conn |> get("/beamlet/authorize", params) |> html_response(200)
 
-      assert html =~ "Connect chat.example to your beamlet"
+      assert html =~ "chat.example wants to connect."
       assert html =~ ~s(id="client-id")
       assert html =~ @client_id
       assert html =~ ~s(action="/beamlet/authorize")
@@ -178,7 +178,7 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
       params = params |> Map.delete(:state) |> Map.delete(:resource)
 
       assert conn |> get("/beamlet/authorize", params) |> html_response(200) =~
-               "Connect chat.example"
+               "chat.example wants to connect."
     end
   end
 

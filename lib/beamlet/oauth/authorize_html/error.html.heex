@@ -1,6 +1,6 @@
-<main class="mx-auto mt-16 max-w-md px-4">
-  <h1 class="text-2xl font-semibold">This beamlet could not verify the app asking to connect</h1>
-  <p id="error-reason" class="mt-4">
+<Layouts.split tagline="That app could not connect.">
+  <h1 class="text-xl">This beamlet could not verify the app asking to connect</h1>
+  <p id="error-reason" class="mt-2.5">
     <%= case @reason do %>
       <% :unknown_client -> %>
         The app's client id must be an https URL serving its client metadata document, and this one could not be fetched or read.
@@ -12,4 +12,4 @@
         The consent form was incomplete. Go back to the app and connect again.
     <% end %>
   </p>
-</main>
+</Layouts.split>

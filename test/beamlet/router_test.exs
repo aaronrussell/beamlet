@@ -55,7 +55,7 @@ defmodule Beamlet.RouterTest do
 
   test "the beamlet's own pages are under /beamlet, behind the login", %{conn: conn} do
     assert redirected_to(get(conn, "/beamlet")) == "/beamlet/login"
-    assert conn |> get("/beamlet/login") |> html_response(200) =~ "Sign in to your beamlet"
+    assert conn |> get("/beamlet/login") |> html_response(200) =~ "Sign in"
   end
 
   test "the root is an agent's: a pointer to /beamlet until one mounts it", %{

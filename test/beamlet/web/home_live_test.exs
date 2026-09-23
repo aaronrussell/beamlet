@@ -23,29 +23,33 @@ defmodule Beamlet.Web.HomeLiveTest do
   end
 
   test "shows the MCP URL and how each kind of client connects", %{conn: conn, user: user} do
-    {:ok, view, html} = conn |> sign_in(user) |> live("/beamlet")
+    conn = sign_in(conn, user)
+    {:ok, view, html} = live(conn, "/beamlet")
 
-    assert has_element?(view, "pre#mcp-url", "http://localhost:4000/beamlet/mcp")
-    assert has_element?(view, "pre#token-command", "beamlet tokens.create NAME --user alice")
+    assert has_element?(view, "#mcp-url", "http://localhost:4000/beamlet/mcp")
+    assert has_element?(view, "h2", "ChatGPT")
+    assert html =~ "Browse plugins"
 
-    for heading <- [
-          "Apps",
-          "Claude",
-          "ChatGPT",
-          "Coding agents",
-          "Claude Code",
-          "Codex",
-          "Cursor",
-          "From code"
+    for {client, heading, snippet} <- [
+          {"claude", "Claude", "Add custom connector"},
+          {"claude-code", "Claude Code",
+           "claude mcp add --transport http beamlet http://localhost:4000/beamlet/mcp"},
+          {"cursor", "Cursor", "Bearer ${env:BEAMLET_TOKEN}"},
+          {"code", "From code", "mcp-client-2025-11-20"},
+          {"other", "Other apps", "send it as a header"}
         ] do
-      assert has_element?(view, "h2, h3", heading), "no heading #{heading}"
+      {:ok, view, html} = live(conn, "/beamlet?client=#{client}")
+
+      assert has_element?(view, "h2", heading), "no heading #{heading}"
+      assert html =~ snippet, "#{client} lacks #{snippet}"
     end
 
-    assert html =~ "claude mcp add --transport http beamlet http://localhost:4000/beamlet/mcp"
-    assert html =~ "codex mcp add beamlet --url http://localhost:4000/beamlet/mcp"
-    assert html =~ "Bearer ${env:BEAMLET_TOKEN}"
-    assert html =~ "mcp-client-2025-11-20"
+    {:ok, view, html} = live(conn, "/beamlet?client=code")
+    assert has_element?(view, "pre", "beamlet tokens.create NAME --user alice")
     assert html =~ ~s(server_label: &quot;beamlet&quot;)
+
+    {:ok, view, _html} = live(conn, "/beamlet?client=nonsense")
+    assert has_element?(view, "h2", "ChatGPT")
   end
 
   test "renders in the beamlet's own layout, with the built stylesheet", %{conn: conn, user: user} do

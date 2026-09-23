@@ -15,7 +15,7 @@ defmodule Beamlet.Web.SessionControllerTest do
     test "renders the form", %{conn: conn} do
       html = conn |> get("/beamlet/login") |> html_response(200)
 
-      assert html =~ "Sign in to your beamlet"
+      assert html =~ "Sign in"
       assert html =~ ~s(action="/beamlet/login")
       assert html =~ ~s(name="user[name]")
       assert html =~ ~s(name="user[password]")
