@@ -78,7 +78,7 @@ defmodule Beamlet.Config.Provider do
     {result, diagnostics} =
       Code.with_diagnostics(fn ->
         try do
-          {:ok, Config.Reader.read!(file, imports: :disabled)}
+          {:ok, file |> Config.Reader.read!(imports: :disabled) |> validate!()}
         rescue
           error -> {:error, error, __STACKTRACE__}
         end
@@ -92,6 +92,18 @@ defmodule Beamlet.Config.Provider do
         reraise ArgumentError,
                 [message: located(error, diagnostics, file, stacktrace)],
                 stacktrace
+    end
+  end
+
+  # Elixir 1.20 checks the file's value is config; 1.19 returns it as
+  # it is, and the merge would then raise without naming the file.
+  defp validate!(config) do
+    if Keyword.keyword?(config) and Enum.all?(config, fn {_app, kw} -> Keyword.keyword?(kw) end) do
+      config
+    else
+      raise ArgumentError,
+            "expected the file to return a keyword list of {app, keyword} pairs, " <>
+              "got: #{inspect(config)}"
     end
   end
 

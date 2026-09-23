@@ -61,7 +61,11 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
       params: params
     } do
       test = self()
-      Req.Test.stub(Clients, fn _conn -> send(test, :fetched) && flunk("fetched") end)
+
+      Req.Test.stub(Clients, fn _conn ->
+        send(test, :fetched)
+        flunk("fetched")
+      end)
 
       conn = build_conn() |> get("/beamlet/authorize", params)
 

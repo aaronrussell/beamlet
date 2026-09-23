@@ -16,10 +16,16 @@ defmodule Beamlet.Policy.DefaultTest do
   # one ruling in Beamlet.Policy.Default, granted or recorded as not
   # granted. A new module arriving with an Elixir/OTP upgrade fails
   # this test by name and demands a ruling.
+  #
+  # The curation is written against the platform the image runs. An
+  # older supported one lacks modules it rules on and has some since
+  # removed, so the two guards pinning the table run on that platform
+  # and newer only (test_helper.exs).
 
   @platform_apps [:elixir, :stdlib, :kernel, :erts, :crypto]
 
   describe "the curation guards" do
+    @tag :reference_platform
     test "the curated default is pinned by the golden file" do
       fixture = Path.expand("../../support/fixtures/policy_default.txt", __DIR__)
 
@@ -70,6 +76,7 @@ defmodule Beamlet.Policy.DefaultTest do
              "partial grants naming functions that do not exist: #{inspect(stale)}"
     end
 
+    @tag :reference_platform
     test "not-granted lists no module that does not exist" do
       universe = MapSet.new(platform_universe())
       stale = Enum.reject(not_granted(), &MapSet.member?(universe, &1))
