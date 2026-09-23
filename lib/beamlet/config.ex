@@ -4,7 +4,9 @@ defmodule Beamlet.Config do
   boot and read plainly after.
 
   One config surface, read at runtime, so a release or container sets
-  it from the environment in `runtime.exs`. `validate!/0` runs before
+  it from the environment in `runtime.exs`, and a release can merge
+  an operator's file from the data dir into it at boot
+  (`Beamlet.Config.Provider`). `validate!/0` runs before
   a beamlet starts anything and fails the boot with a message naming
   the key at fault; the accessors then return what was checked, with
   defaults merged in, and never raise. A change is a restart.

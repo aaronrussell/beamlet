@@ -52,12 +52,16 @@ defmodule BeamletServer.MixProject do
 
   # Agents read module docs through print_docs, and the policy tells
   # library internals from public surface by @moduledoc false, both
-  # from the Docs chunk that a release strips by default.
+  # from the Docs chunk that a release strips by default. The operator
+  # config file in the data dir is merged after runtime.exs.
   defp releases do
     [
       beamlet_server: [
         include_executables_for: [:unix],
-        strip_beams: [keep: ["Docs"]]
+        strip_beams: [keep: ["Docs"]],
+        config_providers: [
+          {Beamlet.Config.Provider, path: {:system, "BEAMLET_DATA_DIR", "/config.exs"}}
+        ]
       ]
     ]
   end
