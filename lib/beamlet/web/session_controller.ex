@@ -1,34 +1,28 @@
 defmodule Beamlet.Web.SessionController do
   @moduledoc """
-  Sign in and sign out, at `/beamlet/login` and `/beamlet/logout`.
+  Sign in and sign out, the two actions that write the session:
+  `POST /beamlet/login` and `POST /beamlet/logout`.
 
-  The form takes a user's name and password and checks them through
-  `Beamlet.Users.authenticate_password/2`; a sign-in lands where
-  `Beamlet.Web.Auth.require_login/2` stored, or on the home page. A
-  user with no password cannot sign in until the operator sets one
+  The form itself is `Beamlet.Web.SessionLive`; it posts here because
+  a session cookie is written on an HTTP response. The name and
+  password are checked through `Beamlet.Users.authenticate_password/2`;
+  a sign-in lands where `Beamlet.Web.Auth.require_auth/2` stored, or
+  on the home page, and a failure goes back to the form with a flash.
+  A user with no password cannot sign in until the operator sets one
   with `beamlet users.update --password`.
   """
 
-  use Phoenix.Controller, formats: [:html]
+  use Phoenix.Controller, formats: []
 
   import Plug.Conn
 
-  alias Beamlet.User
   alias Beamlet.Users
   alias Beamlet.Web.Auth
 
   @home_path "/beamlet"
   @login_path "/beamlet/login"
 
-  @doc "Renders the sign-in form, or sends a signed-in user home."
-  @spec new(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def new(%Plug.Conn{assigns: %{current_user: %User{}}} = conn, _params) do
-    redirect(conn, to: @home_path)
-  end
-
-  def new(conn, _params), do: render_form(conn)
-
-  @doc "Signs in from the form's name and password, or re-renders it."
+  @doc "Signs in from the form's name and password, or sends the form back with a flash."
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"user" => %{"name" => name, "password" => password}}) do
     case Users.authenticate_password(name, password) do
@@ -40,17 +34,11 @@ defmodule Beamlet.Web.SessionController do
         |> redirect(to: return_to || @home_path)
 
       {:error, :invalid_credentials} ->
-        conn
-        |> put_flash(:error, "Wrong name or password.")
-        |> render_form()
+        refuse(conn)
     end
   end
 
-  def create(conn, _params) do
-    conn
-    |> put_flash(:error, "Wrong name or password.")
-    |> render_form()
-  end
+  def create(conn, _params), do: refuse(conn)
 
   @doc "Signs out and returns to the sign-in page."
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
@@ -61,10 +49,10 @@ defmodule Beamlet.Web.SessionController do
     |> redirect(to: @login_path)
   end
 
-  defp render_form(conn) do
+  defp refuse(conn) do
     conn
-    |> assign(:page_title, "Sign in")
-    |> render(:new, form: Phoenix.Component.to_form(%{}, as: :user))
+    |> put_flash(:error, "Wrong name or password.")
+    |> redirect(to: @login_path)
   end
 
   defp pop_return_path(conn) do

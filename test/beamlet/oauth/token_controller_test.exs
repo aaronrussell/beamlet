@@ -2,6 +2,7 @@ defmodule Beamlet.OAuth.TokenControllerTest do
   use Beamlet.Case
 
   import Phoenix.ConnTest
+  import Phoenix.LiveViewTest
   import Plug.Conn
 
   alias Beamlet.MCPClient
@@ -23,26 +24,33 @@ defmodule Beamlet.OAuth.TokenControllerTest do
   # The browser half of the flow: consent as the signed-in user and
   # read the code off the redirect. Returns the code and the verifier
   # whose hash the code was issued against.
+  # The consent half: the person allows on the consent page, and the
+  # code rides the redirect back to the client.
   defp authorize(conn, overrides \\ %{}) do
     verifier = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
     challenge = Base.url_encode64(:crypto.hash(:sha256, verifier), padding: false)
 
-    params =
-      Map.merge(
-        %{
-          client_id: @client_id,
-          redirect_uri: @redirect_uri,
-          response_type: "code",
-          code_challenge: challenge,
-          code_challenge_method: "S256",
-          resource: @resource,
-          decision: "allow",
-          policy: "default"
-        },
-        overrides
-      )
+    {decision, request} =
+      %{
+        client_id: @client_id,
+        redirect_uri: @redirect_uri,
+        response_type: "code",
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        resource: @resource,
+        decision: "allow",
+        policy: "default"
+      }
+      |> Map.merge(overrides)
+      |> Map.split([:decision, :policy])
 
-    location = conn |> post("/beamlet/authorize", params) |> redirected_to()
+    {:ok, view, _html} = live(conn, "/beamlet/authorize?" <> URI.encode_query(request))
+
+    {:error, {:redirect, %{to: location}}} =
+      view
+      |> element("#consent-form")
+      |> render_submit(%{"decision" => decision.decision, "policy" => decision.policy})
+
     %{"code" => code} = location |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
     {code, verifier}
   end

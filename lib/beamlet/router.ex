@@ -18,10 +18,11 @@ defmodule Beamlet.Router do
   Everything the beamlet owns lives under one segment, `/beamlet`,
   which an agent can never mount under: the MCP server at
   `/beamlet/mcp` (`Beamlet.MCP.Plug`), the sign-in at
-  `/beamlet/login` and `/beamlet/logout` (`Beamlet.Web.SessionController`),
+  `/beamlet/login` (`Beamlet.Web.SessionLive`, posting to
+  `Beamlet.Web.SessionController`, which also owns `/beamlet/logout`),
   the home page at `/beamlet` (`Beamlet.Web.HomeLive`, behind the
   login), the OAuth endpoints at `/beamlet/authorize` (behind the
-  login too, `Beamlet.OAuth.AuthorizeController`) and `/beamlet/token`
+  login too, `Beamlet.OAuth.AuthorizeLive`) and `/beamlet/token`
   (`Beamlet.OAuth.TokenController`, which clients post to directly, so
   no session and no CSRF check), and on the host's endpoint the
   socket and asset paths
@@ -74,7 +75,7 @@ defmodule Beamlet.Router do
   import Plug.Conn
   import Phoenix.Controller
   import Phoenix.LiveView.Router
-  import Beamlet.Web.Auth, only: [fetch_current_user: 2, require_login: 2]
+  import Beamlet.Web.Auth, only: [fetch_current_user: 2, require_auth: 2]
 
   pipeline :browser do
     plug :accepts, ["html"]
@@ -86,42 +87,48 @@ defmodule Beamlet.Router do
     plug :fetch_current_user
   end
 
-  pipeline :login do
-    plug :require_login
+  pipeline :auth do
+    plug :require_auth
   end
+
+  # 1. Bealmet UI routes
 
   scope "/beamlet", Beamlet.Web do
     pipe_through :browser
 
-    get "/login", SessionController, :new
     post "/login", SessionController, :create
     post "/logout", SessionController, :delete
 
-    live_session :beamlet, on_mount: [{Beamlet.Web.Auth, :require_login}] do
+    live_session :login, on_mount: [{Beamlet.Web.Auth, :fetch_current_user}] do
+      live "/login", SessionLive
+    end
+
+    live_session :beamlet, on_mount: [{Beamlet.Web.Auth, :require_auth}] do
       live "/", HomeLive
     end
   end
 
-  scope "/beamlet", Beamlet.OAuth do
-    pipe_through [:browser, :login]
+  # 2. OAuth routes
 
-    get "/authorize", AuthorizeController, :new
-    post "/authorize", AuthorizeController, :create
+  scope "/.well-known", Beamlet.OAuth do
+    get "/oauth-protected-resource", MetadataController, :protected_resource
+    get "/oauth-protected-resource/beamlet/mcp", MetadataController, :protected_resource
+    get "/oauth-authorization-server", MetadataController, :authorization_server
   end
 
-  post "/beamlet/token", Beamlet.OAuth.TokenController, :create
+  scope "/beamlet", Beamlet.OAuth do
+    pipe_through [:browser, :auth]
 
-  get "/.well-known/oauth-protected-resource",
-      Beamlet.OAuth.MetadataController,
-      :protected_resource
+    live_session :authorize, on_mount: [{Beamlet.Web.Auth, :require_auth}] do
+      live "/authorize", AuthorizeLive
+    end
+  end
 
-  get "/.well-known/oauth-protected-resource/beamlet/mcp",
-      Beamlet.OAuth.MetadataController,
-      :protected_resource
+  scope "/beamlet", Beamlet.OAuth do
+    post "/token", TokenController, :create
+  end
 
-  get "/.well-known/oauth-authorization-server",
-      Beamlet.OAuth.MetadataController,
-      :authorization_server
+  # 3. MCP and Dynamic Router forwards
 
   forward "/beamlet/mcp", Beamlet.MCP.Plug
   forward "/", Beamlet.DynamicRouter

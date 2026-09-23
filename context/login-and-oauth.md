@@ -69,7 +69,7 @@ Policy stays on the token. For an OAuth token it is chosen on the consent page; 
 
 A user gains a nullable `password_hash`. `users.create NAME` prompts for a password unless `--no-password` is given; `users.update NAME --password` resets it. Prompted, so it never lands in shell history. `authenticate_password/2` refuses a null hash. No native hashing dependency, so the Dockerfile is untouched; phase 1 chose `pbkdf2_elixir`.
 
-The session is the cookie session the host's endpoint already carries. Beamlet's router grows a browser pipeline that fetches it and protects forms from forgery, a `require_login` plug that stores the return path and redirects to the login page, and a LiveView `on_mount` that reads the signed-in user. A web identity remains a user on a request with no token and no policy, exactly as design § 2 has it; the login is how the authorize endpoint knows who is consenting, and nothing more.
+The session is the cookie session the host's endpoint already carries. Beamlet's router grows a browser pipeline that fetches it and protects forms from forgery, a `require_auth` plug that stores the return path and redirects to the login page, and a LiveView `on_mount` that reads the signed-in user. A web identity remains a user on a request with no token and no policy, exactly as design § 2 has it; the login is how the authorize endpoint knows who is consenting, and nothing more.
 
 ### Client identity: metadata documents only
 
@@ -113,13 +113,13 @@ Each phase is one agent session, starts with its own planning pass, and ends wit
 
 Roadmap step 2, plus the router restructure that everything after needs. Landed 2026-09-21; the settled items are in `design.md` § 2 Web under "Root by default", "Two routers", "What the host carries" and "Login".
 
-**Scope.** The `/beamlet` segment with the existing three paths moved and the mount-time reservation check updated, the underscore rule dropped. The `Beamlet.Web` namespace with `Layouts` and `ErrorView` moved. `password_hash` on users, `users.create` prompting for a password and `users.update --password` resetting it, `users` showing who can sign in. `authenticate_password/2`. The browser pipeline, `Beamlet.Web.Auth` with `fetch_current_user`, `require_login` and the `on_mount` hook. `GET` and `POST /beamlet/login` as `SessionController` `:new` and `:create`, `POST /beamlet/logout` as `:delete`. `HomeLive` at `/beamlet` behind the login, showing the user's name. Tests through `Plug.Test` and LiveView tests.
+**Scope.** The `/beamlet` segment with the existing three paths moved and the mount-time reservation check updated, the underscore rule dropped. The `Beamlet.Web` namespace with `Layouts` and `ErrorView` moved. `password_hash` on users, `users.create` prompting for a password and `users.update --password` resetting it, `users` showing who can sign in. `authenticate_password/2`. The browser pipeline, `Beamlet.Web.Auth` with `fetch_current_user`, `require_auth` and the `on_mount` hook. `GET` and `POST /beamlet/login` as `SessionController` `:new` and `:create`, `POST /beamlet/logout` as `:delete`. `HomeLive` at `/beamlet` behind the login, showing the user's name. Tests through `Plug.Test` and LiveView tests.
 
 **Settled at the planning pass:**
 
 - `pbkdf2_elixir` over `Plug.Crypto`'s key generator: the format, the dummy verify and the rounds setting are its job. Eight to 128 characters.
 - The prompt: `:io.get_password/0` answers `enotsup` under `-noshell`, so the CLI switches to OTP 28's raw no-shell mode for the read and back after; a pipe reads a plain line. Hex's line-clearing trick lost because the characters echo before they are erased.
-- `require_login` stores a GET's path in the session; the login lands there or on `/beamlet`. Login lasts until sign-out or the browser drops the cookie; a password reset ends no other session.
+- `require_auth` stores a GET's path in the session; the login lands there or on `/beamlet`. Login lasts until sign-out or the browser drops the cookie; a password reset ends no other session.
 - The endpoint contract was wrong to say JSON only: it parses JSON and form bodies. The server endpoint gained `Plug.RewriteOn` so the session cookie is marked secure behind Fly's proxy. The signing salts stay: a salt is not a secret, and replacing one constant with another changes nothing.
 - No rate limiting in 0.1.
 - The dev data dir was wiped for the edited migration.

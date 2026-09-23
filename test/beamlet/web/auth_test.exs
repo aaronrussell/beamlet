@@ -31,10 +31,10 @@ defmodule Beamlet.Web.AuthTest do
     end
   end
 
-  describe "require_login/2" do
+  describe "require_auth/2" do
     test "passes a signed-in request through", %{user: user} do
       conn =
-        :get |> session_conn("/x", %{}) |> assign(:current_user, user) |> Auth.require_login([])
+        :get |> session_conn("/x", %{}) |> assign(:current_user, user) |> Auth.require_auth([])
 
       refute conn.halted
     end
@@ -44,7 +44,7 @@ defmodule Beamlet.Web.AuthTest do
         :get
         |> session_conn("/beamlet?tab=files", %{})
         |> Auth.fetch_current_user([])
-        |> Auth.require_login([])
+        |> Auth.require_auth([])
 
       assert conn.halted
       assert conn.status == 302
@@ -58,7 +58,7 @@ defmodule Beamlet.Web.AuthTest do
         :post
         |> session_conn("/beamlet/things", %{})
         |> Auth.fetch_current_user([])
-        |> Auth.require_login([])
+        |> Auth.require_auth([])
 
       assert conn.halted
       assert get_resp_header(conn, "location") == ["/beamlet/login"]
@@ -80,20 +80,20 @@ defmodule Beamlet.Web.AuthTest do
     test "continues with the user assigned", %{user: user} do
       socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, flash: %{}}}
 
-      assert {:cont, socket} = Auth.on_mount(:require_login, %{}, %{"user_id" => user.id}, socket)
+      assert {:cont, socket} = Auth.on_mount(:require_auth, %{}, %{"user_id" => user.id}, socket)
       assert %User{name: "alice"} = socket.assigns.current_user
     end
 
     test "halts with a redirect to the login page when nobody is signed in", %{user: user} do
       socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, flash: %{}}}
 
-      assert {:halt, halted} = Auth.on_mount(:require_login, %{}, %{}, socket)
+      assert {:halt, halted} = Auth.on_mount(:require_auth, %{}, %{}, socket)
       assert {:redirect, %{to: "/beamlet/login"}} = halted.redirected
 
       {:ok, _user} = Users.delete(user)
 
       assert {:halt, halted} =
-               Auth.on_mount(:require_login, %{}, %{"user_id" => user.id}, socket)
+               Auth.on_mount(:require_auth, %{}, %{"user_id" => user.id}, socket)
 
       assert {:redirect, %{to: "/beamlet/login"}} = halted.redirected
     end

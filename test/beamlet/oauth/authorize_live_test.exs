@@ -1,9 +1,10 @@
-defmodule Beamlet.OAuth.AuthorizeControllerTest do
+defmodule Beamlet.OAuth.AuthorizeLiveTest do
   use Beamlet.Case
 
   @moduletag :capture_log
 
   import Phoenix.ConnTest
+  import Phoenix.LiveViewTest
   import Plug.Conn
 
   alias Beamlet.OAuth.Clients
@@ -40,13 +41,22 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
     %{conn: sign_in(build_conn(), user), params: params}
   end
 
-  defp redirect_query(conn) do
-    location = redirected_to(conn)
-    assert String.starts_with?(location, @redirect_uri <> "?")
+  defp path(params), do: "/beamlet/authorize?" <> URI.encode_query(params)
+
+  defp query(location, prefix \\ @redirect_uri) do
+    assert String.starts_with?(location, prefix <> "?")
     location |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
   end
 
-  describe "GET /beamlet/authorize" do
+  defp redirect_query(conn), do: conn |> redirected_to() |> query()
+
+  defp decide(view, decision, policy) do
+    view
+    |> element("#consent-form")
+    |> render_submit(%{"decision" => decision, "policy" => policy})
+  end
+
+  describe "arriving at /beamlet/authorize" do
     test "a signed-out person goes to the login and comes back to the same request", %{
       params: params
     } do
@@ -65,23 +75,21 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
     end
 
     test "renders the consent page", %{conn: conn, params: params} do
-      html = conn |> get("/beamlet/authorize", params) |> html_response(200)
+      {:ok, view, html} = live(conn, path(params))
 
       assert html =~ "chat.example wants to connect."
-      assert html =~ ~s(id="client-id")
-      assert html =~ @client_id
-      assert html =~ ~s(action="/beamlet/authorize")
-      assert html =~ ~s(name="_csrf_token")
-      assert html =~ ~s(type="radio" name="policy" value="default" checked)
-      assert html =~ "define, eval"
-      assert html =~ ~s(name="decision" value="allow")
-      assert html =~ ~s(name="decision" value="deny")
-      assert html =~ "Signed in as alice."
-      refute html =~ "loopback-warning"
+      assert has_element?(view, "#client-id", @client_id)
 
-      for {name, value} <- params do
-        assert html =~ ~s(type="hidden" name="#{name}" value="#{value}")
-      end
+      assert has_element?(
+               view,
+               ~s(#consent-form input[type=radio][name=policy][value=default][checked])
+             )
+
+      assert html =~ "define, eval"
+      assert has_element?(view, ~s(#consent-form button[name=decision][value=allow]))
+      assert has_element?(view, ~s(#consent-form button[name=decision][value=deny]))
+      assert has_element?(view, "#signed-in", "alice")
+      refute has_element?(view, "#loopback-warning")
     end
 
     @tag policies: [explorer: [tools: [:eval]]]
@@ -89,12 +97,12 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
       conn: conn,
       params: params
     } do
-      html = conn |> get("/beamlet/authorize", params) |> html_response(200)
+      {:ok, view, _html} = live(conn, path(params))
 
-      assert html =~ ~s(name="policy" value="default" checked)
-      assert html =~ ~s(name="policy" value="explorer")
-      refute html =~ ~s(name="policy" value="explorer" checked)
-      assert [_, after_explorer] = String.split(html, ~s(value="explorer"), parts: 2)
+      assert has_element?(view, ~s(input[name=policy][value=default][checked]))
+      assert has_element?(view, ~s(input[name=policy][value=explorer]))
+      refute has_element?(view, ~s(input[name=policy][value=explorer][checked]))
+      assert [_, after_explorer] = String.split(render(view), ~s(value="explorer"), parts: 2)
       assert after_explorer =~ ">eval<"
     end
 
@@ -102,57 +110,48 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
     test "offers a bounded user only their policies, the first selected unless default is among them",
          %{params: params} do
       {:ok, bob} = Users.create(name: "bob", policies: ["restricted", "explorer"])
+      {:ok, view, _html} = build_conn() |> sign_in(bob) |> live(path(params))
 
-      html =
-        build_conn() |> sign_in(bob) |> get("/beamlet/authorize", params) |> html_response(200)
-
-      assert html =~ ~s(name="policy" value="restricted" checked)
-      assert html =~ ~s(name="policy" value="explorer")
-      refute html =~ ~s(name="policy" value="explorer" checked)
-      refute html =~ ~s(value="default")
+      assert has_element?(view, ~s(input[name=policy][value=restricted][checked]))
+      assert has_element?(view, ~s(input[name=policy][value=explorer]))
+      refute has_element?(view, ~s(input[name=policy][value=explorer][checked]))
+      refute has_element?(view, ~s(input[name=policy][value=default]))
 
       {:ok, bob} = Users.update(bob, policies: ["explorer", "default"])
+      {:ok, view, _html} = build_conn() |> sign_in(bob) |> live(path(params))
 
-      html =
-        build_conn() |> sign_in(bob) |> get("/beamlet/authorize", params) |> html_response(200)
-
-      assert html =~ ~s(name="policy" value="default" checked)
-      refute html =~ ~s(name="policy" value="explorer" checked)
-      refute html =~ ~s(value="restricted")
+      assert has_element?(view, ~s(input[name=policy][value=default][checked]))
+      refute has_element?(view, ~s(input[name=policy][value=explorer][checked]))
+      refute has_element?(view, ~s(input[name=policy][value=restricted]))
     end
 
     test "warns when the redirect is loopback", %{conn: conn, params: params} do
       params = %{params | redirect_uri: "http://127.0.0.1:51234/callback"}
-      html = conn |> get("/beamlet/authorize", params) |> html_response(200)
+      {:ok, view, _html} = live(conn, path(params))
 
-      assert html =~ ~s(id="loopback-warning")
-      assert html =~ "http://127.0.0.1:51234/callback"
+      assert has_element?(view, "#loopback-warning", "http://127.0.0.1:51234/callback")
     end
 
     test "an unknown client is an error page, not a redirect", %{conn: conn, params: params} do
       Req.Test.stub(Clients, fn conn -> conn |> put_status(404) |> Req.Test.json(%{}) end)
-      html = conn |> get("/beamlet/authorize", params) |> html_response(400)
-      assert html =~ "could not verify the app"
-      assert html =~ "client metadata document"
+      {:ok, view, _html} = live(conn, path(params))
+      assert has_element?(view, "#error-reason", "client metadata document")
 
-      html =
-        conn |> get("/beamlet/authorize", Map.delete(params, :client_id)) |> html_response(400)
-
-      assert html =~ "could not verify the app"
+      {:ok, view, _html} = live(conn, path(Map.delete(params, :client_id)))
+      assert has_element?(view, "#error-reason", "client metadata document")
     end
 
     test "a redirect URI the document does not list is an error page", %{
       conn: conn,
       params: params
     } do
-      params = %{params | redirect_uri: "https://evil.example/callback"}
-      html = conn |> get("/beamlet/authorize", params) |> html_response(400)
-      assert html =~ "does not list"
+      {:ok, view, _html} =
+        live(conn, path(%{params | redirect_uri: "https://evil.example/callback"}))
 
-      html =
-        conn |> get("/beamlet/authorize", Map.delete(params, :redirect_uri)) |> html_response(400)
+      assert has_element?(view, "#error-reason", "does not list")
 
-      assert html =~ "does not list"
+      {:ok, view, _html} = live(conn, path(Map.delete(params, :redirect_uri)))
+      assert has_element?(view, "#error-reason", "does not list")
     end
 
     test "every other fault redirects to the client with an error, the state and iss", %{
@@ -176,22 +175,21 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
 
     test "state and resource are optional", %{conn: conn, params: params} do
       params = params |> Map.delete(:state) |> Map.delete(:resource)
-
-      assert conn |> get("/beamlet/authorize", params) |> html_response(200) =~
-               "chat.example wants to connect."
+      {:ok, view, _html} = live(conn, path(params))
+      assert has_element?(view, "#consent-form")
     end
   end
 
-  describe "POST /beamlet/authorize" do
+  describe "deciding" do
     test "allow stores a code and sends the browser back with code, state and iss", %{
       conn: conn,
       params: params,
       user: user
     } do
-      query =
-        conn
-        |> post("/beamlet/authorize", Map.merge(params, %{decision: "allow", policy: "default"}))
-        |> redirect_query()
+      {:ok, view, _html} = live(conn, path(params))
+
+      assert {:error, {:redirect, %{to: location}}} = decide(view, "allow", "default")
+      query = query(location)
 
       assert %{"code" => code, "state" => "xyz", "iss" => @iss} = query
       refute Map.has_key?(query, "error")
@@ -214,17 +212,19 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
       conn: conn,
       params: params
     } do
-      params =
-        Map.merge(params, %{decision: "allow", policy: "explorer", scope: "offline_access"})
+      {:ok, view, _html} = live(conn, path(Map.put(params, :scope, "offline_access")))
 
-      %{"code" => code} = conn |> post("/beamlet/authorize", params) |> redirect_query()
+      assert {:error, {:redirect, %{to: location}}} = decide(view, "allow", "explorer")
+      %{"code" => code} = query(location)
 
       assert {:ok, %{policy: "explorer", scope: "offline_access"}} = Codes.take(code)
     end
 
     test "deny sends the browser back with access_denied", %{conn: conn, params: params} do
-      query =
-        conn |> post("/beamlet/authorize", Map.put(params, :decision, "deny")) |> redirect_query()
+      {:ok, view, _html} = live(conn, path(params))
+
+      assert {:error, {:redirect, %{to: location}}} = decide(view, "deny", "default")
+      query = query(location)
 
       assert %{"error" => "access_denied", "state" => "xyz", "iss" => @iss} = query
       refute Map.has_key?(query, "code")
@@ -234,14 +234,9 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
       conn: conn,
       params: params
     } do
-      params =
-        Map.merge(params, %{
-          redirect_uri: "chat-app://oauth/callback",
-          decision: "allow",
-          policy: "default"
-        })
+      {:ok, view, _html} = live(conn, path(%{params | redirect_uri: "chat-app://oauth/callback"}))
 
-      html = conn |> post("/beamlet/authorize", params) |> html_response(200)
+      html = decide(view, "allow", "default")
 
       assert html =~ "Sending you back to chat.example"
       assert [location] = Regex.run(~r{content="0;url=([^"]+)"}, html, capture: :all_but_first)
@@ -255,10 +250,10 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
     end
 
     test "a redirect URI with a query keeps it", %{conn: conn, params: params} do
-      params =
-        Map.merge(params, %{redirect_uri: "https://chat.example/cb?app=1", decision: "deny"})
+      {:ok, view, _html} =
+        live(conn, path(%{params | redirect_uri: "https://chat.example/cb?app=1"}))
 
-      location = conn |> post("/beamlet/authorize", params) |> redirected_to()
+      assert {:error, {:redirect, %{to: location}}} = decide(view, "deny", "default")
       assert String.starts_with?(location, "https://chat.example/cb?app=1&error=access_denied")
     end
 
@@ -266,44 +261,26 @@ defmodule Beamlet.OAuth.AuthorizeControllerTest do
       conn: conn,
       params: params
     } do
-      params = Map.merge(params, %{decision: "allow", policy: "root"})
+      {:ok, view, _html} = live(conn, path(params))
+      assert decide(view, "allow", "root") =~ "not one this beamlet"
 
-      assert conn |> post("/beamlet/authorize", params) |> html_response(400) =~
-               "not one this beamlet"
-
-      params = Map.put(params, :decision, "maybe")
-      assert conn |> post("/beamlet/authorize", params) |> html_response(400) =~ "incomplete"
+      {:ok, view, _html} = live(conn, path(params))
+      assert decide(view, "maybe", "default") =~ "incomplete"
     end
 
     @tag policies: [explorer: [tools: [:eval]]]
     test "a policy outside the user's list is an error page", %{params: params} do
       {:ok, bob} = Users.create(name: "bob", policies: ["explorer"])
-      params = Map.merge(params, %{decision: "allow", policy: "default"})
+      {:ok, view, _html} = build_conn() |> sign_in(bob) |> live(path(params))
 
-      assert build_conn()
-             |> sign_in(bob)
-             |> post("/beamlet/authorize", params)
-             |> html_response(400) =~
-               "not one this beamlet lets you use"
+      assert decide(view, "allow", "default") =~ "not one this beamlet lets you use"
     end
 
-    test "the form is validated again, so a tampered redirect URI is an error page", %{
-      conn: conn,
-      params: params
-    } do
-      params =
-        Map.merge(params, %{
-          redirect_uri: "https://evil.example/cb",
-          decision: "allow",
-          policy: "default"
-        })
+    test "a decision after an error page changes nothing", %{conn: conn, params: params} do
+      {:ok, view, _html} = live(conn, path(%{params | redirect_uri: "https://evil.example/cb"}))
 
-      assert conn |> post("/beamlet/authorize", params) |> html_response(400) =~ "does not list"
-    end
-
-    test "a signed-out post goes to the login", %{params: params} do
-      conn = build_conn() |> post("/beamlet/authorize", Map.put(params, :decision, "allow"))
-      assert redirected_to(conn) == "/beamlet/login"
+      assert render_submit(view, "decide", %{"decision" => "allow", "policy" => "default"}) =~
+               "does not list"
     end
   end
 end

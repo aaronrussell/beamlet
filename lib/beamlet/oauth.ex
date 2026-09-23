@@ -21,7 +21,7 @@ defmodule Beamlet.OAuth do
   The flow itself is four modules. A client identifies itself by an
   https URL that serves its metadata document, which
   `Beamlet.OAuth.Clients` fetches and checks. `GET /beamlet/authorize`
-  (`Beamlet.OAuth.AuthorizeController`) validates the request, sends
+  (`Beamlet.OAuth.AuthorizeLive`) validates the request, sends
   a signed-out person to the login, and shows the consent page, where
   the policy is chosen; consenting stores a code in
   `Beamlet.OAuth.Codes` and sends the browser back to the client.

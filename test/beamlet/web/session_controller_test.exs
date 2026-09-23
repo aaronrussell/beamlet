@@ -2,6 +2,7 @@ defmodule Beamlet.Web.SessionControllerTest do
   use Beamlet.Case
 
   import Phoenix.ConnTest
+  import Phoenix.LiveViewTest
   import Plug.Conn
 
   alias Beamlet.Users
@@ -12,18 +13,18 @@ defmodule Beamlet.Web.SessionControllerTest do
   end
 
   describe "GET /beamlet/login" do
-    test "renders the form", %{conn: conn} do
-      html = conn |> get("/beamlet/login") |> html_response(200)
+    test "renders the form, posting to this controller", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/beamlet/login")
 
-      assert html =~ "Sign in"
-      assert html =~ ~s(action="/beamlet/login")
-      assert html =~ ~s(name="user[name]")
-      assert html =~ ~s(name="user[password]")
-      assert html =~ ~s(name="_csrf_token")
+      assert has_element?(view, ~s(form#login-form[action="/beamlet/login"][method="post"]))
+      assert has_element?(view, ~s(#login-form input[name="user[name]"]))
+      assert has_element?(view, ~s(#login-form input[name="user[password]"]))
+      assert has_element?(view, ~s(#login-form input[name="_csrf_token"]))
     end
 
     test "sends a signed-in user home", %{conn: conn, user: user} do
-      assert conn |> sign_in(user) |> get("/beamlet/login") |> redirected_to() == "/beamlet"
+      assert {:error, {:redirect, %{to: "/beamlet"}}} =
+               conn |> sign_in(user) |> live("/beamlet/login")
     end
   end
 
@@ -35,7 +36,7 @@ defmodule Beamlet.Web.SessionControllerTest do
       assert get_session(conn, :user_id) == user.id
     end
 
-    test "returns to the path require_login stored, once", %{conn: conn} do
+    test "returns to the path require_auth stored, once", %{conn: conn} do
       conn =
         conn
         |> init_test_session(return_to: "/beamlet?tab=files")
@@ -45,11 +46,16 @@ defmodule Beamlet.Web.SessionControllerTest do
       assert get_session(conn, :return_to) == nil
     end
 
-    test "a wrong password re-renders the form and signs nobody in", %{conn: conn} do
+    test "a wrong password goes back to the form with a flash and signs nobody in", %{
+      conn: conn
+    } do
       conn = post(conn, "/beamlet/login", user: %{name: "alice", password: "wrong"})
 
-      assert html_response(conn, 200) =~ "Wrong name or password."
+      assert redirected_to(conn) == "/beamlet/login"
       assert get_session(conn, :user_id) == nil
+
+      {:ok, view, _html} = live(conn, "/beamlet/login")
+      assert has_element?(view, "#flash-error", "Wrong name or password.")
     end
 
     test "an unknown name and a user with no password fail the same way", %{conn: conn} do
@@ -57,14 +63,16 @@ defmodule Beamlet.Web.SessionControllerTest do
 
       for name <- ["carol", "bob"] do
         conn = post(conn, "/beamlet/login", user: %{name: name, password: "correct horse"})
-        assert html_response(conn, 200) =~ "Wrong name or password."
+        assert redirected_to(conn) == "/beamlet/login"
+        assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Wrong name or password."
         assert get_session(conn, :user_id) == nil
       end
     end
 
     test "a body without the form's fields fails the same way", %{conn: conn} do
       conn = post(conn, "/beamlet/login", %{})
-      assert html_response(conn, 200) =~ "Wrong name or password."
+      assert redirected_to(conn) == "/beamlet/login"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Wrong name or password."
       assert get_session(conn, :user_id) == nil
     end
   end

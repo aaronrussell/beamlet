@@ -10,14 +10,17 @@ defmodule Beamlet.Web.Auth do
 
   Two plugs for `Beamlet.Router`'s browser pipeline and any host route
   that wants the same: `fetch_current_user/2` assigns `:current_user`,
-  nil when nobody is signed in, and `require_login/2` sends a signed-out
+  nil when nobody is signed in, and `require_auth/2` sends a signed-out
   request to the login page, remembering where a GET was headed so
   the sign-in returns there. `on_mount/4` is the LiveView form of
-  `require_login`, for a `live_session`:
+  `require_auth`, for a `live_session`:
 
-      live_session :beamlet, on_mount: [{Beamlet.Web.Auth, :require_login}] do
+      live_session :beamlet, on_mount: [{Beamlet.Web.Auth, :require_auth}] do
         live "/", HomeLive
       end
+
+  `on_mount(:fetch_current_user, ...)` assigns the user without a
+  redirect, for a page that renders either way, such as the sign-in.
 
   `log_in/2` and `log_out/1` are what the session controller calls;
   both renew the session so a sign-in never keeps a cookie that was
@@ -43,10 +46,10 @@ defmodule Beamlet.Web.Auth do
   Halts a signed-out request with a redirect to the login page,
   storing the path of a GET as where to return after.
   """
-  @spec require_login(Plug.Conn.t(), keyword()) :: Plug.Conn.t()
-  def require_login(%Plug.Conn{assigns: %{current_user: %User{}}} = conn, _opts), do: conn
+  @spec require_auth(Plug.Conn.t(), keyword()) :: Plug.Conn.t()
+  def require_auth(%Plug.Conn{assigns: %{current_user: %User{}}} = conn, _opts), do: conn
 
-  def require_login(conn, _opts) do
+  def require_auth(conn, _opts) do
     conn
     |> store_return_path()
     |> put_flash(:error, @flash)
@@ -71,12 +74,17 @@ defmodule Beamlet.Web.Auth do
   end
 
   @doc """
-  The `require_login` hook for a `live_session`: assigns
-  `:current_user`, or halts with a redirect to the login page.
+  The hooks for a `live_session`: `:require_auth` assigns
+  `:current_user` or halts with a redirect to the login page;
+  `:fetch_current_user` assigns it, nil when nobody is signed in.
   """
-  @spec on_mount(:require_login, map(), map(), Phoenix.LiveView.Socket.t()) ::
+  @spec on_mount(:require_auth | :fetch_current_user, map(), map(), Phoenix.LiveView.Socket.t()) ::
           {:cont, Phoenix.LiveView.Socket.t()} | {:halt, Phoenix.LiveView.Socket.t()}
-  def on_mount(:require_login, _params, session, socket) do
+  def on_mount(:fetch_current_user, _params, session, socket) do
+    {:cont, Phoenix.Component.assign(socket, :current_user, user_from(session["user_id"]))}
+  end
+
+  def on_mount(:require_auth, _params, session, socket) do
     case user_from(session["user_id"]) do
       %User{} = user ->
         {:cont, Phoenix.Component.assign(socket, :current_user, user)}
