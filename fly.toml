@@ -4,8 +4,9 @@
 app = "beamlet"
 primary_region = "lhr"
 
+# The published image, pinned: a deploy is a choice of release.
 [build]
-  dockerfile = "Dockerfile"
+  image = "ghcr.io/aaronrussell/beamlet:0.1.0-rc.1"
 
 [env]
   BEAMLET_URL = "https://beamlet.fly.dev"

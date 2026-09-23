@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  beamlet:
+    name: Beamlet (OTP ${{ matrix.otp }}, Elixir ${{ matrix.elixir }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        otp: ["28", "29"]
+        elixir: ["1.19", "1.20"]
+        exclude:
+          - otp: "29"
+            elixir: "1.19"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: beamlet-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('mix.lock') }}
+          restore-keys: beamlet-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-
+      - run: mix deps.get
+      # precommit formats, unlocks and rebuilds the stylesheet rather
+      # than checking, so a change it makes is the failure.
+      - run: mix precommit
+      - run: git diff --exit-code
+
+  server:
+    name: Server
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v5
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            server/deps
+            server/_build
+          key: server-${{ runner.os }}-${{ hashFiles('server/mix.lock', 'mix.lock') }}
+          restore-keys: server-${{ runner.os }}-
+      - run: mix deps.get
+      - run: mix precommit
+      - run: git diff --exit-code

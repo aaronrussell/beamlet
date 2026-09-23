@@ -20,6 +20,8 @@ data/                dev data dir (gitignored)
 context/             design notes
 Dockerfile           builds and runs the server; context is the repo root
 fly.toml             the image on Fly: one machine, one volume
+.github/workflows/   ci.yml on main and PRs, release.yml on a
+                     version tag
 ```
 
 Two audiences, two surfaces: `Host.*` is what agent code reads and calls; `Beamlet.*` is what the operator and the embedding host use. Keep them apart.
