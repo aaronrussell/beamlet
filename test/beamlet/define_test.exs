@@ -235,4 +235,133 @@ defmodule Beamlet.DefineTest do
 
     assert message =~ "define timed out after 50ms"
   end
+
+  describe "scattered clauses" do
+    test "a function whose clauses are separated is refused with nothing defined", %{
+      principal: principal,
+      data_dir: data_dir
+    } do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Scattered])
+      purge_on_exit([mod])
+
+      code = """
+      defmodule #{ns}.Scattered do
+        @moduledoc "Scattered."
+
+        @doc "Sizes."
+        def size(:small), do: 1
+
+        @doc "Names."
+        def name, do: "x"
+
+        def size(:large), do: 3
+      end
+      """
+
+      message = quiet(fn -> run_error(code, principal) end)
+
+      assert message ==
+               "def size/1 (buffer:10) is separated from its earlier clause (buffer:5) " <>
+                 "by other definitions — group the clauses of a function together"
+
+      refute loaded?(mod)
+      refute File.exists?(Path.join(data_dir, "code/lib/#{Macro.underscore(ns)}/scattered.ex"))
+    end
+
+    test "every scattered function gets a line, in buffer order", %{principal: principal} do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, Scattered])])
+
+      code = """
+      defmodule #{ns}.Scattered do
+        @moduledoc "Scattered twice."
+
+        @doc "Sizes."
+        def size(:small), do: 1
+
+        defp helper(1), do: :one
+
+        def size(:large), do: 3
+
+        defp helper(2), do: :two
+
+        @doc "Uses the helper."
+        def use_helper, do: {helper(1), helper(2)}
+      end
+      """
+
+      message = quiet(fn -> run_error(code, principal) end)
+
+      assert message ==
+               "def size/1 (buffer:9) is separated from its earlier clause (buffer:5) " <>
+                 "by other definitions — group the clauses of a function together\n" <>
+                 "defp helper/1 (buffer:11) is separated from its earlier clause (buffer:7) " <>
+                 "by other definitions — group the clauses of a function together"
+    end
+
+    test "the same name at another arity may sit apart", %{principal: principal} do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Arities])
+      purge_on_exit([mod])
+
+      code = """
+      defmodule #{ns}.Arities do
+        @moduledoc "Two arities of one name."
+
+        @doc "One."
+        def size(a), do: a
+
+        @doc "Names."
+        def name, do: "x"
+
+        @doc "Two."
+        def size(a, b), do: a + b
+      end
+      """
+
+      assert {:ok, "Defined #{ns}.Arities (new)"} == Define.run(code, principal)
+      assert apply(mod, :size, [1, 2]) == 3
+    end
+
+    test "a scattered replace rolls the module back", %{principal: principal, data_dir: data_dir} do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Counter])
+      purge_on_exit([mod])
+
+      code = """
+      defmodule #{ns}.Counter do
+        @moduledoc "Counts."
+
+        @doc "The count."
+        def count(:a), do: 1
+      end
+      """
+
+      assert {:ok, _summary} = Define.run(code, principal)
+      source_file = Path.join(data_dir, "code/lib/#{Macro.underscore(ns)}/counter.ex")
+      source = File.read!(source_file)
+
+      scattered = """
+      defmodule #{ns}.Counter do
+        @moduledoc "Counts."
+
+        @doc "The count."
+        def count(:a), do: 2
+
+        @doc "Names."
+        def name, do: "x"
+
+        def count(:b), do: 3
+      end
+      """
+
+      message = quiet(fn -> run_error(scattered, principal, replace: true) end)
+      assert message =~ "def count/1 (buffer:10) is separated from its earlier clause (buffer:5)"
+
+      assert apply(mod, :count, [:a]) == 1
+      refute function_exported?(mod, :name, 0)
+      assert File.read!(source_file) == source
+    end
+  end
 end

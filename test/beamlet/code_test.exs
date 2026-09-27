@@ -378,6 +378,51 @@ defmodule Beamlet.CodeTest do
       assert log =~ "code boot: quarantined lib/dep.ex"
     end
 
+    test "quarantines a file whose function clauses are scattered", ctx do
+      ns = unique_namespace()
+      good = Module.concat([ns, Good])
+      scattered = Module.concat([ns, Scattered])
+      purge_on_exit([good, scattered])
+
+      lib = Path.join(ctx.code_dir, "lib")
+
+      File.write!(Path.join(lib, "good.ex"), """
+      defmodule #{ns}.Good do
+        @moduledoc "Good."
+        def ok, do: :good
+      end
+      """)
+
+      File.write!(Path.join(lib, "scattered.ex"), """
+      defmodule #{ns}.Scattered do
+        @moduledoc "Hand-edited into scattered clauses."
+        def size(:small), do: 1
+        def name, do: "x"
+        def size(:large), do: 3
+      end
+      """)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          quiet(fn -> restart_code_server() end)
+
+          assert apply(good, :ok, []) == :good
+          assert Code.defined() == [good]
+
+          assert [%{file: file, modules: [^scattered], error: error}] = Code.quarantined()
+          assert file == Path.join(lib, "scattered.ex")
+
+          assert error ==
+                   "def size/1 (lib/scattered.ex:5) is separated from its earlier clause " <>
+                     "(lib/scattered.ex:3) by other definitions — group the clauses of a " <>
+                     "function together"
+
+          refute loaded?(scattered)
+        end)
+
+      assert log =~ "code boot: quarantined lib/scattered.ex: def size/1 (lib/scattered.ex:5)"
+    end
+
     test "carries no policy gate: the code dir is operator-mediated", ctx do
       ns = unique_namespace()
       mod = Module.concat([ns, HandEdited])

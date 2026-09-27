@@ -1,8 +1,8 @@
 # Beamlet — patch
 
-**Status:** The spec for editing modules in place, agreed 2026-09-26 and sequenced 2026-09-27 into the five phases of § 9, which is the plan. Each phase is a session of its own that starts from this note: a planning pass pinning the phase against the code as it stands, the implementation, the tests, `mix precommit`, and an update to this note. The work is next up on the roadmap, ahead of the 0.1 code review, so the reviews and the docs cover three tools. When the last phase lands, the settled parts move into `design.md` and this note goes.
+**Status:** The spec for editing modules in place, agreed 2026-09-26 and sequenced 2026-09-27 into the five phases of § 9, which is the plan. Each phase is a session of its own that starts from this note: a planning pass pinning the phase against the code as it stands, the implementation, the tests, `mix precommit`, and an update to this note. Phase 1 landed 2026-09-27; phase 2 is next. The work is next up on the roadmap, ahead of the 0.1 code review, so the reviews and the docs cover three tools. When the last phase lands, the settled parts move into `design.md` and this note goes.
 
-**Last updated:** 2026-09-27 (sequenced; schema, formatting, policy and error rules settled)
+**Last updated:** 2026-09-27 (phase 1 landed: scattered clauses refused at define and boot, the locator convention started)
 
 ---
 
@@ -133,6 +133,7 @@ A selection is what the parser sees, `Code.string_to_quoted/2` with `token_metad
 - **Naming `attr` and `slot` is a curation record** beside the framework module list. The beamlet ships them and imports them through `Host.Web`, an agent's own `attr` needs `allow_defmacro`, and a macro placed directly above a function in that style is by placement an annotation of it. The general rule, any adjacent bare call attaches, lost: it swallows a `plug :auth` written with no blank line above the action. A missed macro from a future library costs the agent a `find` to tidy, and the compile is loud since an orphaned `attr` fails.
 - **The outline prints each function's range as its selection**, docs included, so the agent sees what a `select` will touch. The outline lists the header items too, moduledoc, directives, attributes, struct and types, with their lines, since a range read needs them.
 - **A module that does not parse has no outline.** `print_outline` on a quarantined module raises with the parser's message and points at `print_source` with a range and at `find`, the two reads and the one anchor that work on unparseable text.
+- **A quarantined module with scattered clauses is the one place `select` can meet a non-contiguous block** (phase 1, 2026-09-27). Define and boot refuse scattered clauses (§ 5), so every defined module is contiguous, but a hand-edited scattered file parses and sits in quarantine. `select` on such a function refuses with a teaching error pointing at `find`; the outline still prints, since the ranges are honest about what is there.
 
 Tests for the walk: doc, spec and impl; attr and slot; a constant directly above that must stay; an adjacent comment that must stay; a one-liner; a private function; a multi-clause function with a `@spec` between clauses.
 
@@ -145,6 +146,18 @@ The one ambiguity is a same-session patch to a module just defined, where the ag
 Details: the no-parens locals, so `plug :auth` does not become `plug(:auth)`, are read at compile time from the packages' `.formatter.exs` exports into a module attribute, since a release does not carry those files. Phoenix, ecto, ecto_sql and plug ship exports, and phoenix's carries `attr` and `slot`; phoenix_live_view exports nothing (verified 2026-09-27). Without the list the formatter wraps `plug`, `attr` and `slot` in parens; with it they stay bare. The HEEx plugin stays out, so `~H` content is verbatim (verified). The formatter is idempotent, so the only visible change on an existing beamlet is a one-time reformat of an old module at its first patch; an Elixir upgrade that changes the formatter's output does the same, one hunk at the module's next patch, accepted. Pre-release, dev data is wiped as usual.
 
 **Scattered clauses are refused.** Elixir only warns when clauses of one function are separated by other definitions (verified on 1.20.4 with OTP 29: the module compiles and runs), so a `select` could otherwise meet a non-contiguous block. There is no per-warning compiler flag and `warnings_as_errors` is all or nothing. The code server already receives warnings as diagnostics on a successful compile and ignores them: with `return_diagnostics: true` they arrive as `compile_warnings` in the map `Kernel.ParallelCompiler.compile/2` returns, each with `message`, `position` and `file`, and the message begins `clauses with the same name and arity (number of arguments) should be grouped together, "def a/1" was previously defined (file:2)` (verified 2026-09-27). Define and patch filter for the prefix "clauses with the same name and arity" and refuse with a teaching error, rolled back like a compile failure. A test pins the wording so an Elixir release that rewords it fails the suite rather than letting the case back in; CI runs 1.19 and 1.20, so both must agree.
+
+Landed in phase 1 (2026-09-27), with three things settled against the code:
+
+- **Boot refuses too.** A hand-edited scattered file is quarantined at boot with the same error, as a compile failure is, so no defined module on the beamlet has scattered clauses and the define-side check needs no scoping to the buffer's own file: a dependent recompiled alongside cannot carry the warning. Hand edits follow the same rules as the tools.
+- **Only the arity variant.** Elixir has a sibling warning, "clauses with the same name should be grouped together", for `a/1`, then `b/0`, then `a/2`. Different arities are different selections, so that layout stays legal, and a test pins the filter as not too broad.
+- **The wording**, one line per scattered function, the kind as the compiler names it so a guard reads `defmacro`:
+
+  ```
+  def total/1 (buffer:9) is separated from its earlier clause (buffer:4) by other definitions — group the clauses of a function together
+  ```
+
+  The parts come from the diagnostic, the function and the earlier line from the message and the later line from its position, and Elixir's own text never reaches the agent, since it carries the staging path. At boot the locators name the file, `lib/shopping/list.ex:9`, per § 6.
 
 **Normalising order was rejected.** Guards and macros must precede their uses in a module, `attr` must sit directly above its component, `plug` calls are an ordered pipeline, and an attribute set between functions is read by the next one at compile time. Each is a special case where a reorder silently rewrites what the agent meant, and it breaks the promise that the code dir reads as authored. Formatting changes neither meaning nor order, and placement by `select` with `before` and `after` buys the same outcome with no rewriting.
 
@@ -162,7 +175,7 @@ Settled 2026-09-27. A line number is worth something only when it indexes text t
 Today every number is buffer-relative: the whole buffer compiles as one staging file and the split into one file per module happens at commit, so a two-module buffer reports a bare buffer line for either. After formatting, a compile error's number indexes text the agent has not seen; after a patch, text nobody has. Only the stack-trace row is a number worth chasing, and it is the payoff of storing formatted: it matches `print_source`, and the range read makes it actionable. The rest is not worth hoops, and the rule is instead:
 
 - **The text is the locator, the number a hint.** Every pipeline error names the module and quotes the offending line. The scanner has the source and the line; the docs gate already names the function, which is better than a line; compile diagnostics carry a position into the staged text. Attribution in a multi-module buffer comes from the parse: the module ranges the split computes map any buffer line to its module. No offset tables, no change to staging.
-- **A number says what it is relative to**, in the error itself: `line 42 of your buffer` for a scanner refusal, `Shopping.Cart line 30 of the formatted source` for a compile error. A few words per error, no description budget, and the ambiguity is gone at the moment it would mislead.
+- **A number says what it is relative to**, in the error itself, as a locator of the shape `<form>:<line>` where the form names the text the number indexes (settled in phase 1, 2026-09-27): `buffer:42` for what the agent sent, and `lib/shopping/list.ex:9` at boot, the stored file's path relative to the code dir, which `print_source` reads. Phase 2 names the formatted text's form when it introduces it. The shape is the `file:line` models already read, and the ambiguity is gone at the moment it would mislead. Phase 1 uses it for the scattered-clause error; phase 2 applies it to the scanner's `line N:` prefix and to compile errors, which today pass Elixir's diagnostics through verbatim, including a trailing `** (CompileError) <staging path>: cannot compile module ...` diagnostic at position 0 that leaks the staging path and must go.
 - **A patch error brings the file to the model.** Since the patched text exists nowhere readable, the error names the patch that caused it and shows the failing line with two or three lines either side: `patch 2 (Shopping.Cart, select total/1): the result fails to compile at ...`, then the context. A handful of lines in a failure result is the cost.
 - **Nothing about line numbers is taught in the descriptions.** No error asks the model to count. The habit the patch description already teaches, read the outline and the source and quote exact text, is the whole of it.
 
@@ -195,17 +208,17 @@ Recorded because each would plausibly be proposed again.
 
 Five phases, in order, each a session of its own. A phase starts from this note and CLAUDE.md, with design § 2 Define and Discovery beside them, and runs as every roadmap step does: a planning pass that pins the phase's spec against the code as it stands and asks what is unclear, the implementation, the phase's tests, `mix precommit`, and an update to this note recording what the phase settled or changed. A phase does only what it lists; a later phase never starts before the earlier one has landed; nothing is committed unless asked. Sizes are relative: 1 is small, 2 and 3 medium, 4 large, 5 medium.
 
-### Phase 1. Scattered clauses refused
+### Phase 1. Scattered clauses refused (landed 2026-09-27)
 
 **Goal.** A define whose clauses of one function are separated by other definitions is refused, so a later `select` always meets a contiguous block, and the pattern of treating a compile warning as a refusal exists for phase 4 to reuse.
 
-**Builds.** In `Beamlet.Code`'s define outcome, the `compile_warnings` the successful-compile branch discards today are filtered for the prefix in § 5; a match rolls back exactly as a compile failure and returns a teaching error naming the function and the line its earlier clause sits on, which the message carries.
+**Built.** In `Beamlet.Code`, one detector over `compile_warnings` and one renderer, shared by define and boot. The define outcome checks the warnings first, ahead of the broken-caller and placement checks, and a match rolls back exactly as a compile failure with the § 5 wording, `buffer:N` locators. Boot's successful-compile branch runs the same detector and quarantines a matching file through the same path a compile failure takes, with the file's relative path as the locator form; the quarantine tail of the boot loop is one helper both branches call. The planning pass widened the entry from define alone to boot, since a hand edit must follow the same rules, and narrowed the filter to the arity variant.
 
-**Tests.** A scattered buffer refused with nothing defined and nothing on disk; the wording pinned; a contiguous multi-clause function still defines; a scattered function inside a replace rolls the module back to its previous version.
+**Tests.** A scattered buffer refused with nothing defined and nothing on disk, the wording pinned exactly; two scattered functions giving two lines in buffer order; the same name at another arity still defining; a scattered replace rolling the module back, file bytes unchanged; a scattered file quarantined at boot with its error and log line. A contiguous multi-clause function was already covered by the `defguard` test.
 
 **Not in this phase.** Formatting, the summary, anything in `Host.Code`.
 
-**Touches.** `lib/beamlet/code.ex` (`run_define`'s outcome), `test/beamlet/define_test.exs`.
+**Touched.** `lib/beamlet/code.ex` (`run_define`'s outcome, the boot loop, the moduledoc), `test/beamlet/define_test.exs`, `test/beamlet/code_test.exs`.
 
 ### Phase 2. Store formatted, errors locate by text
 

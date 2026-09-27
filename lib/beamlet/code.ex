@@ -33,11 +33,12 @@ defmodule Beamlet.Code do
 
   Boot compiles the code dir, rebuilding the dependency map and the
   beams. A module that fails to compile, a bad hand edit or a
-  beamlet upgrade, is quarantined: skipped, logged and held in the
-  server's state, never taking the beamlet down. Boot compiles carry
-  no policy gate: the scanner runs when code is submitted through the
-  tools, and the code dir's contents were either scanned on the way
-  in or hand-edited by the operator, who is trusted.
+  beamlet upgrade, or one whose function clauses are scattered, is
+  quarantined: skipped, logged and held in the server's state, never
+  taking the beamlet down. Boot compiles carry no policy gate: the
+  scanner runs when code is submitted through the tools, and the
+  code dir's contents were either scanned on the way in or
+  hand-edited by the operator, who is trusted.
 
   The dependency map has two halves, both between defined modules.
   Compile-time edges, from structs, macros, imports and requires,
@@ -307,8 +308,9 @@ defmodule Beamlet.Code do
       previous = replaced ++ dependents
 
       case outcome do
-        {:ok, {:ok, _modules, _warnings}} ->
-          with [] <- broken_callers(merge_calls(state, buffer_modules ++ dependents), replaced),
+        {:ok, {:ok, _modules, %{compile_warnings: warnings}}} ->
+          with :ok <- check_grouped(warnings),
+               [] <- broken_callers(merge_calls(state, buffer_modules ++ dependents), replaced),
                {:ok, placements} <- placements(state, buffer_modules) do
             commit(
               state,
@@ -761,6 +763,38 @@ defmodule Beamlet.Code do
   defp diag_line(%{position: line}) when is_integer(line), do: line
   defp diag_line(_diagnostic), do: 0
 
+  # Elixir only warns when clauses of one function are separated by
+  # other definitions, and the module compiles and runs. The warning
+  # is refused here because a function's clauses must be one
+  # contiguous block for the patch tool to select them by name and
+  # arity. The sibling warning for the same name at another arity is
+  # left alone: different arities are different functions.
+  @scattered_clauses ~r/\Aclauses with the same name and arity \(number of arguments\) should be grouped together, "(?<fun>[^"]+)" was previously defined \(.*:(?<line>\d+)\)\z/
+
+  defp check_grouped(warnings) do
+    case scattered_clauses(warnings) do
+      [] -> :ok
+      scattered -> {:error, Enum.map_join(scattered, "\n", &render_scattered(&1, "buffer"))}
+    end
+  end
+
+  defp scattered_clauses(warnings) do
+    Enum.flat_map(warnings, fn warning ->
+      case Regex.named_captures(@scattered_clauses, warning.message) do
+        %{"fun" => fun, "line" => earlier} ->
+          [{warning.file, fun, String.to_integer(earlier), diag_line(warning)}]
+
+        nil ->
+          []
+      end
+    end)
+  end
+
+  defp render_scattered({_file, fun, earlier, later}, form) do
+    "#{fun} (#{form}:#{later}) is separated from its earlier clause (#{form}:#{earlier}) " <>
+      "by other definitions — group the clauses of a function together"
+  end
+
   # Remove
 
   defp run_remove(_state, [], _principal) do
@@ -947,8 +981,27 @@ defmodule Beamlet.Code do
       end)
 
     case result do
-      {:ok, _modules, _warnings} ->
-        finalize_boot(state, quarantined)
+      {:ok, _modules, %{compile_warnings: warnings}} ->
+        case scattered_clauses(warnings) do
+          [] ->
+            finalize_boot(state, quarantined)
+
+          scattered ->
+            by_file = Enum.group_by(scattered, &elem(&1, 0))
+
+            quarantine_files(
+              state,
+              files,
+              file_modules,
+              quarantined,
+              by_file |> Map.keys() |> Enum.sort(),
+              fn file ->
+                by_file
+                |> Map.fetch!(file)
+                |> Enum.map_join("; ", &render_scattered(&1, relative(state, file)))
+              end
+            )
+        end
 
       {:error, diagnostics, _warnings} ->
         bad_files =
@@ -961,16 +1014,22 @@ defmodule Beamlet.Code do
         # rather than looping forever.
         bad_files = if bad_files == [], do: files, else: bad_files
 
-        entries =
-          Enum.map(bad_files, fn file ->
-            error = boot_error(diagnostics, file)
-            Logger.warning("code boot: quarantined #{relative(state, file)}: #{error}")
-            %{file: file, modules: Map.fetch!(file_modules, file), error: error}
-          end)
-
-        purge_captured(bad_files)
-        boot_loop(state, files -- bad_files, Enum.reverse(entries) ++ quarantined)
+        quarantine_files(state, files, file_modules, quarantined, bad_files, fn file ->
+          boot_error(diagnostics, file)
+        end)
     end
+  end
+
+  defp quarantine_files(state, files, file_modules, quarantined, bad_files, error_fun) do
+    entries =
+      Enum.map(bad_files, fn file ->
+        error = error_fun.(file)
+        Logger.warning("code boot: quarantined #{relative(state, file)}: #{error}")
+        %{file: file, modules: Map.fetch!(file_modules, file), error: error}
+      end)
+
+    purge_captured(bad_files)
+    boot_loop(state, files -- bad_files, Enum.reverse(entries) ++ quarantined)
   end
 
   defp finalize_boot(state, quarantined) do
