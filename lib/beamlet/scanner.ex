@@ -5,18 +5,18 @@ defmodule Beamlet.Scanner do
 
   The scanner walks the unexpanded AST and refuses, with teaching
   errors, what the policy does not admit. Grants decide names: every
-  module and function a buffer reaches for must be granted, aliases
+  module and function the code reaches for must be granted, aliases
   are expanded first so `alias File, as: Storage` launders nothing,
-  and the modules a `define` buffer declares may reference each other
+  and the modules a `define` call declares may reference each other
   freely. Rules decide shape: call targets must be literal modules
-  unless the policy allows dynamic dispatch, a buffer may not define
+  unless the policy allows dynamic dispatch, a module may not define
   macros unless the policy allows them, `eval` code may not define
-  modules, and a `define` buffer is exclusively top-level `defmodule`s.
+  modules, and a `define` entry is exclusively top-level `defmodule`s.
   The targets of `alias`, `import`, `require` and `use`, and the
   data-position targets the compiler expands (`defdelegate to:`, the
   compile hooks, `@derive`) stay literal under any policy. Every
-  violation in a buffer is collected and reported together, one per
-  line.
+  violation is collected and reported together, each with its
+  locator and the offending line quoted beneath it.
 
   This is an anti-accident guardrail, not a security boundary. The
   approximations are deliberate: alias and import tracking is
@@ -38,43 +38,65 @@ defmodule Beamlet.Scanner do
 
   @doc """
   Scans an `eval` buffer under the policy. Returns `:ok`, or every
-  violation found, rendered one per line as `line N: message`.
+  violation found, one per line as `line N: message` with the
+  offending line quoted beneath it.
   """
   @spec scan_eval(String.t(), Policy.t()) :: :ok | {:error, String.t()}
   def scan_eval(code, %Policy{} = policy) do
-    with {:ok, ast} <- parse(code) do
-      ast |> walk(policy, :eval, MapSet.new()) |> render()
+    with {:ok, ast} <- parse(code, nil) do
+      ast |> walk(policy, :eval, MapSet.new()) |> render(code, nil)
     end
   end
 
   @doc """
-  Scans a `define` buffer under the policy. Returns the modules it
-  defines, or every violation found, rendered one per line as
-  `line N: message`.
+  Scans the source of one or more modules under the policy. Returns
+  the modules it defines, or every violation found, one per line with
+  the offending line quoted beneath it.
 
-  A buffer is exclusively top-level `defmodule`s: expressions,
-  protocols and nested module definitions are refused. The buffer's
-  own modules are granted to each other, and its own functions are
-  known as locals.
+  The source is exclusively top-level `defmodule`s: expressions,
+  protocols and nested module definitions are refused. Its own
+  modules are granted to each other, and its own functions are known
+  as locals.
+
+  `opts[:file]` is the locator prefix, the module's path relative to
+  the code dir, so a violation reads `lib/shopping/list.ex:4:
+  message`; without it the prefix is `line 4:`.
   """
-  @spec scan_define(String.t(), Policy.t()) :: {:ok, [module()]} | {:error, String.t()}
-  def scan_define(code, %Policy{} = policy) do
-    with {:ok, ast} <- parse(code) do
+  @spec scan_define(String.t(), Policy.t(), keyword()) :: {:ok, [module()]} | {:error, String.t()}
+  def scan_define(code, %Policy{} = policy, opts \\ []) do
+    file = Keyword.get(opts, :file)
+
+    with {:ok, ast} <- parse(code, file) do
       {modules, locals, structure_violations} = structure(ast, policy)
       policy = Policy.grant(policy, modules)
 
-      case render(walk(ast, policy, :define, locals) ++ structure_violations) do
+      case render(walk(ast, policy, :define, locals) ++ structure_violations, code, file) do
         :ok -> {:ok, modules}
         error -> error
       end
     end
   end
 
-  defp parse(code) do
+  @doc """
+  Renders a violation at `line` of `code` as the scanner renders its
+  own: the locator, the message, and the offending line quoted
+  beneath. `file` is the locator prefix as in `scan_define/3`.
+  """
+  @spec locate(String.t(), Path.t() | nil, non_neg_integer(), String.t()) :: String.t()
+  def locate(code, file, line, message) do
+    prefix = if file, do: "#{file}:#{line}", else: "line #{line}"
+
+    case quoted_line(code, line) do
+      nil -> "#{prefix}: #{message}"
+      quoted -> "#{prefix}: #{message}\n    #{quoted}"
+    end
+  end
+
+  defp parse(code, file) do
     {:ok, code |> Code.string_to_quoted!() |> normalize_pipes()}
   rescue
     e in [SyntaxError, TokenMissingError, MismatchedDelimiterError] ->
-      {:error, "line #{e.line}: #{e.description}"}
+      {:error, locate(code, file, e.line, e.description)}
   end
 
   # `a |> Foo.bar(x)` carries Foo.bar/1 in the AST but calls Foo.bar/2.
@@ -111,17 +133,29 @@ defmodule Beamlet.Scanner do
     acc.violations
   end
 
-  defp render([]), do: :ok
+  defp render([], _code, _file), do: :ok
 
-  defp render(violations) do
+  defp render(violations, code, file) do
     message =
       violations
       |> Enum.reverse()
       |> Enum.sort_by(fn {line, _message} -> line end)
-      |> Enum.map_join("\n", fn {line, message} -> "line #{line}: #{message}" end)
+      |> Enum.map_join("\n", fn {line, message} -> locate(code, file, line, message) end)
 
     {:error, message}
   end
+
+  defp quoted_line(_code, line) when line < 1, do: nil
+
+  defp quoted_line(code, line) do
+    case code |> String.split("\n") |> Enum.at(line - 1) do
+      nil -> nil
+      text -> text |> String.trim() |> blank_to_nil()
+    end
+  end
+
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(text), do: text
 
   # ── Define structure pass ─────────────────────────────────────────
 

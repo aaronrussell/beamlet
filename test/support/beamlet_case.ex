@@ -96,6 +96,37 @@ defmodule Beamlet.Case do
     Plug.Test.init_test_session(conn, user_id: id)
   end
 
+  @doc """
+  An entry for `Beamlet.Code.define/3` from one module's source, as the
+  runtime hands it over but unformatted, unscanned and unchecked: the
+  module from the source's one `defmodule`, its kind from a
+  `use Ecto.Migration` line, and `replace:` from `opts`.
+  """
+  @spec entry(String.t(), keyword()) :: Beamlet.Code.entry()
+  def entry(source, opts \\ []) when is_binary(source) do
+    {:ok, ast} = Code.string_to_quoted(source)
+    forms = block_forms(ast)
+
+    [{:defmodule, _meta, [{:__aliases__, _, parts}, [do: body]]}] =
+      Enum.filter(forms, &match?({:defmodule, _, _}, &1))
+
+    migration? =
+      Enum.any?(block_forms(body), fn
+        {:use, _meta, [{:__aliases__, _, [:Ecto, :Migration]} | _opts]} -> true
+        _form -> false
+      end)
+
+    %{
+      module: Module.concat(parts),
+      source: source,
+      kind: if(migration?, do: :migration, else: :module),
+      replace: Keyword.get(opts, :replace, false)
+    }
+  end
+
+  defp block_forms({:__block__, _meta, forms}), do: forms
+  defp block_forms(form), do: [form]
+
   @doc "A module namespace unique to one test, e.g. `BeamletT42`, so defined modules never collide."
   @spec unique_namespace() :: String.t()
   def unique_namespace, do: "BeamletT#{System.unique_integer([:positive])}"

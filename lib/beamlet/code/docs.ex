@@ -47,9 +47,6 @@ defmodule Beamlet.Code.Docs do
       [] -> :ok
       violations -> {:error, Enum.join(violations, "\n")}
     end
-  rescue
-    e in [SyntaxError, TokenMissingError, MismatchedDelimiterError] ->
-      {:error, "line #{e.line}: #{e.description}"}
   end
 
   defp top_level_modules(ast) do

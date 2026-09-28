@@ -16,18 +16,16 @@ defmodule Host.CodeTest do
     mod = Module.concat([ns, Note])
     purge_on_exit([mod])
 
-    {:ok, _summary} =
-      Define.run(
-        """
-        defmodule #{ns}.Note do
-          @moduledoc "A note to self."
+    code = """
+    defmodule #{ns}.Note do
+      @moduledoc "A note to self."
 
-          @doc "The note."
-          def text, do: "remember"
-        end
-        """,
-        principal
-      )
+      @doc "The note."
+      def text, do: "remember"
+    end
+    """
+
+    {:ok, _summary} = Define.run([%{code: code}], principal)
 
     {ns, mod}
   end
@@ -133,18 +131,16 @@ defmodule Host.CodeTest do
       mod = Module.concat([ns, PageLive])
       purge_on_exit([mod])
 
-      {:ok, _summary} =
-        Define.run(
-          """
-          defmodule #{ns}.PageLive do
-            @moduledoc "A page."
-            use Host.Web, :live_view
+      code = """
+      defmodule #{ns}.PageLive do
+        @moduledoc "A page."
+        use Host.Web, :live_view
 
-            def render(assigns), do: ~H"<div>page</div>"
-          end
-          """,
-          ctx.principal
-        )
+        def render(assigns), do: ~H"<div>page</div>"
+      end
+      """
+
+      {:ok, _summary} = Define.run([%{code: code}], ctx.principal)
 
       assert {:ok, _output} =
                Eval.run(~s|Host.Router.live("/rt/routed", #{ns}.PageLive)|, ctx.principal)

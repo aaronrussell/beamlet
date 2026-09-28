@@ -8,6 +8,13 @@ defmodule Beamlet.CodeTest do
     %{principal: principal(token), code_dir: Path.join(data_dir, "code")}
   end
 
+  # One entry per source; `replace:` applies to every entry of the
+  # call and `timeout:` rides the options.
+  defp define(sources, principal, opts \\ []) do
+    entries = sources |> List.wrap() |> Enum.map(&entry(&1, Keyword.take(opts, [:replace])))
+    Code.define(entries, principal, Keyword.take(opts, [:timeout]))
+  end
+
   defp restart_code_server do
     :ok = Supervisor.terminate_child(Beamlet, Code)
     {:ok, _pid} = Supervisor.restart_child(Beamlet, Code)
@@ -21,7 +28,7 @@ defmodule Beamlet.CodeTest do
     end)
   end
 
-  describe "define/5" do
+  describe "define/3" do
     test "a new module lands on disk, loads, and keeps its docs", ctx do
       ns = unique_namespace()
       mod = Module.concat([ns, Shopping])
@@ -36,13 +43,13 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:ok, summary} = Code.define(code, [mod], false, ctx.principal)
+      assert {:ok, summary} = define(code, ctx.principal)
       assert summary == "Defined #{ns}.Shopping (new)"
 
       assert apply(mod, :add, [[], :milk]) == [:milk]
 
       source_file = Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}/shopping.ex")
-      assert File.read!(source_file) =~ "Tracks the shopping list."
+      assert File.read!(source_file) == code
 
       beam_file = Path.join(ctx.code_dir, "ebin/Elixir.#{ns}.Shopping.beam")
       assert File.exists?(beam_file)
@@ -54,45 +61,45 @@ defmodule Beamlet.CodeTest do
       assert Code.manifest() == %{
                mod => %{source_file: source_file, beam_file: beam_file, migration: nil}
              }
+
+      refute File.exists?(Path.join(ctx.code_dir, ".staging"))
     end
 
-    test "a multi-module buffer splits into one file per module", ctx do
+    test "several entries land one file per module", ctx do
       ns = unique_namespace()
       a = Module.concat([ns, A])
       b = Module.concat([ns, B])
       purge_on_exit([a, b])
 
-      code = """
-      # A comes first.
-      defmodule #{ns}.A do
-        @moduledoc "A."
-        def one, do: 1
-      end
+      sources = [
+        """
+        # A comes first.
+        defmodule #{ns}.A do
+          @moduledoc "A."
+          def one, do: 1
+        end
+        """,
+        """
+        # B builds on A.
+        defmodule #{ns}.B do
+          @moduledoc "B."
+          def two, do: #{ns}.A.one() + 1
+        end
+        """
+      ]
 
-      # B builds on A.
-      defmodule #{ns}.B do
-        @moduledoc "B."
-        def two, do: #{ns}.A.one() + 1
-      end
-      """
-
-      assert {:ok, summary} = Code.define(code, [a, b], false, ctx.principal)
+      assert {:ok, summary} = define(sources, ctx.principal)
       assert summary == "Defined #{ns}.A (new)\nDefined #{ns}.B (new)"
       assert apply(b, :two, []) == 2
 
       dir = Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}")
-      a_source = File.read!(Path.join(dir, "a.ex"))
-      b_source = File.read!(Path.join(dir, "b.ex"))
-      assert a_source =~ "# A comes first."
-      assert a_source =~ "defmodule #{ns}.A do"
-      refute a_source =~ "defmodule #{ns}.B do"
-      assert b_source =~ "# B builds on A."
-      assert b_source =~ "defmodule #{ns}.B do"
+      assert File.read!(Path.join(dir, "a.ex")) == hd(sources)
+      assert File.read!(Path.join(dir, "b.ex")) == List.last(sources)
     end
 
-    test "an empty buffer is rejected", ctx do
-      assert {:error, message} = Code.define("", [], false, ctx.principal)
-      assert message =~ "defines no modules"
+    test "an empty call is rejected", ctx do
+      assert {:error, message} = Code.define([], ctx.principal)
+      assert message == "define names no modules — pass one entry per module"
     end
 
     test "redefining a defined module teaches replace:", ctx do
@@ -107,11 +114,11 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:ok, _summary} = Code.define(code, [mod], false, ctx.principal)
-      assert {:error, message} = Code.define(code, [mod], false, ctx.principal)
+      assert {:ok, _summary} = define(code, ctx.principal)
+      assert {:error, message} = define(code, ctx.principal)
       assert message =~ "#{ns}.Thing already exists"
       assert message =~ "\"Does the thing.\""
-      assert message =~ "call define again with replace: true"
+      assert message =~ "set replace: true on its entry"
     end
 
     test "a module the beamlet already has is rejected with no flag", ctx do
@@ -121,18 +128,16 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:error, message} = Code.define(code, [Enum], false, ctx.principal)
+      assert {:error, message} = define(code, ctx.principal)
       assert message =~ "Enum is an existing module on your beamlet"
       assert Enum.map([1], & &1) == [1]
     end
 
     test "reserved prefixes are rejected", ctx do
-      code = "defmodule Host.Sneaky do\nend"
-      assert {:error, message} = Code.define(code, [Host.Sneaky], false, ctx.principal)
+      assert {:error, message} = define("defmodule Host.Sneaky do\nend", ctx.principal)
       assert message =~ "Beamlet.* and Host.* are reserved"
 
-      code = "defmodule Beamlet.Sneaky do\nend"
-      assert {:error, message} = Code.define(code, [Beamlet.Sneaky], false, ctx.principal)
+      assert {:error, message} = define("defmodule Beamlet.Sneaky do\nend", ctx.principal)
       assert message =~ "reserved"
     end
 
@@ -147,7 +152,7 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:ok, summary} = Code.define(code, [mod], true, ctx.principal)
+      assert {:ok, summary} = define(code, ctx.principal, replace: true)
       assert summary == "Defined #{ns}.Fresh (new)"
     end
 
@@ -157,19 +162,22 @@ defmodule Beamlet.CodeTest do
       basket = Module.concat([ns, Basket])
       purge_on_exit([item, basket])
 
-      code = """
-      defmodule #{ns}.Item do
-        @moduledoc "An item."
-        defstruct [:name]
-      end
+      sources = [
+        """
+        defmodule #{ns}.Item do
+          @moduledoc "An item."
+          defstruct [:name]
+        end
+        """,
+        """
+        defmodule #{ns}.Basket do
+          @moduledoc "A basket."
+          def sample, do: %#{ns}.Item{name: "milk"}
+        end
+        """
+      ]
 
-      defmodule #{ns}.Basket do
-        @moduledoc "A basket."
-        def sample, do: %#{ns}.Item{name: "milk"}
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [item, basket], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
       assert Code.deps()[basket] == [item]
 
       replacement = """
@@ -179,7 +187,7 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:ok, summary} = Code.define(replacement, [item], true, ctx.principal)
+      assert {:ok, summary} = define(replacement, ctx.principal, replace: true)
       assert summary == "Defined #{ns}.Item (replaced)\nRecompiled dependents: #{ns}.Basket"
       assert apply(basket, :sample, []) == struct(item, name: "milk", count: 1)
     end
@@ -190,19 +198,22 @@ defmodule Beamlet.CodeTest do
       basket = Module.concat([ns, Basket])
       purge_on_exit([item, basket])
 
-      code = """
-      defmodule #{ns}.Item do
-        @moduledoc "An item."
-        defstruct [:name]
-      end
+      sources = [
+        """
+        defmodule #{ns}.Item do
+          @moduledoc "An item."
+          defstruct [:name]
+        end
+        """,
+        """
+        defmodule #{ns}.Basket do
+          @moduledoc "A basket."
+          def sample, do: %#{ns}.Item{name: "milk"}
+        end
+        """
+      ]
 
-      defmodule #{ns}.Basket do
-        @moduledoc "A basket."
-        def sample, do: %#{ns}.Item{name: "milk"}
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [item, basket], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
       item_file = Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}/item.ex")
       item_source = File.read!(item_file)
 
@@ -214,13 +225,17 @@ defmodule Beamlet.CodeTest do
       """
 
       assert {:error, message} =
-               quiet(fn -> Code.define(breaking, [item], true, ctx.principal) end)
+               quiet(fn -> define(breaking, ctx.principal, replace: true) end)
 
       assert message =~ "broke its dependent #{ns}.Basket"
+      assert message =~ "lib/#{Macro.underscore(ns)}/basket.ex:3: "
+      assert message =~ "\n    def sample, do: %#{ns}.Item{name: \"milk\"}\n"
       assert message =~ "Nothing was changed."
+      assert message =~ "Update #{ns}.Basket in the same call"
 
       assert apply(basket, :sample, []) == struct(item, name: "milk")
       assert File.read!(item_file) == item_source
+      refute File.exists?(Path.join(ctx.code_dir, ".staging"))
     end
 
     test "the compile timeout leaves the world untouched", ctx do
@@ -234,7 +249,7 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:error, message} = Code.define(code, [mod], false, ctx.principal, timeout: 50)
+      assert {:error, message} = define(code, ctx.principal, timeout: 50)
       assert message =~ "define timed out after 50ms — nothing was changed"
       refute loaded?(mod)
       assert Path.wildcard(Path.join(ctx.code_dir, "lib/**/*.ex")) == []
@@ -254,7 +269,7 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      caller = spawn(fn -> Code.define(code, [mod], false, ctx.principal) end)
+      caller = spawn(fn -> define(code, ctx.principal) end)
 
       assert_receive {:compiling, compiler}, 5_000
       compiler_ref = Process.monitor(compiler)
@@ -264,7 +279,7 @@ defmodule Beamlet.CodeTest do
       :sys.get_state(Code)
       refute loaded?(mod)
       assert Path.wildcard(Path.join(ctx.code_dir, "lib/**/*.ex")) == []
-      assert Path.wildcard(Path.join(ctx.code_dir, ".staging/*")) == []
+      refute File.exists?(Path.join(ctx.code_dir, ".staging"))
       assert Code.defined() == []
     end
 
@@ -274,24 +289,27 @@ defmodule Beamlet.CodeTest do
       list_mod = Module.concat([ns, StrictList])
       purge_on_exit([error_mod, list_mod])
 
-      code = """
-      defmodule #{ns}.EmptyListError do
-        @moduledoc "Raised on an empty list."
-        defexception message: "the list is empty"
-      end
+      sources = [
+        """
+        defmodule #{ns}.EmptyListError do
+          @moduledoc "Raised on an empty list."
+          defexception message: "the list is empty"
+        end
+        """,
+        """
+        defmodule #{ns}.StrictList do
+          @moduledoc "A list that refuses to be empty."
 
-      defmodule #{ns}.StrictList do
-        @moduledoc "A list that refuses to be empty."
+          def first!([]), do: raise(#{ns}.EmptyListError)
+          def first!([head | _]), do: head
 
-        def first!([]), do: raise(#{ns}.EmptyListError)
-        def first!([head | _]), do: head
+          def check!(nil), do: raise(ArgumentError, "no list given")
+          def check!(_list), do: raise("just checking")
+        end
+        """
+      ]
 
-        def check!(nil), do: raise(ArgumentError, "no list given")
-        def check!(_list), do: raise("just checking")
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [error_mod, list_mod], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
 
       assert apply(list_mod, :first!, [[1, 2]]) == 1
       assert_raise error_mod, fn -> apply(list_mod, :first!, [[]]) end
@@ -317,8 +335,76 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:ok, _summary} = Code.define(code, [mod], false, ctx.principal)
+      assert {:ok, _summary} = define(code, ctx.principal)
       assert apply(mod, :bump, [struct(mod, name: "x", count: 1)]).count == 2
+    end
+  end
+
+  describe "compile errors" do
+    test "locate by the module's path and quote the line, staging path never shown", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Bad])
+      purge_on_exit([mod])
+
+      code = """
+      defmodule #{ns}.Bad do
+        @moduledoc "Bad."
+        def broken, do: undefined_local()
+      end
+      """
+
+      assert {:error, message} = quiet(fn -> define(code, ctx.principal) end)
+      path = "lib/#{Macro.underscore(ns)}/bad.ex"
+
+      assert message =~ ~r/\A#{Regex.escape(path)}:3: undefined function undefined_local\/0/
+      assert message =~ "\n    def broken, do: undefined_local()"
+      refute message =~ "cannot compile module"
+      refute message =~ ".staging"
+      refute loaded?(mod)
+      refute File.exists?(Path.join(ctx.code_dir, ".staging"))
+    end
+
+    test "name the failing entry of a call, not its neighbour", ctx do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, Fine]), Module.concat([ns, Bad])])
+
+      sources = [
+        "defmodule #{ns}.Fine do\n  @moduledoc \"Fine.\"\nend\n",
+        "defmodule #{ns}.Bad do\n  @moduledoc \"Bad.\"\n  def broken, do: undefined_local()\nend\n"
+      ]
+
+      assert {:error, message} = quiet(fn -> define(sources, ctx.principal) end)
+
+      assert message =~
+               "lib/#{Macro.underscore(ns)}/bad.ex:3: undefined function undefined_local/0"
+
+      refute message =~ "fine.ex"
+      assert Code.defined() == []
+    end
+  end
+
+  describe "migrations" do
+    test "a module that compiles as a migration without the use line is refused", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Sly])
+      purge_on_exit([mod])
+
+      code = """
+      defmodule #{ns}.Sly do
+        @moduledoc "Claims to be a migration."
+        def __migration__, do: []
+      end
+      """
+
+      assert {:error, message} = define(code, ctx.principal)
+
+      assert message ==
+               "#{ns}.Sly compiled as a migration without saying so — write " <>
+                 "`use Ecto.Migration` directly in the module, so it is filed under migrations/"
+
+      refute loaded?(mod)
+      assert Code.defined() == []
+      assert Path.wildcard(Path.join(ctx.code_dir, "{lib,migrations}/**/*.ex")) == []
     end
   end
 
@@ -453,19 +539,22 @@ defmodule Beamlet.CodeTest do
       basket = Module.concat([ns, Basket])
       purge_on_exit([item, basket])
 
-      code = """
-      defmodule #{ns}.Item do
-        @moduledoc "An item."
-        defstruct [:name]
-      end
+      sources = [
+        """
+        defmodule #{ns}.Item do
+          @moduledoc "An item."
+          defstruct [:name]
+        end
+        """,
+        """
+        defmodule #{ns}.Basket do
+          @moduledoc "A basket."
+          def sample, do: %#{ns}.Item{name: "milk"}
+        end
+        """
+      ]
 
-      defmodule #{ns}.Basket do
-        @moduledoc "A basket."
-        def sample, do: %#{ns}.Item{name: "milk"}
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [item, basket], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
 
       # The closest in-VM analogue of a restart: drop the loaded
       # modules so only the code dir survives.
@@ -487,21 +576,24 @@ defmodule Beamlet.CodeTest do
       user = Module.concat([ns, User])
       purge_on_exit([util, user])
 
-      code = """
-      defmodule #{ns}.Util do
-        @moduledoc "Util."
-        def a, do: :a
-        def b(_x), do: :b
-      end
+      sources = [
+        """
+        defmodule #{ns}.Util do
+          @moduledoc "Util."
+          def a, do: :a
+          def b(_x), do: :b
+        end
+        """,
+        """
+        defmodule #{ns}.User do
+          @moduledoc "User."
+          def go, do: #{ns}.Util.a()
+          def ref, do: &#{ns}.Util.b/1
+        end
+        """
+      ]
 
-      defmodule #{ns}.User do
-        @moduledoc "User."
-        def go, do: #{ns}.Util.a()
-        def ref, do: &#{ns}.Util.b/1
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [util, user], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
       assert Code.calls()[user] == %{util => [a: 0, b: 1]}
       assert Code.calls()[util] == %{}
     end
@@ -512,19 +604,22 @@ defmodule Beamlet.CodeTest do
       client = Module.concat([ns, Client])
       purge_on_exit([store, client])
 
-      code = """
-      defmodule #{ns}.Store do
-        @moduledoc "Store."
-        def get(key), do: {:ok, key}
-      end
+      sources = [
+        """
+        defmodule #{ns}.Store do
+          @moduledoc "Store."
+          def get(key), do: {:ok, key}
+        end
+        """,
+        """
+        defmodule #{ns}.Client do
+          @moduledoc "Client."
+          def fetch(key), do: #{ns}.Store.get(key)
+        end
+        """
+      ]
 
-      defmodule #{ns}.Client do
-        @moduledoc "Client."
-        def fetch(key), do: #{ns}.Store.get(key)
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [store, client], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
 
       :ok = Supervisor.terminate_child(Beamlet, Code)
       unload([store, client])
@@ -535,21 +630,24 @@ defmodule Beamlet.CodeTest do
   end
 
   describe "replace and runtime callers" do
-    defp store_and_client(principal, ns, store, client) do
-      code = """
-      defmodule #{ns}.Store do
-        @moduledoc "Store."
-        def get(key), do: {:ok, key}
-        def put(key), do: {:ok, key}
-      end
+    defp store_and_client(principal, ns) do
+      sources = [
+        """
+        defmodule #{ns}.Store do
+          @moduledoc "Store."
+          def get(key), do: {:ok, key}
+          def put(key), do: {:ok, key}
+        end
+        """,
+        """
+        defmodule #{ns}.Client do
+          @moduledoc "Client."
+          def fetch(key), do: #{ns}.Store.get(key)
+        end
+        """
+      ]
 
-      defmodule #{ns}.Client do
-        @moduledoc "Client."
-        def fetch(key), do: #{ns}.Store.get(key)
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [store, client], false, principal)
+      assert {:ok, _summary} = define(sources, principal)
     end
 
     test "dropping a function a surviving caller uses is refused, world untouched", ctx do
@@ -557,7 +655,7 @@ defmodule Beamlet.CodeTest do
       store = Module.concat([ns, Store])
       client = Module.concat([ns, Client])
       purge_on_exit([store, client])
-      store_and_client(ctx.principal, ns, store, client)
+      store_and_client(ctx.principal, ns)
       store_file = Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}/store.ex")
       store_source = File.read!(store_file)
 
@@ -568,38 +666,41 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:error, message} = Code.define(breaking, [store], true, ctx.principal)
+      assert {:error, message} = define(breaking, ctx.principal, replace: true)
 
       assert message ==
                "replacing #{ns}.Store broke its caller #{ns}.Client — #{ns}.Client calls " <>
                  "#{ns}.Store.get/1, which the replacement no longer defines. Nothing was " <>
-                 "changed. Update #{ns}.Client in the same buffer, or keep #{ns}.Store.get/1."
+                 "changed. Update #{ns}.Client in the same call, or keep #{ns}.Store.get/1."
 
       assert apply(store, :get, [:milk]) == {:ok, :milk}
       assert apply(client, :fetch, [:milk]) == {:ok, :milk}
       assert File.read!(store_file) == store_source
     end
 
-    test "updating the caller in the same buffer lets the drop through", ctx do
+    test "updating the caller in the same call lets the drop through", ctx do
       ns = unique_namespace()
       store = Module.concat([ns, Store])
       client = Module.concat([ns, Client])
       purge_on_exit([store, client])
-      store_and_client(ctx.principal, ns, store, client)
+      store_and_client(ctx.principal, ns)
 
-      fixed = """
-      defmodule #{ns}.Store do
-        @moduledoc "Store, without get."
-        def put(key), do: {:ok, key}
-      end
+      fixed = [
+        """
+        defmodule #{ns}.Store do
+          @moduledoc "Store, without get."
+          def put(key), do: {:ok, key}
+        end
+        """,
+        """
+        defmodule #{ns}.Client do
+          @moduledoc "Client."
+          def fetch(key), do: #{ns}.Store.put(key)
+        end
+        """
+      ]
 
-      defmodule #{ns}.Client do
-        @moduledoc "Client."
-        def fetch(key), do: #{ns}.Store.put(key)
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(fixed, [store, client], true, ctx.principal)
+      assert {:ok, _summary} = define(fixed, ctx.principal, replace: true)
       assert apply(client, :fetch, [:milk]) == {:ok, :milk}
       assert Code.calls()[client] == %{store => [put: 1]}
     end
@@ -609,7 +710,7 @@ defmodule Beamlet.CodeTest do
       store = Module.concat([ns, Store])
       client = Module.concat([ns, Client])
       purge_on_exit([store, client])
-      store_and_client(ctx.principal, ns, store, client)
+      store_and_client(ctx.principal, ns)
 
       compatible = """
       defmodule #{ns}.Store do
@@ -619,7 +720,7 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:ok, summary} = Code.define(compatible, [store], true, ctx.principal)
+      assert {:ok, summary} = define(compatible, ctx.principal, replace: true)
 
       assert summary ==
                "Defined #{ns}.Store (replaced)\n" <>
@@ -640,7 +741,7 @@ defmodule Beamlet.CodeTest do
       end
       """
 
-      assert {:ok, _summary} = Code.define(code, [mod], false, ctx.principal)
+      assert {:ok, _summary} = define(code, ctx.principal)
       source_file = Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}/toss.ex")
       beam_file = Path.join(ctx.code_dir, "ebin/Elixir.#{ns}.Toss.beam")
       assert File.exists?(source_file)
@@ -663,19 +764,22 @@ defmodule Beamlet.CodeTest do
       toss = Module.concat([ns, Toss])
       purge_on_exit([keep, toss])
 
-      code = """
-      defmodule #{ns}.Keep do
-        @moduledoc "Keep."
-        def hi, do: :hi
-      end
+      sources = [
+        """
+        defmodule #{ns}.Keep do
+          @moduledoc "Keep."
+          def hi, do: :hi
+        end
+        """,
+        """
+        defmodule #{ns}.Toss do
+          @moduledoc "Throwaway."
+          def hi, do: :hi
+        end
+        """
+      ]
 
-      defmodule #{ns}.Toss do
-        @moduledoc "Throwaway."
-        def hi, do: :hi
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [keep, toss], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
       assert :ok = Code.remove([toss], ctx.principal)
 
       :ok = Supervisor.terminate_child(Beamlet, Code)
@@ -692,19 +796,22 @@ defmodule Beamlet.CodeTest do
       client = Module.concat([ns, Client])
       purge_on_exit([store, client])
 
-      code = """
-      defmodule #{ns}.Store do
-        @moduledoc "Store."
-        def get(key), do: {:ok, key}
-      end
+      sources = [
+        """
+        defmodule #{ns}.Store do
+          @moduledoc "Store."
+          def get(key), do: {:ok, key}
+        end
+        """,
+        """
+        defmodule #{ns}.Client do
+          @moduledoc "Client."
+          def fetch(key), do: #{ns}.Store.get(key)
+        end
+        """
+      ]
 
-      defmodule #{ns}.Client do
-        @moduledoc "Client."
-        def fetch(key), do: #{ns}.Store.get(key)
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [store, client], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
       assert {:error, message} = Code.remove([store], ctx.principal)
 
       assert message ==
@@ -722,19 +829,22 @@ defmodule Beamlet.CodeTest do
       basket = Module.concat([ns, Basket])
       purge_on_exit([item, basket])
 
-      code = """
-      defmodule #{ns}.Item do
-        @moduledoc "An item."
-        defstruct [:name]
-      end
+      sources = [
+        """
+        defmodule #{ns}.Item do
+          @moduledoc "An item."
+          defstruct [:name]
+        end
+        """,
+        """
+        defmodule #{ns}.Basket do
+          @moduledoc "A basket."
+          def sample, do: %#{ns}.Item{name: "milk"}
+        end
+        """
+      ]
 
-      defmodule #{ns}.Basket do
-        @moduledoc "A basket."
-        def sample, do: %#{ns}.Item{name: "milk"}
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [item, basket], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
       assert {:error, message} = Code.remove([item], ctx.principal)
       assert message =~ "cannot remove #{ns}.Item — #{ns}.Basket depends on it at compile time."
     end
@@ -745,21 +855,24 @@ defmodule Beamlet.CodeTest do
       pong = Module.concat([ns, Pong])
       purge_on_exit([ping, pong])
 
-      code = """
-      defmodule #{ns}.Ping do
-        @moduledoc "Ping."
-        def ping(0), do: :done
-        def ping(n), do: #{ns}.Pong.pong(n - 1)
-      end
+      sources = [
+        """
+        defmodule #{ns}.Ping do
+          @moduledoc "Ping."
+          def ping(0), do: :done
+          def ping(n), do: #{ns}.Pong.pong(n - 1)
+        end
+        """,
+        """
+        defmodule #{ns}.Pong do
+          @moduledoc "Pong."
+          def pong(0), do: :done
+          def pong(n), do: #{ns}.Ping.ping(n - 1)
+        end
+        """
+      ]
 
-      defmodule #{ns}.Pong do
-        @moduledoc "Pong."
-        def pong(0), do: :done
-        def pong(n), do: #{ns}.Ping.ping(n - 1)
-      end
-      """
-
-      assert {:ok, _summary} = Code.define(code, [ping, pong], false, ctx.principal)
+      assert {:ok, _summary} = define(sources, ctx.principal)
 
       assert {:error, message} = Code.remove([ping], ctx.principal)
       assert message =~ "cannot remove #{ns}.Ping — #{ns}.Pong calls ping/1."

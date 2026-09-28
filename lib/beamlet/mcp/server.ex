@@ -39,8 +39,8 @@ defmodule Beamlet.MCP.Server do
   extend from the inside. They apply only when working on it.
 
   `eval` evaluates Elixir code on your beamlet and returns the
-  result. `define`, when it is in your tool list, compiles module
-  definitions into the running system and keeps them across
+  result. `define`, when it is in your tool list, compiles modules,
+  one per entry, into the running system and keeps them across
   restarts; anything worth calling again belongs in a module.
 
   Start with `eval`. `Host.Code.print_modules()` lists what exists,

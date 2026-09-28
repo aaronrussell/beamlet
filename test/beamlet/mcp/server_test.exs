@@ -21,7 +21,7 @@ defmodule Beamlet.MCP.ServerTest do
 
     assert Enum.map(tools, & &1["name"]) == ["define", "eval"]
     assert Enum.map(tools, & &1["description"]) == [Define.description(), Eval.description()]
-    assert Enum.map(tools, & &1["inputSchema"]["required"]) == [["code"], ["code"]]
+    assert Enum.map(tools, & &1["inputSchema"]["required"]) == [["modules"], ["code"]]
   end
 
   test "eval evaluates and returns the inspected result", %{token: token} do
@@ -58,7 +58,7 @@ defmodule Beamlet.MCP.ServerTest do
     """
 
     assert %{"isError" => false, "content" => [%{"type" => "text", "text" => text}]} =
-             MCPClient.call_tool(client, "define", %{code: code})
+             MCPClient.call_tool(client, "define", %{modules: [%{code: code}]})
 
     assert text == "Defined #{ns}.Greeter (new)"
     assert File.exists?(Path.join(data_dir, "code/lib/#{Macro.underscore(ns)}/greeter.ex"))
@@ -67,12 +67,12 @@ defmodule Beamlet.MCP.ServerTest do
              MCPClient.call_tool(client, "eval", %{code: "#{ns}.Greeter.hi()"})
 
     assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
-             MCPClient.call_tool(client, "define", %{code: code})
+             MCPClient.call_tool(client, "define", %{modules: [%{code: code}]})
 
     assert text =~ "already exists"
 
     assert %{"isError" => false, "content" => [%{"type" => "text", "text" => text}]} =
-             MCPClient.call_tool(client, "define", %{code: code, replace: true})
+             MCPClient.call_tool(client, "define", %{modules: [%{code: code, replace: true}]})
 
     assert text == "Defined #{ns}.Greeter (replaced)"
   end
@@ -81,7 +81,7 @@ defmodule Beamlet.MCP.ServerTest do
     {client, _result} = MCPClient.initialize(token)
 
     assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
-             MCPClient.call_tool(client, "define", %{code: "defmodule A do end"})
+             MCPClient.call_tool(client, "define", %{modules: [%{code: "defmodule A do end"}]})
 
     assert text =~ "A is missing @moduledoc"
   end
@@ -134,7 +134,7 @@ defmodule Beamlet.MCP.ServerTest do
       {:ok, token} = Users.create_token(user, name: "phone", policy: "restricted")
       {client, _result} = MCPClient.initialize(token)
 
-      conn = MCPClient.rpc(client, "tools/call", %{name: "define", arguments: %{code: ""}})
+      conn = MCPClient.rpc(client, "tools/call", %{name: "define", arguments: %{modules: []}})
 
       assert conn.status == 200
 

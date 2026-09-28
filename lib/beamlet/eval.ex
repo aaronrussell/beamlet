@@ -91,7 +91,26 @@ defmodule Beamlet.Eval do
   end
 
   defp format({:error, {kind, reason, stacktrace}, %{output: output}}, limits) do
-    {:error, cap(join(output, Exception.format(kind, reason, stacktrace)), limits)}
+    {:error, cap(join(output, Exception.format(kind, reason, locate(stacktrace))), limits)}
+  end
+
+  # A defined module's beam records the file it was compiled from, the
+  # staging copy after a define and the stored file after a boot. Its
+  # frames are rewritten to the stored path relative to the code dir,
+  # the one locator an agent reads everywhere, before formatting.
+  defp locate(stacktrace) do
+    manifest = Code.manifest()
+    code_dir = Config.code_dir()
+
+    Enum.map(stacktrace, fn
+      {mod, fun, arity, location} when is_map_key(manifest, mod) and is_list(location) ->
+        file = manifest |> Map.fetch!(mod) |> Map.fetch!(:source_file)
+        relative = file |> Path.relative_to(code_dir) |> String.to_charlist()
+        {mod, fun, arity, Keyword.put(location, :file, relative)}
+
+      frame ->
+        frame
+    end)
   end
 
   defp join("", text), do: text

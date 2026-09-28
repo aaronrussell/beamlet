@@ -156,10 +156,6 @@ defmodule Beamlet.Code.DocsTest do
       assert message =~ "Docs.Fixture.K.upcase/1 is missing @doc"
     end
 
-    test "a parse error carries the line" do
-      assert check_error("defmodule Docs.Fixture.M do\n  def broken(") =~ ~r/^line \d+: /
-    end
-
     test "all violations are collected, one per line" do
       message =
         check_error("""

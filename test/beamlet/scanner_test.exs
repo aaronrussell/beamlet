@@ -24,6 +24,35 @@ defmodule Beamlet.ScannerTest do
     message
   end
 
+  describe "rendering" do
+    test "an eval violation reads line N and quotes the offending line" do
+      assert scan_error("x = 1\nFile.read!(x)\n") ==
+               "line 2: File.read!/1 — File is not permitted by your policy — Host.File " <>
+                 "provides scoped file access\n    File.read!(x)"
+    end
+
+    test "a define violation reads as the module's path when given" do
+      code = """
+      defmodule Scan.Fixture.Located do
+        @moduledoc "Located."
+        def read(path), do: File.read!(path)
+      end
+      """
+
+      assert {:error, message} =
+               Scanner.scan_define(code, @default, file: "lib/scan/fixture/located.ex")
+
+      assert message ==
+               "lib/scan/fixture/located.ex:3: File.read!/1 — File is not permitted by your " <>
+                 "policy — Host.File provides scoped file access\n" <>
+                 "    def read(path), do: File.read!(path)"
+    end
+
+    test "a syntax error is rendered the same way" do
+      assert scan_error("x = (1\n") =~ ~r/\Aline 1: .*\n    x = \(1\z/
+    end
+  end
+
   describe "allowed code" do
     test "core data pipelines pass" do
       assert :ok =
@@ -107,10 +136,10 @@ defmodule Beamlet.ScannerTest do
 
     test "the laundering functions are plain denials" do
       assert scan_error("String.to_atom(\"x\")") =~
-               ~r/String\.to_atom\/1 is not permitted by your policy$/
+               ~r/String\.to_atom\/1 is not permitted by your policy$/m
 
       assert scan_error("apply(Enum, :sum, [[1]])") =~
-               ~r/apply\/3 is not permitted by your policy$/
+               ~r/apply\/3 is not permitted by your policy$/m
     end
 
     test "the Kernel entry is the local-call blacklist" do
@@ -162,7 +191,7 @@ defmodule Beamlet.ScannerTest do
         :os.cmd(~c"whoami")
         """)
 
-      assert [first, second] = String.split(message, "\n")
+      assert [first, _quoted_first, second, _quoted_second] = String.split(message, "\n")
       assert first =~ "line 1: File.read!/1"
       assert second =~ "line 3: :os.cmd/1"
     end
@@ -171,7 +200,7 @@ defmodule Beamlet.ScannerTest do
   describe "signage" do
     test "a redirect fires once the policy grants its door" do
       {:ok, closed} = Policy.build(:closed, deny: [Host.File])
-      assert scan_error("File.read!(\"x\")", closed) =~ ~r/File is not permitted by your policy$/
+      assert scan_error("File.read!(\"x\")", closed) =~ ~r/File is not permitted by your policy$/m
 
       assert scan_error("File.read!(\"x\")") =~
                "File is not permitted by your policy — Host.File provides scoped file access"
@@ -183,14 +212,14 @@ defmodule Beamlet.ScannerTest do
                  "the agent database is reached through Host.Repo"
 
       assert scan_error("Ecto.Repo.all(Beamlet.Repo)", policy(deny: [Host.Repo])) =~
-               ~r/Ecto\.Repo is not permitted by your policy$/
+               ~r/Ecto\.Repo is not permitted by your policy$/m
     end
 
     test "the define redirect is dropped for an eval-only policy" do
       assert scan_error("Code.eval_string(\"1\")") =~ "durable code is made with the define tool"
 
       assert scan_error("Code.eval_string(\"1\")", policy(tools: [:eval])) =~
-               ~r/Code is not permitted by your policy$/
+               ~r/Code is not permitted by your policy$/m
     end
 
     test "Phoenix.PubSub and Ecto.Migrator carry their stdlib redirects" do
@@ -428,7 +457,7 @@ defmodule Beamlet.ScannerTest do
       {:ok, closed} = Policy.build(:closed, deny: [Host.Router])
 
       assert scan_define_error(code, closed) =~
-               ~r/Phoenix\.Router is not permitted by your policy$/
+               ~r/Phoenix\.Router is not permitted by your policy$/m
 
       assert scan_define_error(code) =~
                "Phoenix.Router is not permitted by your policy — " <>
@@ -600,8 +629,9 @@ defmodule Beamlet.ScannerTest do
         end
         """)
 
-      assert message =~ "@derive File — File is not permitted"
-      refute message =~ "Inspect"
+      assert [violation, _quoted] = String.split(message, "\n")
+      assert violation =~ "@derive File — File is not permitted"
+      refute violation =~ "Inspect"
     end
 
     test "@derive of granted protocols passes" do
@@ -737,7 +767,7 @@ defmodule Beamlet.ScannerTest do
 
     test "the repo's process controls are denied without a hint" do
       assert scan_error("Host.Repo.put_dynamic_repo(Beamlet.Repo)") =~
-               ~r/Host\.Repo\.put_dynamic_repo\/1 is not permitted by your policy$/
+               ~r/Host\.Repo\.put_dynamic_repo\/1 is not permitted by your policy$/m
     end
 
     test "Ecto queries and changesets pass, imports included" do

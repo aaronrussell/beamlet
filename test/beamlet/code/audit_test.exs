@@ -87,7 +87,7 @@ defmodule Beamlet.Code.AuditTest do
       end
       """
 
-      assert {:ok, _summary} = Code.define(code, [mod], false, ctx.principal)
+      assert {:ok, _summary} = Code.define([entry(code)], ctx.principal)
 
       assert commit_count(ctx.code_dir) == 2
       message = last_message(ctx.code_dir)
@@ -113,9 +113,7 @@ defmodule Beamlet.Code.AuditTest do
 
       assert {:ok, _summary} =
                Code.define(
-                 "defmodule #{ns}.RoundTrip do\n  @moduledoc \"Round trip.\"\nend\n",
-                 [mod],
-                 false,
+                 [entry("defmodule #{ns}.RoundTrip do\n  @moduledoc \"Round trip.\"\nend\n")],
                  ctx.principal
                )
 
@@ -130,9 +128,7 @@ defmodule Beamlet.Code.AuditTest do
 
       assert {:ok, _summary} =
                Code.define(
-                 "defmodule #{ns}.Filtered do\n  @moduledoc \"Filtered.\"\nend\n",
-                 [mod],
-                 false,
+                 [entry("defmodule #{ns}.Filtered do\n  @moduledoc \"Filtered.\"\nend\n")],
                  ctx.principal
                )
 
@@ -146,8 +142,8 @@ defmodule Beamlet.Code.AuditTest do
       purge_on_exit([mod])
       code = "defmodule #{ns}.Twice do\n  @moduledoc \"Twice.\"\nend\n"
 
-      assert {:ok, _summary} = Code.define(code, [mod], false, ctx.principal)
-      assert {:ok, _summary} = Code.define(code, [mod], true, ctx.principal)
+      assert {:ok, _summary} = Code.define([entry(code)], ctx.principal)
+      assert {:ok, _summary} = Code.define([entry(code, replace: true)], ctx.principal)
 
       assert last_message(ctx.code_dir) =~ "define: #{ns}.Twice (replaced)"
     end
@@ -161,9 +157,7 @@ defmodule Beamlet.Code.AuditTest do
 
       assert {:ok, _summary} =
                Code.define(
-                 "defmodule #{ns}.Gone do\n  @moduledoc \"Gone soon.\"\nend\n",
-                 [mod],
-                 false,
+                 [entry("defmodule #{ns}.Gone do\n  @moduledoc \"Gone soon.\"\nend\n")],
                  ctx.principal
                )
 

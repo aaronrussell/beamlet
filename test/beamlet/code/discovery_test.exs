@@ -20,26 +20,24 @@ defmodule Beamlet.Code.DiscoveryTest do
     mod = Module.concat([ns, Greeter])
     purge_on_exit([mod])
 
-    {:ok, _summary} =
-      Define.run(
-        """
-        defmodule #{ns}.Greeter do
-          @moduledoc \"\"\"
-          Greets people warmly.
+    code = """
+    defmodule #{ns}.Greeter do
+      @moduledoc \"\"\"
+      Greets people warmly.
 
-          Detail that belongs to a second paragraph.
-          \"\"\"
+      Detail that belongs to a second paragraph.
+      \"\"\"
 
-          @doc "Greets by name."
-          def hello(name), do: "hello \#{name}"
+      @doc "Greets by name."
+      def hello(name), do: "hello \#{name}"
 
-          @doc "Waves goodbye, once or several times."
-          def bye(name), do: "bye \#{name}"
-          def bye(name, times), do: String.duplicate("bye ", times) <> name
-        end
-        """,
-        principal
-      )
+      @doc "Waves goodbye, once or several times."
+      def bye(name), do: "bye \#{name}"
+      def bye(name, times), do: String.duplicate("bye ", times) <> name
+    end
+    """
+
+    {:ok, _summary} = Define.run([%{code: code}], principal)
 
     {ns, mod}
   end
@@ -132,22 +130,20 @@ defmodule Beamlet.Code.DiscoveryTest do
       mod = Module.concat([ns, CreateLists])
       purge_on_exit([mod])
 
-      {:ok, _summary} =
-        Define.run(
-          """
-          defmodule #{ns}.CreateLists do
-            @moduledoc "Creates the lists table."
-            use Ecto.Migration
+      code = """
+      defmodule #{ns}.CreateLists do
+        @moduledoc "Creates the lists table."
+        use Ecto.Migration
 
-            def change do
-              create table(:#{Macro.underscore(ns)}_lists) do
-                add :name, :string
-              end
-            end
+        def change do
+          create table(:#{Macro.underscore(ns)}_lists) do
+            add :name, :string
           end
-          """,
-          ctx.principal
-        )
+        end
+      end
+      """
+
+      {:ok, _summary} = Define.run([%{code: code}], ctx.principal)
 
       assert {:ok, text} = Discovery.list(effective())
       refute text =~ "CreateLists"

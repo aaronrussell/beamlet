@@ -98,6 +98,50 @@ defmodule Beamlet.EvalTest do
     end
   end
 
+  describe "stack traces" do
+    # The beam records the staging file after a define and the stored
+    # file after a boot; the frame reads the same either way.
+    test "a defined module's frames locate by its stored path and line", %{
+      principal: principal
+    } do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Boom])
+      purge_on_exit([mod])
+
+      code = """
+      defmodule #{ns}.Boom do
+        @moduledoc "Raises."
+
+        @doc "Raises with the argument."
+        def go(x) do
+          y = x + 1
+          raise "boom \#{y}"
+        end
+      end
+      """
+
+      assert {:ok, _summary} = Beamlet.Define.run([%{code: code}], principal)
+
+      path = "lib/#{Macro.underscore(ns)}/boom.ex"
+      source_file = Beamlet.Code.manifest()[mod].source_file
+      lines = source_file |> File.read!() |> String.split("\n")
+      line = Enum.find_index(lines, &(&1 =~ "raise")) + 1
+
+      message = run_error("#{ns}.Boom.go(1)", principal)
+      assert message =~ "(RuntimeError) boom 2"
+      assert message =~ "\n    #{path}:#{line}: #{ns}.Boom.go/1\n"
+      refute message =~ ".staging"
+
+      :ok = Supervisor.terminate_child(Beamlet, Beamlet.Code)
+      :code.purge(mod)
+      :code.delete(mod)
+      {:ok, _pid} = Supervisor.restart_child(Beamlet, Beamlet.Code)
+
+      message = run_error("#{ns}.Boom.go(1)", principal)
+      assert message =~ "\n    #{path}:#{line}: #{ns}.Boom.go/1\n"
+    end
+  end
+
   describe "the dispatch rule" do
     test "a variable call target is refused under the default policy", %{principal: principal} do
       assert run_error("mod = Enum\nmod.count([1])", principal) =~

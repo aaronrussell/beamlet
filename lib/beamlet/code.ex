@@ -10,11 +10,17 @@ defmodule Beamlet.Code do
         migrations/  one file per migration, 0001_shopping_create_lists.ex
         ebin/        the compiled beams, with docs, rebuilt from the sources at boot
         .git       the history: one commit per define or remove
-        .staging   the buffer being compiled, gone when it is done
+        .staging   the modules being compiled, each at the path it will
+                   be stored at, gone when the define is done
+
+  Source is stored as the formatter lays it out, and a module's path
+  follows from its name, so every error and stack trace an agent
+  reads locates as `lib/shopping/list.ex:42`, a line of the stored
+  source that `Host.Code.print_source/1` prints.
 
   The `define` tool and `Host.Code.remove` are calls into this
   process, so mutations serialize and two writers never race the
-  code dir. A define is all-or-nothing: the buffer compiles into the
+  code dir. A define is all-or-nothing: the modules compile into the
   VM first, and sources and beams are written only after every check
   has passed; a failed compile, a timeout, or a client cancelling the
   request rolls the VM back by reloading the previous beams, and
@@ -83,28 +89,34 @@ defmodule Beamlet.Code do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @typedoc """
+  One module to define, as the runtime hands it over: its name, its
+  formatted source, whether it is a migration (from its
+  `use Ecto.Migration` line), and whether it may replace a module of
+  the same name.
+  """
+  @type entry :: %{
+          module: module(),
+          source: String.t(),
+          kind: :module | :migration,
+          replace: boolean()
+        }
+
   @doc """
-  Defines the modules in `code` as `principal`: checks the names,
-  compiles with the dependents of any replaced module, then persists
-  and loads, all-or-nothing. `modules` is the list the scanner
-  extracted from the buffer (`Beamlet.Scanner.scan_define/2`), and
-  `replace?` permits redefining modules already defined.
+  Defines `entries` as `principal`: checks the names, compiles them
+  with the dependents of any replaced module, then persists and
+  loads, all-or-nothing. Each entry's source is scanned, checked and
+  formatted already (`Beamlet.Define`), and is stored byte for byte.
 
   Returns the summary the agent reads, or a teaching error. The
   compile timeout comes from `config :beamlet, :define`;
   `opts[:timeout]` overrides it. The call itself allows twice that
   and a margin, since a define may wait behind another one.
   """
-  @spec define(String.t(), [module()], boolean(), Principal.t(), keyword()) ::
-          {:ok, String.t()} | {:error, String.t()}
-  def define(code, modules, replace?, %Principal{} = principal, opts \\ []) do
+  @spec define([entry()], Principal.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
+  def define(entries, %Principal{} = principal, opts \\ []) when is_list(entries) do
     timeout = Keyword.get_lazy(opts, :timeout, fn -> Config.define()[:timeout] end)
-
-    GenServer.call(
-      __MODULE__,
-      {:define, code, modules, replace?, principal, timeout},
-      2 * timeout + 5_000
-    )
+    GenServer.call(__MODULE__, {:define, entries, principal, timeout}, 2 * timeout + 5_000)
   end
 
   @doc """
@@ -213,14 +225,14 @@ defmodule Beamlet.Code do
   # into an abort: a queued define never starts, a compiling one is
   # stopped and rolled back, and a committing one completes.
   @impl GenServer
-  def handle_call({:define, code, modules, replace?, principal, timeout}, {caller, _tag}, state) do
+  def handle_call({:define, entries, principal, timeout}, {caller, _tag}, state) do
     caller_ref = Process.monitor(caller)
 
     outcome =
       receive do
         {:DOWN, ^caller_ref, :process, _pid, _reason} -> :cancelled
       after
-        0 -> run_define(state, code, modules, replace?, principal, timeout, caller_ref)
+        0 -> run_define(state, entries, principal, timeout, caller_ref)
       end
 
     Process.demonitor(caller_ref, [:flush])
@@ -261,13 +273,16 @@ defmodule Beamlet.Code do
 
   # Define
 
-  defp run_define(_state, _code, [], _replace?, _principal, _timeout, _caller_ref) do
-    {:error, "the buffer defines no modules — write one or more top-level defmodules"}
+  defp run_define(_state, [], _principal, _timeout, _caller_ref) do
+    {:error, "define names no modules — pass one entry per module"}
   end
 
-  defp run_define(state, code, buffer_modules, replace?, principal, timeout, caller_ref) do
-    with {:ok, new_mods, replaced} <- classify(state, buffer_modules, replace?),
-         :ok <- check_not_applied(state, replaced, "replace") do
+  defp run_define(state, entries, principal, timeout, caller_ref) do
+    buffer_modules = Enum.map(entries, & &1.module)
+
+    with {:ok, new_mods, replaced} <- classify(state, entries),
+         :ok <- check_not_applied(state, replaced, "replace"),
+         {:ok, placements} <- placements(state, entries) do
       dependents =
         state.deps
         |> dependents_closure(replaced)
@@ -275,7 +290,8 @@ defmodule Beamlet.Code do
         |> Enum.sort()
 
       closure_files = Enum.map(dependents, &Map.fetch!(state.modules, &1))
-      staging = write_staging(state, code)
+      staged = write_staging(state, entries, placements)
+      staging_files = Enum.map(staged, fn {_mod, file} -> file end)
 
       # Fully removed, not just purged: the compiler resolves struct
       # and macro references against loaded modules, so a dependent
@@ -287,7 +303,7 @@ defmodule Beamlet.Code do
       clear_records()
 
       ctx = %{
-        roots: MapSet.new([staging | closure_files]),
+        roots: MapSet.new(staging_files ++ closure_files),
         granted: MapSet.union(known_module_names(state), MapSet.new(buffer_modules))
       }
 
@@ -295,7 +311,7 @@ defmodule Beamlet.Code do
         with_compiler_env(ctx, fn ->
           task =
             Task.Supervisor.async_nolink(Beamlet.TaskSupervisor, fn ->
-              Kernel.ParallelCompiler.compile([staging | closure_files],
+              Kernel.ParallelCompiler.compile(staging_files ++ closure_files,
                 return_diagnostics: true,
                 dest: state.ebin_dir,
                 each_module: &capture/3
@@ -306,49 +322,61 @@ defmodule Beamlet.Code do
         end)
 
       previous = replaced ++ dependents
+      locators = locators(state, staged, placements, dependents)
 
       case outcome do
         {:ok, {:ok, _modules, %{compile_warnings: warnings}}} ->
-          with :ok <- check_grouped(warnings),
-               [] <- broken_callers(merge_calls(state, buffer_modules ++ dependents), replaced),
-               {:ok, placements} <- placements(state, buffer_modules) do
-            commit(
-              state,
-              code,
-              staging,
-              buffer_modules,
-              replaced,
-              dependents,
-              principal,
-              placements
-            )
+          with :ok <- check_grouped(warnings, locators),
+               :ok <- check_kinds(entries),
+               [] <- broken_callers(merge_calls(state, buffer_modules ++ dependents), replaced) do
+            commit(state, staged, buffer_modules, replaced, dependents, principal, placements)
           else
             {:error, message} ->
-              rollback(state, staging, new_mods, previous)
+              rollback(state, new_mods, previous)
               {:error, message}
 
             breaks ->
-              rollback(state, staging, new_mods, previous)
+              rollback(state, new_mods, previous)
               {:error, render_broken_callers(breaks)}
           end
 
         {:ok, {:error, diagnostics, _warnings}} ->
-          rollback(state, staging, new_mods, previous)
-          {:error, render_compile_error(state, diagnostics, replaced, dependents)}
+          rollback(state, new_mods, previous)
+          {:error, render_compile_error(state, diagnostics, locators, replaced, dependents)}
 
         :timeout ->
-          rollback(state, staging, new_mods, previous)
+          rollback(state, new_mods, previous)
           {:error, "define timed out after #{timeout}ms — nothing was changed"}
 
         :cancelled ->
-          rollback(state, staging, new_mods, previous)
+          rollback(state, new_mods, previous)
           :cancelled
 
         {:exit, reason} ->
-          rollback(state, staging, new_mods, previous)
+          rollback(state, new_mods, previous)
           {:error, "define failed (#{inspect(reason)}) — nothing was changed"}
       end
     end
+  end
+
+  # What every compiled file is called in an error: a staged entry by
+  # the path its module will be stored at, a dependent by the path it
+  # is stored at, both relative to the code dir. The source beside it
+  # is what the quoted line is read from, held here because the
+  # staged copy is gone by the time an error renders.
+  defp locators(state, staged, placements, dependents) do
+    entries =
+      Map.new(staged, fn {mod, staging_file} ->
+        {path, _version} = Map.fetch!(placements, mod)
+        source = File.read!(staging_file)
+        {staging_file, %{module: mod, locator: relative(state, path), source: source}}
+      end)
+
+    Map.new(dependents, fn mod ->
+      file = Map.fetch!(state.modules, mod)
+      {file, %{module: mod, locator: relative(state, file), source: File.read!(file)}}
+    end)
+    |> Map.merge(entries)
   end
 
   # The task's ref is opaque, so once the reply is in hand the monitor
@@ -390,14 +418,15 @@ defmodule Beamlet.Code do
 
   # Collision tiers
 
-  defp classify(state, modules, replace?) do
+  defp classify(state, entries) do
     known = known_module_names(state)
 
     {new_mods, replaced, errors} =
-      Enum.reduce(modules, {[], [], []}, fn mod, {new_mods, replaced, errors} ->
+      Enum.reduce(entries, {[], [], []}, fn %{module: mod} = entry,
+                                            {new_mods, replaced, errors} ->
         cond do
           MapSet.member?(known, mod) ->
-            if replace?,
+            if entry.replace,
               do: {new_mods, [mod | replaced], errors},
               else: {new_mods, replaced, [exists_error(state, mod) | errors]}
 
@@ -463,8 +492,8 @@ defmodule Beamlet.Code do
         line -> " — \"#{line}\""
       end
 
-    "#{inspect(mod)} already exists#{quote_part}. To evolve it, call define again " <>
-      "with replace: true; to build something new, choose a different name."
+    "#{inspect(mod)} already exists#{quote_part}. To evolve it, set replace: true on " <>
+      "its entry; to build something new, choose a different name."
   end
 
   defp taken_error(mod) do
@@ -500,25 +529,26 @@ defmodule Beamlet.Code do
 
   # Placement
 
-  # Where each buffer module's source lands. A migration is recognised
-  # the way Ecto recognises one, the compiled module exports
-  # __migration__/0, and filed under the migrations root with a
-  # host-assigned version: a replaced migration keeps the version its
-  # file already carries; a new one takes one past the highest version
-  # known to either the files on disk or the tracking table, in buffer
-  # order. Both sources count because a git rewind can remove an
-  # applied migration's file; reborn at that number, a new migration
-  # would already be "applied" and migrate would skip it silently.
-  defp placements(state, buffer_modules) do
-    migrations = Enum.filter(buffer_modules, &function_exported?(&1, :__migration__, 0))
+  # Where each entry's source lands, decided before the compile so the
+  # staged file already carries the path every error names. A
+  # migration is recognised by its `use Ecto.Migration` line and filed
+  # under the migrations root with a host-assigned version: a replaced
+  # migration keeps the version its file already carries; a new one
+  # takes one past the highest version known to either the files on
+  # disk or the tracking table, in entry order. Both sources count
+  # because a git rewind can remove an applied migration's file;
+  # reborn at that number, a new migration would already be "applied"
+  # and migrate would skip it silently.
+  defp placements(state, entries) do
+    migrations = for %{kind: :migration, module: mod} <- entries, do: mod
 
     with {:ok, applied} <- read_applied(migrations) do
       floor = Enum.max(disk_versions(state) ++ applied, fn -> 0 end)
 
       {placements, _next} =
-        Enum.map_reduce(buffer_modules, floor + 1, fn mod, next ->
+        Enum.map_reduce(entries, floor + 1, fn %{module: mod} = entry, next ->
           cond do
-            mod not in migrations ->
+            entry.kind == :module ->
               {{mod, {module_path(state.lib_dir, mod), nil}}, next}
 
             version = migration_version(state, mod) ->
@@ -530,6 +560,35 @@ defmodule Beamlet.Code do
         end)
 
       {:ok, Map.new(placements)}
+    end
+  end
+
+  # The `use` line decided the placement; the compiled module is the
+  # proof. A module that became a migration some other way, or says
+  # `use Ecto.Migration` and compiles into something else, would be
+  # filed under the wrong root.
+  defp check_kinds(entries) do
+    entries
+    |> Enum.reject(fn %{module: mod, kind: kind} ->
+      function_exported?(mod, :__migration__, 0) == (kind == :migration)
+    end)
+    |> case do
+      [] ->
+        :ok
+
+      mismatched ->
+        {:error,
+         Enum.map_join(mismatched, "\n", fn %{module: mod, kind: kind} ->
+           case kind do
+             :module ->
+               "#{inspect(mod)} compiled as a migration without saying so — write " <>
+                 "`use Ecto.Migration` directly in the module, so it is filed under migrations/"
+
+             :migration ->
+               "#{inspect(mod)} says `use Ecto.Migration` but did not compile as a " <>
+                 "migration — keep the `use` line for migrations only"
+           end
+         end)}
     end
   end
 
@@ -563,13 +622,13 @@ defmodule Beamlet.Code do
 
   # Commit and rollback
 
-  defp commit(state, code, staging, buffer_modules, replaced, dependents, principal, placements) do
+  defp commit(state, staged, buffer_modules, replaced, dependents, principal, placements) do
     compiled = compiled_records()
 
-    Enum.each(split_sources(code), fn {mod, source} ->
+    Enum.each(staged, fn {mod, staging_file} ->
       {path, _version} = Map.fetch!(placements, mod)
       File.mkdir_p!(Path.dirname(path))
-      File.write!(path, source)
+      File.rename!(staging_file, path)
       remove_divergent_source(state, mod, path)
     end)
 
@@ -577,7 +636,7 @@ defmodule Beamlet.Code do
       File.write!(beam_path(state, mod), binary)
     end)
 
-    File.rm(staging)
+    clear_staging(state)
 
     compiled_mods = Enum.map(compiled, fn {:compiled, mod, _file, _binary} -> mod end)
 
@@ -692,7 +751,7 @@ defmodule Beamlet.Code do
 
       "replacing #{inspect(callee)} broke its caller #{inspect(caller)} — " <>
         "#{inspect(caller)} calls #{calls}, which the replacement no longer defines. " <>
-        "Nothing was changed. Update #{inspect(caller)} in the same buffer, or keep #{calls}."
+        "Nothing was changed. Update #{inspect(caller)} in the same call, or keep #{calls}."
     end)
   end
 
@@ -713,7 +772,7 @@ defmodule Beamlet.Code do
     |> Enum.each(fn entry -> File.rm(entry.file) end)
   end
 
-  defp rollback(state, staging, new_mods, previous_mods) do
+  defp rollback(state, new_mods, previous_mods) do
     Enum.each(new_mods, &remove_module/1)
 
     Enum.each(previous_mods, fn mod ->
@@ -730,7 +789,7 @@ defmodule Beamlet.Code do
       end
     end)
 
-    File.rm(staging)
+    clear_staging(state)
     :ok
   end
 
@@ -740,22 +799,61 @@ defmodule Beamlet.Code do
     :code.purge(mod)
   end
 
-  defp render_compile_error(state, diagnostics, replaced, dependents) do
+  # Every diagnostic locates by the path its file will be stored at and
+  # quotes the line. The compiler closes a failed batch with a summary
+  # diagnostic at position 0 naming the staging file, which says
+  # nothing the located ones do not; it is dropped, unless it is all
+  # there is.
+  defp render_compile_error(state, diagnostics, locators, replaced, dependents) do
     dependent_files = Map.new(dependents, fn mod -> {Map.fetch!(state.modules, mod), mod} end)
 
-    case Enum.find(diagnostics, &Map.has_key?(dependent_files, &1.file)) do
+    located =
+      case Enum.reject(diagnostics, &summary_diagnostic?/1) do
+        [] -> diagnostics
+        some -> some
+      end
+
+    case Enum.find(located, &Map.has_key?(dependent_files, &1.file)) do
       nil ->
-        Enum.map_join(diagnostics, "\n", fn diagnostic ->
-          "line #{diag_line(diagnostic)}: #{diagnostic.message}"
-        end)
+        Enum.map_join(located, "\n", &render_diagnostic(&1, locators))
 
       diagnostic ->
         dependent = Map.fetch!(dependent_files, diagnostic.file)
         replaced_names = Enum.map_join(replaced, ", ", &inspect/1)
 
         "replacing #{replaced_names} broke its dependent #{inspect(dependent)} — " <>
-          "line #{diag_line(diagnostic)}: #{diagnostic.message} Nothing was changed. " <>
-          "Update #{inspect(dependent)} in the same buffer, or keep #{replaced_names} compatible."
+          "#{render_diagnostic(diagnostic, locators)}\nNothing was changed. " <>
+          "Update #{inspect(dependent)} in the same call, or keep #{replaced_names} compatible."
+    end
+  end
+
+  defp summary_diagnostic?(diagnostic) do
+    diag_line(diagnostic) == 0 and diagnostic.message =~ "cannot compile module"
+  end
+
+  defp render_diagnostic(diagnostic, locators) do
+    line = diag_line(diagnostic)
+
+    case Map.get(locators, diagnostic.file) do
+      nil ->
+        "line #{line}: #{diagnostic.message}"
+
+      %{locator: locator, source: source} ->
+        case quoted_line(source, line) do
+          nil -> "#{locator}:#{line}: #{diagnostic.message}"
+          text -> "#{locator}:#{line}: #{diagnostic.message}\n    #{text}"
+        end
+    end
+  end
+
+  defp quoted_line(_source, line) when line < 1, do: nil
+
+  defp quoted_line(source, line) do
+    with text when is_binary(text) <- source |> String.split("\n") |> Enum.at(line - 1),
+         trimmed when trimmed != "" <- String.trim(text) do
+      trimmed
+    else
+      _none -> nil
     end
   end
 
@@ -771,10 +869,16 @@ defmodule Beamlet.Code do
   # left alone: different arities are different functions.
   @scattered_clauses ~r/\Aclauses with the same name and arity \(number of arguments\) should be grouped together, "(?<fun>[^"]+)" was previously defined \(.*:(?<line>\d+)\)\z/
 
-  defp check_grouped(warnings) do
+  defp check_grouped(warnings, locators) do
     case scattered_clauses(warnings) do
-      [] -> :ok
-      scattered -> {:error, Enum.map_join(scattered, "\n", &render_scattered(&1, "buffer"))}
+      [] ->
+        :ok
+
+      scattered ->
+        {:error,
+         Enum.map_join(scattered, "\n", fn {file, _fun, _earlier, _later} = clause ->
+           render_scattered(clause, Map.fetch!(locators, file).locator)
+         end)}
     end
   end
 
@@ -1213,60 +1317,20 @@ defmodule Beamlet.Code do
     end
   end
 
-  defp write_staging(state, code) do
-    File.mkdir_p!(state.staging_dir)
-    path = Path.join(state.staging_dir, "define_#{System.unique_integer([:positive])}.ex")
-    File.write!(path, code)
-    path
-  end
-
-  # One file per module: each module's slice runs from the end of the
-  # previous one, so a comment above a module travels with it.
-  defp split_sources(code) do
-    {:ok, ast} = Code.string_to_quoted(code, token_metadata: true)
-    lines = String.split(code, "\n")
-
-    ranges =
-      ast
-      |> block_forms()
-      |> Enum.flat_map(fn
-        {:defmodule, meta, [{:__aliases__, _, parts} | _rest]} ->
-          [{Module.concat(parts), meta[:line], meta[:end][:line]}]
-
-        _other ->
-          []
-      end)
-
-    ranges
-    |> fill_end_lines(length(lines))
-    |> Enum.map_reduce(0, fn {mod, _start_line, end_line}, prev_end ->
-      source =
-        lines
-        |> Enum.slice(prev_end, end_line - prev_end)
-        |> Enum.join("\n")
-        |> String.replace(~r/\A\n+/, "")
-
-      {{mod, source <> "\n"}, end_line}
-    end)
-    |> elem(0)
-  end
-
-  # A `defmodule Foo, do: ...` one-liner has no end token; its slice
-  # runs to the next module's preceding line.
-  defp fill_end_lines(ranges, total_lines) do
-    ranges
-    |> Enum.with_index()
-    |> Enum.map(fn {{mod, start_line, end_line}, index} ->
-      end_line =
-        end_line ||
-          case Enum.at(ranges, index + 1) do
-            {_mod, next_start, _end} -> next_start - 1
-            nil -> total_lines
-          end
-
-      {mod, start_line, end_line}
+  # The staging dir mirrors the code dir: each entry is staged at the
+  # path it will be stored at, so the compiled file's line numbers are
+  # the stored file's. The staged text moves into place at commit.
+  defp write_staging(state, entries, placements) do
+    Enum.map(entries, fn %{module: mod, source: source} ->
+      {path, _version} = Map.fetch!(placements, mod)
+      staging_file = Path.join(state.staging_dir, relative(state, path))
+      File.mkdir_p!(Path.dirname(staging_file))
+      File.write!(staging_file, source)
+      {mod, staging_file}
     end)
   end
+
+  defp clear_staging(state), do: File.rm_rf!(state.staging_dir)
 
   defp block_forms({:__block__, _meta, forms}), do: forms
   defp block_forms(form), do: [form]

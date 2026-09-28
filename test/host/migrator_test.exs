@@ -32,9 +32,11 @@ defmodule Host.MigratorTest do
     """
   end
 
-  defp define!(principal, code, modules, opts \\ []) do
+  # `sources` is one module's source or a list of them, one entry
+  # each; `replace:` applies to every entry of the call.
+  defp define!(principal, sources, modules, opts \\ []) do
     purge_on_exit(modules)
-    Code.define(code, modules, Keyword.get(opts, :replace, false), principal)
+    Code.define(sources |> List.wrap() |> Enum.map(&entry(&1, opts)), principal)
   end
 
   defp applied, do: Migrations.applied_versions()
@@ -87,25 +89,26 @@ defmodule Host.MigratorTest do
       assert applied() == []
     end
 
-    test "several migrations in one buffer take consecutive versions in buffer order", ctx do
+    test "several migrations in one call take consecutive versions in entry order", ctx do
       ns = unique_namespace()
       first = Module.concat([ns, First])
       second = Module.concat([ns, Second])
       helper = Module.concat([ns, Helper])
 
-      code =
-        migration(second, "#{Macro.underscore(ns)}_seconds") <>
-          """
-          defmodule #{inspect(helper)} do
-            @moduledoc "Not a migration."
+      sources = [
+        migration(second, "#{Macro.underscore(ns)}_seconds"),
+        """
+        defmodule #{inspect(helper)} do
+          @moduledoc "Not a migration."
 
-            @doc "Says hi."
-            def hi, do: :hi
-          end
-          """ <>
-          migration(first, "#{Macro.underscore(ns)}_firsts")
+          @doc "Says hi."
+          def hi, do: :hi
+        end
+        """,
+        migration(first, "#{Macro.underscore(ns)}_firsts")
+      ]
 
-      assert {:ok, summary} = define!(ctx.principal, code, [second, helper, first])
+      assert {:ok, summary} = define!(ctx.principal, sources, [second, helper, first])
 
       assert summary ==
                Enum.join(
@@ -201,7 +204,7 @@ defmodule Host.MigratorTest do
       {mod, table} = new_migration_names(ns)
       purge_on_exit([mod])
 
-      assert {:ok, summary} = Define.run(migration(mod, table), ctx.principal)
+      assert {:ok, summary} = Define.run([%{code: migration(mod, table)}], ctx.principal)
       assert summary =~ "migration 1, pending: run Host.Migrator.migrate()"
     end
 

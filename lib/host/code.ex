@@ -90,8 +90,12 @@ defmodule Host.Code do
   Prints the source code of a module previously defined with
   `define`.
 
-  Read a module before replacing it with `replace: true`. Serves
-  defined modules only; for anything else use `print_docs/1`.
+  Source is stored as the formatter lays it out, so the layout may
+  differ from what was sent. Errors and stack traces locate as
+  `lib/shopping/list.ex:42`: the module's path, and a line of what
+  this prints. Read a module before replacing it with
+  `replace: true`. Serves defined modules only; for anything else
+  use `print_docs/1`.
   """
   @spec print_source(module()) :: :ok
   def print_source(module) when is_atom(module) do

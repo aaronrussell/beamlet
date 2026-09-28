@@ -25,7 +25,7 @@ defmodule Host.RouterTest do
   # "defined" is its manifest.
   defp define!(ctx, code, modules) do
     purge_on_exit(modules)
-    {:ok, _summary} = Code.define(code, modules, false, ctx.principal)
+    {:ok, _summary} = Code.define([entry(code)], ctx.principal)
     :ok
   end
 
@@ -648,19 +648,15 @@ defmodule Host.RouterTest do
       mod = define_controller!(ctx, ns)
       quietly(fn -> Host.Router.post("/rt/hooks", mod, :create) end)
 
-      {:ok, _summary} =
-        Code.define(
-          """
-          defmodule #{ns}.HookController do
-            import Plug.Conn
+      code = """
+      defmodule #{ns}.HookController do
+        import Plug.Conn
 
-            def create(conn, _params), do: send_resp(conn, 201, "created")
-          end
-          """,
-          [mod],
-          true,
-          ctx.principal
-        )
+        def create(conn, _params), do: send_resp(conn, 201, "created")
+      end
+      """
+
+      {:ok, _summary} = Code.define([entry(code, replace: true)], ctx.principal)
 
       assert capture_log(fn -> assert Routes.regenerate() == :ok end) =~ "not served"
       assert [route] = Routes.list(path: "/rt/hooks")

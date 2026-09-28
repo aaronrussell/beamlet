@@ -13,9 +13,10 @@ defmodule Host.WebTest do
     %{principal: principal(token)}
   end
 
-  defp define!(ctx, code, modules) do
+  # `sources` is one module's source or a list of them, one entry each.
+  defp define!(ctx, sources, modules) do
     purge_on_exit(modules)
-    {:ok, _summary} = Code.define(code, modules, false, ctx.principal)
+    {:ok, _summary} = Code.define(sources |> List.wrap() |> Enum.map(&entry/1), ctx.principal)
     :ok
   end
 
@@ -28,32 +29,35 @@ defmodule Host.WebTest do
 
     define!(
       ctx,
-      """
-      defmodule #{ns}.Components do
-        use Host.Web, :html
+      [
+        """
+        defmodule #{ns}.Components do
+          use Host.Web, :html
 
-        attr :name, :string, required: true
+          attr :name, :string, required: true
 
-        def greeting(assigns) do
-          ~H"<span>hello {@name}</span>"
+          def greeting(assigns) do
+            ~H"<span>hello {@name}</span>"
+          end
         end
-      end
+        """,
+        """
+        defmodule #{ns}.WebLive do
+          use Host.Web, :live_view
 
-      defmodule #{ns}.WebLive do
-        use Host.Web, :live_view
+          import #{ns}.Components
 
-        import #{ns}.Components
+          def mount(_params, _session, socket), do: {:ok, assign(socket, id: 1)}
 
-        def mount(_params, _session, socket), do: {:ok, assign(socket, id: 1)}
-
-        def render(assigns) do
-          ~H\"\"\"
-          <.greeting name="web" />
-          <.link navigate={~p"/rt/web/\#{@id}"}>next</.link>
-          \"\"\"
+          def render(assigns) do
+            ~H\"\"\"
+            <.greeting name="web" />
+            <.link navigate={~p"/rt/web/\#{@id}"}>next</.link>
+            \"\"\"
+          end
         end
-      end
-      """,
+        """
+      ],
       [components, page]
     )
 
@@ -166,18 +170,14 @@ defmodule Host.WebTest do
   test "an unknown role is a teaching error at define time", ctx do
     ns = unique_namespace()
 
-    assert {:error, message} =
-             quiet(fn ->
-               Define.run(
-                 """
-                 defmodule #{ns}.Odd do
-                   @moduledoc "Odd."
-                   use Host.Web, :channel
-                 end
-                 """,
-                 ctx.principal
-               )
-             end)
+    code = """
+    defmodule #{ns}.Odd do
+      @moduledoc "Odd."
+      use Host.Web, :channel
+    end
+    """
+
+    assert {:error, message} = quiet(fn -> Define.run([%{code: code}], ctx.principal) end)
 
     assert message =~ "use Host.Web takes :live_view, :controller, :live_component or :html"
     assert message =~ "got: :channel"
@@ -188,24 +188,22 @@ defmodule Host.WebTest do
     mod = Module.concat([ns, "PageLive"])
     purge_on_exit([mod])
 
-    assert {:ok, summary} =
-             Define.run(
-               """
-               defmodule #{ns}.PageLive do
-                 @moduledoc "A page."
-                 use Host.Web, :live_view
+    code = """
+    defmodule #{ns}.PageLive do
+      @moduledoc "A page."
+      use Host.Web, :live_view
 
-                 def mount(_params, _session, socket) do
-                   {:ok, assign(socket, next: ~p"/notes")}
-                 end
+      def mount(_params, _session, socket) do
+        {:ok, assign(socket, next: ~p"/notes")}
+      end
 
-                 def render(assigns) do
-                   ~H"<div>{@next}</div>"
-                 end
-               end
-               """,
-               ctx.principal
-             )
+      def render(assigns) do
+        ~H"<div>{@next}</div>"
+      end
+    end
+    """
+
+    assert {:ok, summary} = Define.run([%{code: code}], ctx.principal)
 
     assert summary =~ "#{ns}.PageLive"
     mount!(fn -> Host.Router.live("/rt/page", mod) end)
