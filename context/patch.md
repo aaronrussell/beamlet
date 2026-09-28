@@ -1,8 +1,8 @@
 # Beamlet — patch
 
-**Status:** The spec for editing modules in place, agreed 2026-09-26 and sequenced 2026-09-27 into the five phases of § 9, which is the plan. Each phase is a session of its own that starts from this note: a planning pass pinning the phase against the code as it stands, the implementation, the tests, `mix precommit`, and an update to this note. Phase 1 landed 2026-09-27. Phase 2 was reshaped 2026-09-28 in its planning pass: the module becomes the unit of `define` and source is formatted before anything reports a line, so one locator form serves the whole pipeline (§ 6). Phase 3 landed 2026-09-28: the outline, the piecewise reads, and the replace summary as bullets naming the functions removed, changed and new. Phase 4 is next. The work is next up on the roadmap, ahead of the 0.1 code review, so the reviews and the docs cover three tools. When the last phase lands, the settled parts move into `design.md` and this note goes.
+**Status:** The spec for editing modules in place, agreed 2026-09-26 and sequenced 2026-09-27 into the five phases of § 9, which is the plan. Each phase is a session of its own that starts from this note: a planning pass pinning the phase against the code as it stands, the implementation, the tests, `mix precommit`, and an update to this note. Phase 1 landed 2026-09-27. Phase 2 was reshaped 2026-09-28 in its planning pass: the module becomes the unit of `define` and source is formatted before anything reports a line, so one locator form serves the whole pipeline (§ 6). Phase 3 landed 2026-09-28: the outline, the piecewise reads, and the replace summary as bullets naming the functions removed, changed and new. Phase 4 landed 2026-09-28: the splices, `Beamlet.Patch`, the stale-read compare and the patch verb in the code server. Phase 5 is next. The work is next up on the roadmap, ahead of the 0.1 code review, so the reviews and the docs cover three tools. When the last phase lands, the settled parts move into `design.md` and this note goes.
 
-**Last updated:** 2026-09-28 (phase 3 landed: the outline, function and range prints, the replace summary's bullets)
+**Last updated:** 2026-09-28 (phase 4 landed: the splices, the patch runtime, the hash compare and the patch verb)
 
 ---
 
@@ -251,9 +251,11 @@ Reshaped 2026-09-28 from "store formatted, errors locate by text", which it subs
 
 **Touched.** New `lib/beamlet/code/source.ex` and its test; `lib/beamlet/code/discovery.ex`; `lib/host/code.ex`; `lib/beamlet/code.ex` (the commit summary, boot's module names); `lib/beamlet/mcp/server.ex` (one instructions line); the tests beside each.
 
-### Phase 4. The patch runtime
+### Phase 4. The patch runtime (landed 2026-09-28)
 
-**Goal.** `Beamlet.Patch.run/2` applies a list of patches as one transaction through the define pipeline, guarded by the stale-read hash, with every teaching error of § 3 in the shape of § 6.
+**Settled against the code.** The runtime takes the tool's maps as they arrive, `module` by string and `select` as `name/arity`, and validates every patch up front, errors together in patch order, so the one-anchor, one-operation rule is refused in the runtime and phase 5's component stays as thin as define's. The per-module steps the two runtimes share, the parse, the one `defmodule`, the kind from the `use` line, the path, and the scan and docs gate, moved into `Beamlet.Code.Entry`, each runtime keeping its own wording. A pipeline error is prefixed by a label naming the patch that produced the module, `patch 2 (Shopping.Cart, select total/1)`, or all of them when several touched it, `patches 2 and 4 (Shopping.Cart)`, since one compile cannot tell which caused it; the code server carries the label on the entry and `Scanner.locate/5` took a `context:` width, two lines either side for a patch with a line-number gutter, and became the one quoting renderer the code server's diagnostics use too. The result is parsed after every patch: a module that was parsing and stops is refused at that patch, and a quarantined module that never parsed goes on, since repairing a torn file may take more than one `find`; it is refused only if it still does not parse at the end, or when a `select` needs it. Empty `find`, `select`, `before` and `after` are refused; empty `replace` removes. The code server's entry gained `hash` and `label`, `define/3` gained `verb:` and `context:`, and the hash compare runs before classify so a removed module gets its own wording. A no-op patch runs the whole pipeline, an empty commit and the `unchanged` bullet.
+
+**Goal.** `Beamlet.Patch.run/3` applies a list of patches as one transaction through the define pipeline, guarded by the stale-read hash, with every teaching error of § 3 in the shape of § 6.
 
 **Builds.** The splice operations on `Source`: `find` with the exactly-once check and its three operations; `select` with block replace, removal, `before` and `after` under the blank-line rule. `Beamlet.Patch`, in the shape of `Beamlet.Define`: resolve each module as defined or quarantined; read and SHA-256 each source; apply the patches in order, re-parsing per `select`; refuse a `defmodule` rename; format, scan and docs-gate each module's result on its own; hand the modules and the hashes to the code server. The code server's define gains the hashes and the patch kind as options: the compare inside the lane, a missing file counting as changed, the `Patched X` line with § 3's bullets beneath it and the `patch:` commit subject in `Beamlet.Code.Audit`. A no-op patch is a summary and an empty commit.
 
@@ -261,7 +263,7 @@ Reshaped 2026-09-28 from "store formatted, errors locate by text", which it subs
 
 **Not in this phase.** The MCP component, the policy entry, any description or instruction copy.
 
-**Touches.** `lib/beamlet/code/source.ex`; new `lib/beamlet/patch.ex` and its test; `lib/beamlet/code.ex`; `lib/beamlet/code/audit.ex`.
+**Touched.** `lib/beamlet/code/source.ex`; new `lib/beamlet/patch.ex` and `lib/beamlet/code/entry.ex`; `lib/beamlet/define.ex` (onto `Entry`); `lib/beamlet/scanner.ex` (`locate/5`'s context); `lib/beamlet/code.ex`; `lib/beamlet/code/audit.ex`; new `test/beamlet/patch_test.exs` and the tests beside each.
 
 ### Phase 5. The patch tool
 

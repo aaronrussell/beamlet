@@ -147,6 +147,25 @@ defmodule Beamlet.Code.AuditTest do
 
       assert last_message(ctx.code_dir) =~ "define: #{ns}.Twice (replaced)"
     end
+
+    test "a patch commits under its own subject", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Patched])
+      purge_on_exit([mod])
+      code = "defmodule #{ns}.Patched do\n  @moduledoc \"Patched.\"\nend\n"
+
+      assert {:ok, _summary} = Code.define([entry(code)], ctx.principal)
+      hash = :crypto.hash(:sha256, code)
+
+      assert {:ok, _summary} =
+               Code.define(
+                 [Map.merge(entry(code, replace: true), %{hash: hash, label: "patch 1"})],
+                 ctx.principal,
+                 verb: :patch
+               )
+
+      assert last_message(ctx.code_dir) =~ "patch: #{ns}.Patched\n\nUser: alice"
+    end
   end
 
   describe "a remove" do

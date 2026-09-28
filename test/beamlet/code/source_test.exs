@@ -237,6 +237,94 @@ defmodule Beamlet.Code.SourceTest do
     end
   end
 
+  describe "patch_find/3" do
+    @small """
+    defmodule A do
+      def a, do: 1
+      def b, do: 2
+    end
+    """
+
+    test "replaces, inserts before and inserts after, with no separator" do
+      assert Source.patch_find(@small, "def a, do: 1", {:replace, "def a, do: 10"}) ==
+               {:ok, "defmodule A do\n  def a, do: 10\n  def b, do: 2\nend\n"}
+
+      assert Source.patch_find(@small, "def b", {:before, "def z, do: 0\n  "}) ==
+               {:ok, "defmodule A do\n  def a, do: 1\n  def z, do: 0\n  def b, do: 2\nend\n"}
+
+      assert Source.patch_find(@small, "def b, do: 2", {:after, "\n  def c, do: 3"}) ==
+               {:ok, "defmodule A do\n  def a, do: 1\n  def b, do: 2\n  def c, do: 3\nend\n"}
+    end
+
+    test "an empty replacement removes the text" do
+      assert Source.patch_find(@small, "  def a, do: 1\n", {:replace, ""}) ==
+               {:ok, "defmodule A do\n  def b, do: 2\nend\n"}
+    end
+
+    test "text that does not occur is not found" do
+      assert Source.patch_find(@small, "def q", {:replace, ""}) == {:error, :not_found}
+    end
+
+    test "text that matches once with leading whitespace ignored is indented" do
+      assert Source.patch_find(@small, "def a, do: 1\ndef b, do: 2", {:replace, ""}) ==
+               {:error, :indented}
+
+      assert Source.patch_find(@small, "  ", {:replace, ""}) == {:error, {:several, 2}}
+    end
+
+    test "text occurring more than once gives the count" do
+      assert Source.patch_find(@small, "do:", {:replace, ""}) == {:error, {:several, 2}}
+    end
+  end
+
+  describe "patch_select/4" do
+    test "replaces a function's block, docs included" do
+      assert {:ok, patched} =
+               Source.patch_select(@source, :one, 0, {:replace, "\n\n  def one, do: :one\n"})
+
+      assert Source.lines(patched, 19..21) ==
+               "  # a comment that stays put\n  def one, do: :one\n"
+
+      assert {:ok, %{range: 20..20, clauses: 1}} = Source.select(patched, :one, 0)
+      assert {:ok, %{range: 10..17}} = Source.select(patched, :total, 1)
+    end
+
+    test "an empty replacement removes the block and leaves the neighbours" do
+      assert {:ok, patched} = Source.patch_select(@source, :one, 0, {:replace, ""})
+      assert {:error, :not_found, _functions} = Source.select(patched, :one, 0)
+      assert Source.lines(patched, 18..20) == "\n  # a comment that stays put\n"
+      assert {:ok, %{range: 21..28}} = Source.select(patched, :card, 1)
+    end
+
+    test "before inserts above the block's docs and after below its last clause" do
+      assert {:ok, patched} = Source.patch_select(@source, :total, 1, {:before, "def z, do: 0"})
+      assert Source.lines(patched, 10..12) == "def z, do: 0\n\n  @doc \"\"\""
+
+      assert {:ok, patched} = Source.patch_select(@source, :total, 1, {:after, "def z, do: 0"})
+
+      assert Source.lines(patched, 17..19) ==
+               "  def total(%{} = m), do: m |> Map.values() |> Enum.sum()\n\ndef z, do: 0"
+    end
+
+    test "an unknown function lists the module's functions" do
+      assert {:error, :not_found, ["total/1" | _rest]} =
+               Source.patch_select(@source, :nope, 1, {:replace, ""})
+    end
+
+    test "a scattered function and a source that does not parse are refused" do
+      scattered = "defmodule A do\n  def a(1), do: 1\n  def b, do: 2\n  def a(2), do: 2\nend\n"
+      assert {:error, :scattered} = Source.patch_select(scattered, :a, 1, {:replace, ""})
+
+      assert {:error, {2, _message}} =
+               Source.patch_select(
+                 "defmodule A do\n  def x(, do: 1\nend\n",
+                 :x,
+                 0,
+                 {:replace, ""}
+               )
+    end
+  end
+
   describe "lines/2 and line_count/1" do
     test "slices inclusive 1-based lines" do
       assert Source.lines(@source, 6..8) == "  use Host.Web, :html\n\n  @default_limit 10"

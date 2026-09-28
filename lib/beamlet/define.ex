@@ -48,7 +48,7 @@ defmodule Beamlet.Define do
   """
 
   alias Beamlet.Code
-  alias Beamlet.Code.Docs
+  alias Beamlet.Code.Entry
   alias Beamlet.Code.Format
   alias Beamlet.Policies
   alias Beamlet.Policy
@@ -101,21 +101,19 @@ defmodule Beamlet.Define do
 
   defp parse_entry(%{code: code} = entry, index, manifest) when is_binary(code) do
     with {:ok, ast} <- parse(code, index),
-         {:ok, module, body} <- single_module(ast, index) do
-      kind = if Enum.any?(block_forms(body), &migration_use?/1), do: :migration, else: :module
-      path = path(module, kind, manifest)
+         {:ok, module, body} <- single_module(ast, index),
+         {:ok, source} <- Format.format(code) do
+      kind = Entry.kind(body)
 
-      with {:ok, source} <- Format.format(code) do
-        {:ok,
-         %{
-           index: index,
-           module: module,
-           kind: kind,
-           path: path,
-           source: source,
-           replace: Map.get(entry, :replace, false) == true
-         }}
-      end
+      {:ok,
+       %{
+         index: index,
+         module: module,
+         kind: kind,
+         path: Entry.path(module, kind, manifest),
+         source: source,
+         replace: Map.get(entry, :replace, false) == true
+       }}
     end
   end
 
@@ -128,76 +126,42 @@ defmodule Beamlet.Define do
   # line usually still reads, and then the locator is the module's
   # path as it will be everywhere else.
   defp parse(code, index) do
-    {:ok, Elixir.Code.string_to_quoted!(code)}
-  rescue
-    e in [SyntaxError, TokenMissingError, MismatchedDelimiterError] ->
-      case Regex.run(~r/^\s*defmodule\s+([A-Z][\w.]*)/m, code, capture: :all_but_first) do
-        [name] ->
-          file = path(Module.concat([name]), :module, %{})
-          {:error, Scanner.locate(code, file, e.line, e.description)}
+    case Entry.parse(code) do
+      {:ok, ast} ->
+        {:ok, ast}
 
-        nil ->
-          {:error, "entry #{index}, " <> Scanner.locate(code, nil, e.line, e.description)}
-      end
+      {:error, {line, description}} ->
+        case Regex.run(~r/^\s*defmodule\s+([A-Z][\w.]*)/m, code, capture: :all_but_first) do
+          [name] ->
+            file = Entry.path(Module.concat([name]), :module, %{})
+            {:error, Scanner.locate(code, file, line, description)}
+
+          nil ->
+            {:error, "entry #{index}, " <> Scanner.locate(code, nil, line, description)}
+        end
+    end
   end
 
   defp single_module(ast, index) do
-    modules =
-      ast
-      |> block_forms()
-      |> Enum.flat_map(fn
-        {:defmodule, _meta, [{:__aliases__, _, parts} | rest]} ->
-          [{parts, rest}]
+    case Entry.module(ast) do
+      {:ok, module, body} ->
+        {:ok, module, body}
 
-        _other ->
-          []
-      end)
+      {:error, :not_literal} ->
+        {:error, "entry #{index}: module name must be a literal, like Shopping.List"}
 
-    case modules do
-      [{parts, [[{:do, body} | _]]}] ->
-        if is_list(parts) and Enum.all?(parts, &is_atom/1),
-          do: {:ok, Module.concat(parts), body},
-          else: {:error, "entry #{index}: module name must be a literal, like Shopping.List"}
+      {:error, {:no_body, module}} ->
+        {:error, "entry #{index}: defmodule #{inspect(module)} is missing its do ... end body"}
 
-      [{parts, _no_body}] when is_list(parts) ->
-        {:error,
-         "entry #{index}: defmodule #{inspect(Module.concat(parts))} is missing its do ... end body"}
-
-      [] ->
+      {:error, :no_module} ->
         {:error,
          "entry #{index} defines no module — each entry is one top-level defmodule; " <>
            "run expressions with eval"}
 
-      several ->
-        names =
-          Enum.map_join(several, ", ", fn {parts, _rest} -> inspect(Module.concat(parts)) end)
-
+      {:error, {:several, names}} ->
         {:error,
-         "entry #{index} defines #{names} — one module per entry; give each its own entry"}
-    end
-  end
-
-  defp block_forms({:__block__, _meta, forms}), do: forms
-  defp block_forms(form), do: [form]
-
-  defp migration_use?({:use, _meta, [{:__aliases__, _, [:Ecto, :Migration]} | _opts]}), do: true
-  defp migration_use?(_form), do: false
-
-  # A migration's stored path carries the version the code server
-  # assigns in its lane, so a new migration locates by its name until
-  # then; a module already defined locates by its file.
-  defp path(module, kind, manifest) do
-    case manifest do
-      %{^module => %{source_file: source_file}} ->
-        Path.relative_to(source_file, Beamlet.Config.code_dir())
-
-      _new ->
-        name = Macro.underscore(module)
-
-        case kind do
-          :module -> "lib/#{name}.ex"
-          :migration -> "migrations/#{String.replace(name, "/", "_")}.ex"
-        end
+         "entry #{index} defines #{Enum.join(names, ", ")} — one module per entry; " <>
+           "give each its own entry"}
     end
   end
 
@@ -214,10 +178,8 @@ defmodule Beamlet.Define do
 
     violations =
       Enum.flat_map(parsed, fn entry ->
-        with {:ok, _modules} <- Scanner.scan_define(entry.source, policy, file: entry.path),
-             :ok <- Docs.check(entry.source) do
-          []
-        else
+        case Entry.check(entry.source, policy, entry.path) do
+          :ok -> []
           {:error, message} -> [message]
         end
       end)

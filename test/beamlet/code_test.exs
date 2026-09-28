@@ -1078,4 +1078,103 @@ defmodule Beamlet.CodeTest do
       end)
     end
   end
+
+  describe "a patch" do
+    @list """
+    defmodule NS.List do
+      @moduledoc "A list."
+
+      @doc "Total."
+      def total(x), do: x
+    end
+    """
+
+    defp patch_entry(source, hash, label \\ "patch 1 (NS.List, select total/1)") do
+      Map.merge(entry(source, replace: true), %{hash: hash, label: label})
+    end
+
+    defp sha(source), do: :crypto.hash(:sha256, source)
+
+    test "lands when the hash matches the file, summarised as Patched", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, List])
+      purge_on_exit([mod])
+      old = String.replace(@list, "NS", ns)
+      new = String.replace(old, "def total(x), do: x", "def total(x), do: x * 2")
+
+      assert {:ok, _summary} = define(old, ctx.principal)
+
+      assert {:ok, summary} =
+               Code.define([patch_entry(new, sha(old))], ctx.principal, verb: :patch)
+
+      assert summary == "Patched #{inspect(mod)}\n  - changed total/1"
+      assert apply(mod, :total, [2]) == 4
+    end
+
+    test "a stale hash is refused with nothing changed, and the current one lands", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, List])
+      purge_on_exit([mod])
+      old = String.replace(@list, "NS", ns)
+      new = String.replace(old, "def total(x), do: x", "def total(x), do: x * 2")
+      file = Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}/list.ex")
+
+      assert {:ok, _summary} = define(old, ctx.principal)
+
+      assert Code.define([patch_entry(new, sha("something else"))], ctx.principal, verb: :patch) ==
+               {:error,
+                "#{inspect(mod)} changed while you were patching it — read it again and " <>
+                  "patch the current source. Nothing was changed."}
+
+      assert File.read!(file) == old
+      assert apply(mod, :total, [2]) == 2
+
+      assert {:ok, _summary} =
+               Code.define([patch_entry(new, sha(File.read!(file)))], ctx.principal, verb: :patch)
+
+      assert apply(mod, :total, [2]) == 4
+    end
+
+    test "a module removed in the window is refused with its own wording", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, List])
+      purge_on_exit([mod])
+      old = String.replace(@list, "NS", ns)
+
+      assert {:ok, _summary} = define(old, ctx.principal)
+      assert :ok = Code.remove([mod], ctx.principal)
+
+      assert Code.define([patch_entry(old, sha(old))], ctx.principal, verb: :patch) ==
+               {:error,
+                "#{inspect(mod)} was removed while you were patching it — nothing was " <>
+                  "changed. Host.Code.print_modules() shows what is defined."}
+
+      refute loaded?(mod)
+      assert Code.defined() == []
+    end
+
+    test "a compile error in a patched module carries its label", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, List])
+      purge_on_exit([mod])
+      old = String.replace(@list, "NS", ns)
+      new = String.replace(old, "def total(x), do: x", "def total(x), do: y")
+
+      assert {:ok, _summary} = define(old, ctx.principal)
+
+      assert {:error, message} =
+               quiet(fn ->
+                 Code.define([patch_entry(new, sha(old))], ctx.principal,
+                   verb: :patch,
+                   context: 1
+                 )
+               end)
+
+      assert message =~
+               "patch 1 (NS.List, select total/1): lib/#{Macro.underscore(ns)}/list.ex:5: " <>
+                 "undefined variable \"y\""
+
+      assert message =~ "    4 |   @doc \"Total.\"\n    5 |   def total(x), do: y\n    6 | end"
+    end
+  end
 end

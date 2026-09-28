@@ -27,6 +27,12 @@ defmodule Beamlet.Code.Source do
   # @moduledoc and an orphaned attachment; :attribute for any other
   # @name value, a constant or a struct option; :other for everything
   # else, use, alias, defstruct, a nested module, any macro call.
+  #
+  # The two splices are what a patch applies. A find is a string
+  # operation over bytes occurring exactly once; a select is a block
+  # operation over the whole lines of a function's block, the
+  # inserted code trimmed of blank lines and set off by one, which
+  # the formatter tidies later.
 
   @function_kinds [:def, :defp, :defmacro, :defmacrop, :defguard, :defguardp, :defdelegate]
   @type_kinds [:type, :typep, :opaque]
@@ -63,6 +69,8 @@ defmodule Beamlet.Code.Source do
           :unchanged
           | {:ok, %{removed: [item()], changed: [{item(), item()}], new: [item()]}}
           | {:error, :unparseable}
+
+  @type op :: {:replace, String.t()} | {:before, String.t()} | {:after, String.t()}
 
   @spec parse(String.t()) :: {:ok, Macro.t()} | {:error, {pos_integer(), String.t()}}
   def parse(source) when is_binary(source) do
@@ -105,6 +113,72 @@ defmodule Beamlet.Code.Source do
       end
     end
   end
+
+  @spec patch_find(String.t(), String.t(), op()) ::
+          {:ok, String.t()} | {:error, :not_found | :indented | {:several, pos_integer()}}
+  def patch_find(source, text, op) when is_binary(source) and is_binary(text) and text != "" do
+    case :binary.matches(source, text) do
+      [{start, length}] ->
+        before = binary_part(source, 0, start)
+        rest = binary_part(source, start + length, byte_size(source) - start - length)
+        {:ok, splice(before, text, rest, op)}
+
+      [] ->
+        if indented_match?(source, text), do: {:error, :indented}, else: {:error, :not_found}
+
+      several ->
+        {:error, {:several, length(several)}}
+    end
+  end
+
+  defp splice(before, _text, rest, {:replace, code}), do: before <> code <> rest
+  defp splice(before, text, rest, {:before, code}), do: before <> code <> text <> rest
+  defp splice(before, text, rest, {:after, code}), do: before <> text <> code <> rest
+
+  # The mismatch models make is indentation: text quoted at the wrong
+  # depth. Matching once with every line's leading whitespace dropped
+  # is what the no-match error reports.
+  defp indented_match?(source, text) do
+    case dedent(text) do
+      "" -> false
+      dedented -> length(:binary.matches(dedent(source), dedented)) == 1
+    end
+  end
+
+  defp dedent(text), do: String.replace(text, ~r/^[ \t]+/m, "")
+
+  @spec patch_select(String.t(), atom(), arity(), op()) ::
+          {:ok, String.t()}
+          | {:error, :not_found, [String.t()]}
+          | {:error, :scattered}
+          | {:error, {pos_integer(), String.t()}}
+  def patch_select(source, name, arity, op) do
+    with {:ok, item} <- select(source, name, arity) do
+      first..last//1 = item.range
+      {above, rest} = source |> String.split("\n") |> Enum.split(first - 1)
+      {block, below} = Enum.split(rest, last - first + 1)
+
+      spliced =
+        case op do
+          {:replace, code} -> above ++ code_lines(code) ++ below
+          {:before, code} -> above ++ code_lines(code) ++ [""] ++ block ++ below
+          {:after, code} -> above ++ block ++ [""] ++ code_lines(code) ++ below
+        end
+
+      {:ok, Enum.join(spliced, "\n")}
+    end
+  end
+
+  defp code_lines(code) do
+    code
+    |> String.split("\n")
+    |> Enum.drop_while(&blank?/1)
+    |> Enum.reverse()
+    |> Enum.drop_while(&blank?/1)
+    |> Enum.reverse()
+  end
+
+  defp blank?(line), do: String.trim(line) == ""
 
   @spec line_count(String.t()) :: non_neg_integer()
   def line_count(source) when is_binary(source) do

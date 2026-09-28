@@ -43,8 +43,8 @@ defmodule Beamlet.Scanner do
   """
   @spec scan_eval(String.t(), Policy.t()) :: :ok | {:error, String.t()}
   def scan_eval(code, %Policy{} = policy) do
-    with {:ok, ast} <- parse(code, nil) do
-      ast |> walk(policy, :eval, MapSet.new()) |> render(code, nil)
+    with {:ok, ast} <- parse(code, nil, 0) do
+      ast |> walk(policy, :eval, MapSet.new()) |> render(code, nil, 0)
     end
   end
 
@@ -65,12 +65,15 @@ defmodule Beamlet.Scanner do
   @spec scan_define(String.t(), Policy.t(), keyword()) :: {:ok, [module()]} | {:error, String.t()}
   def scan_define(code, %Policy{} = policy, opts \\ []) do
     file = Keyword.get(opts, :file)
+    context = Keyword.get(opts, :context, 0)
 
-    with {:ok, ast} <- parse(code, file) do
+    with {:ok, ast} <- parse(code, file, context) do
       {modules, locals, structure_violations} = structure(ast, policy)
       policy = Policy.grant(policy, modules)
 
-      case render(walk(ast, policy, :define, locals) ++ structure_violations, code, file) do
+      violations = walk(ast, policy, :define, locals) ++ structure_violations
+
+      case render(violations, code, file, context) do
         :ok -> {:ok, modules}
         error -> error
       end
@@ -81,22 +84,28 @@ defmodule Beamlet.Scanner do
   Renders a violation at `line` of `code` as the scanner renders its
   own: the locator, the message, and the offending line quoted
   beneath. `file` is the locator prefix as in `scan_define/3`.
+
+  `opts[:context]` is how many lines to quote either side of the
+  offending one, for text the reader cannot otherwise see; the block
+  then carries a line-number gutter so the offending line is
+  identifiable. The default quotes the one line, trimmed.
   """
-  @spec locate(String.t(), Path.t() | nil, non_neg_integer(), String.t()) :: String.t()
-  def locate(code, file, line, message) do
+  @spec locate(String.t(), Path.t() | nil, non_neg_integer(), String.t(), keyword()) ::
+          String.t()
+  def locate(code, file, line, message, opts \\ []) do
     prefix = if file, do: "#{file}:#{line}", else: "line #{line}"
 
-    case quoted_line(code, line) do
+    case quoted(code, line, Keyword.get(opts, :context, 0)) do
       nil -> "#{prefix}: #{message}"
-      quoted -> "#{prefix}: #{message}\n    #{quoted}"
+      quoted -> "#{prefix}: #{message}\n#{quoted}"
     end
   end
 
-  defp parse(code, file) do
+  defp parse(code, file, context) do
     {:ok, code |> Code.string_to_quoted!() |> normalize_pipes()}
   rescue
     e in [SyntaxError, TokenMissingError, MismatchedDelimiterError] ->
-      {:error, locate(code, file, e.line, e.description)}
+      {:error, locate(code, file, e.line, e.description, context: context)}
   end
 
   # `a |> Foo.bar(x)` carries Foo.bar/1 in the AST but calls Foo.bar/2.
@@ -133,29 +142,54 @@ defmodule Beamlet.Scanner do
     acc.violations
   end
 
-  defp render([], _code, _file), do: :ok
+  defp render([], _code, _file, _context), do: :ok
 
-  defp render(violations, code, file) do
+  defp render(violations, code, file, context) do
     message =
       violations
       |> Enum.reverse()
       |> Enum.sort_by(fn {line, _message} -> line end)
-      |> Enum.map_join("\n", fn {line, message} -> locate(code, file, line, message) end)
+      |> Enum.map_join("\n", fn {line, message} ->
+        locate(code, file, line, message, context: context)
+      end)
 
     {:error, message}
   end
 
-  defp quoted_line(_code, line) when line < 1, do: nil
+  defp quoted(_code, line, _context) when line < 1, do: nil
 
-  defp quoted_line(code, line) do
+  defp quoted(code, line, 0) do
     case code |> String.split("\n") |> Enum.at(line - 1) do
       nil -> nil
-      text -> text |> String.trim() |> blank_to_nil()
+      text -> text |> String.trim() |> blank_to_nil() |> indent()
+    end
+  end
+
+  defp quoted(code, line, context) do
+    lines = code |> String.trim_trailing("\n") |> String.split("\n")
+    first = max(line - context, 1)
+    last = min(line + context, length(lines))
+
+    if first > last do
+      nil
+    else
+      width = last |> Integer.to_string() |> String.length()
+
+      lines
+      |> Enum.slice((first - 1)..(last - 1)//1)
+      |> Enum.with_index(first)
+      |> Enum.map_join("\n", fn {text, number} ->
+        gutter = number |> Integer.to_string() |> String.pad_leading(width)
+        String.trim_trailing("    #{gutter} | #{text}")
+      end)
     end
   end
 
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(text), do: text
+
+  defp indent(nil), do: nil
+  defp indent(text), do: "    " <> text
 
   # ── Define structure pass ─────────────────────────────────────────
 

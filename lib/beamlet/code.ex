@@ -9,7 +9,7 @@ defmodule Beamlet.Code do
         lib/         one source file per module, shopping/list.ex for Shopping.List
         migrations/  one file per migration, 0001_shopping_create_lists.ex
         ebin/        the compiled beams, with docs, rebuilt from the sources at boot
-        .git       the history: one commit per define or remove
+        .git       the history: one commit per define, patch or remove
         .staging   the modules being compiled, each at the path it will
                    be stored at, gone when the define is done
 
@@ -18,9 +18,12 @@ defmodule Beamlet.Code do
   reads locates as `lib/shopping/list.ex:42`, a line of the stored
   source that `Host.Code.print_source/1` prints.
 
-  The `define` tool and `Host.Code.remove` are calls into this
-  process, so mutations serialize and two writers never race the
-  code dir. A define is all-or-nothing: the modules compile into the
+  The `define` and `patch` tools and `Host.Code.remove` are calls
+  into this process, so mutations serialize and two writers never
+  race the code dir. A patch is a define of the patched modules that
+  also carries a hash of the source each patch read, compared here
+  inside the lane, so a module that changed in between is refused
+  rather than overwritten. A define is all-or-nothing: the modules compile into the
   VM first, and sources and beams are written only after every check
   has passed; a failed compile, a timeout, or a client cancelling the
   request rolls the VM back by reloading the previous beams, and
@@ -56,8 +59,8 @@ defmodule Beamlet.Code do
   removing a module something references, or replacing away a
   function something still calls.
 
-  Git holds the history. Beamlet commits after every define and
-  remove, with the user as the author (`alice <alice@beamlet>`) and
+  Git holds the history. Beamlet commits after every define, patch
+  and remove, with the user as the author (`alice <alice@beamlet>`) and
   the principal as trailers (`Beamlet.Principal.to_trailers/1`), and
   sweeps hand edits into a commit of their own at boot. Git is a
   requirement: a beamlet whose PATH has no git does not start.
@@ -76,6 +79,7 @@ defmodule Beamlet.Code do
   alias Beamlet.Code.Tracer
   alias Beamlet.Config
   alias Beamlet.Principal
+  alias Beamlet.Scanner
 
   @typedoc "A quarantined source file: skipped at boot, kept on disk."
   @type quarantine_entry :: %{file: Path.t(), modules: [module()], error: String.t()}
@@ -94,13 +98,18 @@ defmodule Beamlet.Code do
   One module to define, as the runtime hands it over: its name, its
   formatted source, whether it is a migration (from its
   `use Ecto.Migration` line), and whether it may replace a module of
-  the same name.
+  the same name. A patched module also carries `hash`, the SHA-256
+  of the stored source the patch read, and `label`, the patch or
+  patches that produced it, which prefixes every error located in
+  it.
   """
   @type entry :: %{
-          module: module(),
-          source: String.t(),
-          kind: :module | :migration,
-          replace: boolean()
+          required(:module) => module(),
+          required(:source) => String.t(),
+          required(:kind) => :module | :migration,
+          required(:replace) => boolean(),
+          optional(:hash) => binary(),
+          optional(:label) => String.t()
         }
 
   @doc """
@@ -113,11 +122,26 @@ defmodule Beamlet.Code do
   compile timeout comes from `config :beamlet, :define`;
   `opts[:timeout]` overrides it. The call itself allows twice that
   and a margin, since a define may wait behind another one.
+
+  `opts[:verb]` is `:define` or `:patch` (`Beamlet.Patch`): a patch
+  compares each entry's `hash` with the file on disk before anything
+  else, summarises as `Patched` and commits as `patch:`.
+  `opts[:context]` is how many lines an error quotes either side of
+  the failing one, as `Beamlet.Scanner.locate/5` takes it; a patch
+  passes some, since the failing text exists nowhere the agent can
+  read.
   """
   @spec define([entry()], Principal.t(), keyword()) :: {:ok, String.t()} | {:error, String.t()}
   def define(entries, %Principal{} = principal, opts \\ []) when is_list(entries) do
     timeout = Keyword.get_lazy(opts, :timeout, fn -> Config.define()[:timeout] end)
-    GenServer.call(__MODULE__, {:define, entries, principal, timeout}, 2 * timeout + 5_000)
+
+    run = %{
+      timeout: timeout,
+      verb: Keyword.get(opts, :verb, :define),
+      context: Keyword.get(opts, :context, 0)
+    }
+
+    GenServer.call(__MODULE__, {:define, entries, principal, run}, 2 * timeout + 5_000)
   end
 
   @doc """
@@ -226,14 +250,14 @@ defmodule Beamlet.Code do
   # into an abort: a queued define never starts, a compiling one is
   # stopped and rolled back, and a committing one completes.
   @impl GenServer
-  def handle_call({:define, entries, principal, timeout}, {caller, _tag}, state) do
+  def handle_call({:define, entries, principal, run}, {caller, _tag}, state) do
     caller_ref = Process.monitor(caller)
 
     outcome =
       receive do
         {:DOWN, ^caller_ref, :process, _pid, _reason} -> :cancelled
       after
-        0 -> run_define(state, entries, principal, timeout, caller_ref)
+        0 -> run_define(state, entries, principal, run, caller_ref)
       end
 
     Process.demonitor(caller_ref, [:flush])
@@ -274,15 +298,20 @@ defmodule Beamlet.Code do
 
   # Define
 
-  defp run_define(_state, [], _principal, _timeout, _caller_ref) do
+  defp run_define(_state, [], _principal, %{verb: :define}, _caller_ref) do
     {:error, "define names no modules — pass one entry per module"}
   end
 
-  defp run_define(state, entries, principal, timeout, caller_ref) do
+  defp run_define(_state, [], _principal, %{verb: :patch}, _caller_ref) do
+    {:error, "patch names no modules — pass one patch per change"}
+  end
+
+  defp run_define(state, entries, principal, %{timeout: timeout} = run, caller_ref) do
     buffer_modules = Enum.map(entries, & &1.module)
 
-    with {:ok, new_mods, replaced} <- classify(state, entries),
-         :ok <- check_not_applied(state, replaced, "replace"),
+    with :ok <- check_hashes(state, entries),
+         {:ok, new_mods, replaced} <- classify(state, entries),
+         :ok <- check_not_applied(state, replaced, verb_word(run.verb)),
          {:ok, placements} <- placements(state, entries) do
       dependents =
         state.deps
@@ -323,14 +352,15 @@ defmodule Beamlet.Code do
         end)
 
       previous = replaced ++ dependents
-      locators = locators(state, staged, placements, dependents)
+      locators = locators(state, staged, entries, placements, dependents)
+      render = %{context: run.context, locators: locators}
 
       case outcome do
         {:ok, {:ok, _modules, %{compile_warnings: warnings}}} ->
           with :ok <- check_grouped(warnings, locators),
                :ok <- check_kinds(entries),
                [] <- broken_callers(merge_calls(state, buffer_modules ++ dependents), replaced) do
-            commit(state, staged, buffer_modules, replaced, dependents, principal, placements)
+            commit(state, staged, entries, replaced, dependents, principal, placements, run.verb)
           else
             {:error, message} ->
               rollback(state, new_mods, previous)
@@ -343,11 +373,11 @@ defmodule Beamlet.Code do
 
         {:ok, {:error, diagnostics, _warnings}} ->
           rollback(state, new_mods, previous)
-          {:error, render_compile_error(state, diagnostics, locators, replaced, dependents)}
+          {:error, render_compile_error(state, diagnostics, render, replaced, dependents)}
 
         :timeout ->
           rollback(state, new_mods, previous)
-          {:error, "define timed out after #{timeout}ms — nothing was changed"}
+          {:error, "#{run.verb} timed out after #{timeout}ms — nothing was changed"}
 
         :cancelled ->
           rollback(state, new_mods, previous)
@@ -355,8 +385,51 @@ defmodule Beamlet.Code do
 
         {:exit, reason} ->
           rollback(state, new_mods, previous)
-          {:error, "define failed (#{inspect(reason)}) — nothing was changed"}
+          {:error, "#{run.verb} failed (#{inspect(reason)}) — nothing was changed"}
       end
+    end
+  end
+
+  defp verb_word(:define), do: "replace"
+  defp verb_word(:patch), do: "patch"
+
+  # The stale-read guard. A patch hashes the source it read; the file
+  # on disk is hashed here, where nothing else can write, and a
+  # difference means another writer got in between. A module with no
+  # file left counts as changed with its own wording, since classify
+  # would otherwise file the patch as a new module.
+  defp check_hashes(state, entries) do
+    refusals =
+      for %{module: mod, hash: hash} <- entries, is_binary(hash), reduce: [] do
+        refusals ->
+          file =
+            Map.get(state.modules, mod) ||
+              Enum.find_value(state.quarantined, fn entry ->
+                mod in entry.modules and entry.file
+              end)
+
+          case file && File.read(file) do
+            {:ok, bytes} ->
+              if :crypto.hash(:sha256, bytes) == hash,
+                do: refusals,
+                else: [
+                  "#{inspect(mod)} changed while you were patching it — read it again and " <>
+                    "patch the current source. Nothing was changed."
+                  | refusals
+                ]
+
+            _missing ->
+              [
+                "#{inspect(mod)} was removed while you were patching it — nothing was changed. " <>
+                  "Host.Code.print_modules() shows what is defined."
+                | refusals
+              ]
+          end
+      end
+
+    case refusals do
+      [] -> :ok
+      _some -> {:error, refusals |> Enum.reverse() |> Enum.join("\n")}
     end
   end
 
@@ -364,20 +437,25 @@ defmodule Beamlet.Code do
   # the path its module will be stored at, a dependent by the path it
   # is stored at, both relative to the code dir. The source beside it
   # is what the quoted line is read from, held here because the
-  # staged copy is gone by the time an error renders.
-  defp locators(state, staged, placements, dependents) do
-    entries =
+  # staged copy is gone by the time an error renders. A patched
+  # entry's label names the patches that produced it.
+  defp locators(state, staged, entries, placements, dependents) do
+    labels = Map.new(entries, fn entry -> {entry.module, Map.get(entry, :label)} end)
+
+    staged_locators =
       Map.new(staged, fn {mod, staging_file} ->
         {path, _version} = Map.fetch!(placements, mod)
         source = File.read!(staging_file)
-        {staging_file, %{module: mod, locator: relative(state, path), source: source}}
+
+        {staging_file,
+         %{module: mod, locator: relative(state, path), source: source, label: labels[mod]}}
       end)
 
     Map.new(dependents, fn mod ->
       file = Map.fetch!(state.modules, mod)
-      {file, %{module: mod, locator: relative(state, file), source: File.read!(file)}}
+      {file, %{module: mod, locator: relative(state, file), source: File.read!(file), label: nil}}
     end)
-    |> Map.merge(entries)
+    |> Map.merge(staged_locators)
   end
 
   # The task's ref is opaque, so once the reply is in hand the monitor
@@ -623,7 +701,8 @@ defmodule Beamlet.Code do
 
   # Commit and rollback
 
-  defp commit(state, staged, buffer_modules, replaced, dependents, principal, placements) do
+  defp commit(state, staged, entries, replaced, dependents, principal, placements, verb) do
+    buffer_modules = Enum.map(entries, & &1.module)
     compiled = compiled_records()
     diffs = Map.new(replaced, fn mod -> {mod, replace_diff(state, mod, staged)} end)
 
@@ -664,10 +743,15 @@ defmodule Beamlet.Code do
     }
 
     publish(state)
-    Audit.record_define(state.code_dir, buffer_modules, replaced, principal)
+
+    case verb do
+      :define -> Audit.record_define(state.code_dir, buffer_modules, replaced, principal)
+      :patch -> Audit.record_patch(state.code_dir, buffer_modules, principal)
+    end
 
     caller_lines = runtime_caller_lines(calls, replaced, buffer_modules)
-    {:ok, summary(buffer_modules, replaced, dependents, caller_lines, placements, diffs), state}
+    heads = Map.new(buffer_modules, fn mod -> {mod, head(verb, mod, replaced, placements)} end)
+    {:ok, summary(buffer_modules, heads, dependents, caller_lines, diffs), state}
   end
 
   # What a replace did to the module's functions, read before the
@@ -684,24 +768,31 @@ defmodule Beamlet.Code do
     Source.diff(File.read!(old_file), File.read!(staging_file))
   end
 
-  # Define does not apply a migration, and the moment of definition is
-  # when the cue to run it matters. A replace says what it did to the
-  # module's functions, since a function lost in a re-emission is
-  # otherwise lost silently.
-  defp summary(buffer_modules, replaced, dependents, caller_lines, placements, diffs) do
+  # Neither define nor patch applies a migration, and the moment of
+  # definition is when the cue to run it matters.
+  defp head(verb, mod, replaced, placements) do
+    verb_part =
+      case verb do
+        :define -> "Defined #{inspect(mod)} (#{if mod in replaced, do: "replaced", else: "new"})"
+        :patch -> "Patched #{inspect(mod)}"
+      end
+
+    case Map.fetch!(placements, mod) do
+      {_path, nil} ->
+        verb_part
+
+      {_path, version} ->
+        "#{verb_part} — migration #{version}, pending: run Host.Migrator.migrate()"
+    end
+  end
+
+  # A replace and a patch say what they did to the module's
+  # functions, since a function lost in a re-emission is otherwise
+  # lost silently.
+  defp summary(buffer_modules, heads, dependents, caller_lines, diffs) do
     lines =
       Enum.flat_map(buffer_modules, fn mod ->
-        flag = if mod in replaced, do: "replaced", else: "new"
-
-        head =
-          case Map.fetch!(placements, mod) do
-            {_path, nil} ->
-              "Defined #{inspect(mod)} (#{flag})"
-
-            {_path, version} ->
-              "Defined #{inspect(mod)} (#{flag}) — migration #{version}, pending: run " <>
-                "Host.Migrator.migrate()"
-          end
+        head = Map.fetch!(heads, mod)
 
         case diffs do
           %{^mod => diff} -> [head | Source.render_diff(diff)]
@@ -828,7 +919,7 @@ defmodule Beamlet.Code do
   # diagnostic at position 0 naming the staging file, which says
   # nothing the located ones do not; it is dropped, unless it is all
   # there is.
-  defp render_compile_error(state, diagnostics, locators, replaced, dependents) do
+  defp render_compile_error(state, diagnostics, render, replaced, dependents) do
     dependent_files = Map.new(dependents, fn mod -> {Map.fetch!(state.modules, mod), mod} end)
 
     located =
@@ -839,14 +930,14 @@ defmodule Beamlet.Code do
 
     case Enum.find(located, &Map.has_key?(dependent_files, &1.file)) do
       nil ->
-        Enum.map_join(located, "\n", &render_diagnostic(&1, locators))
+        Enum.map_join(located, "\n", &render_diagnostic(&1, render))
 
       diagnostic ->
         dependent = Map.fetch!(dependent_files, diagnostic.file)
         replaced_names = Enum.map_join(replaced, ", ", &inspect/1)
 
         "replacing #{replaced_names} broke its dependent #{inspect(dependent)} — " <>
-          "#{render_diagnostic(diagnostic, locators)}\nNothing was changed. " <>
+          "#{render_diagnostic(diagnostic, render)}\nNothing was changed. " <>
           "Update #{inspect(dependent)} in the same call, or keep #{replaced_names} compatible."
     end
   end
@@ -855,31 +946,23 @@ defmodule Beamlet.Code do
     diag_line(diagnostic) == 0 and diagnostic.message =~ "cannot compile module"
   end
 
-  defp render_diagnostic(diagnostic, locators) do
+  defp render_diagnostic(diagnostic, %{context: context, locators: locators}) do
     line = diag_line(diagnostic)
 
     case Map.get(locators, diagnostic.file) do
       nil ->
         "line #{line}: #{diagnostic.message}"
 
-      %{locator: locator, source: source} ->
-        case quoted_line(source, line) do
-          nil -> "#{locator}:#{line}: #{diagnostic.message}"
-          text -> "#{locator}:#{line}: #{diagnostic.message}\n    #{text}"
-        end
+      %{locator: locator, source: source, label: label} ->
+        labelled(
+          label,
+          Scanner.locate(source, locator, line, diagnostic.message, context: context)
+        )
     end
   end
 
-  defp quoted_line(_source, line) when line < 1, do: nil
-
-  defp quoted_line(source, line) do
-    with text when is_binary(text) <- source |> String.split("\n") |> Enum.at(line - 1),
-         trimmed when trimmed != "" <- String.trim(text) do
-      trimmed
-    else
-      _none -> nil
-    end
-  end
+  defp labelled(nil, message), do: message
+  defp labelled(label, message), do: "#{label}: #{message}"
 
   defp diag_line(%{position: {line, _column}}), do: line
   defp diag_line(%{position: line}) when is_integer(line), do: line
@@ -901,7 +984,8 @@ defmodule Beamlet.Code do
       scattered ->
         {:error,
          Enum.map_join(scattered, "\n", fn {file, _fun, _earlier, _later} = clause ->
-           render_scattered(clause, Map.fetch!(locators, file).locator)
+           %{locator: locator, label: label} = Map.fetch!(locators, file)
+           labelled(label, render_scattered(clause, locator))
          end)}
     end
   end

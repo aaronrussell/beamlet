@@ -3,7 +3,7 @@ defmodule Beamlet.Code.Audit do
 
   # The git history of the code dir. Files hold current state only;
   # git holds it over time. Beamlet is the sole committer, one commit
-  # after each successful define or remove, the subject naming the
+  # after each successful define, patch or remove, the subject naming the
   # modules and the trailers naming the principal, so `git log` in
   # the code dir reads as the record of everything built and torn
   # down. The agent has no git verbs and no knowledge git exists.
@@ -60,6 +60,11 @@ defmodule Beamlet.Code.Audit do
         end)
 
     commit(code_dir, subject, principal)
+  end
+
+  @spec record_patch(Path.t(), [module()], Principal.t()) :: :ok
+  def record_patch(code_dir, modules, %Principal{} = principal) do
+    commit(code_dir, "patch: " <> Enum.map_join(modules, ", ", &inspect/1), principal)
   end
 
   @spec record_remove(Path.t(), [module()], Principal.t()) :: :ok
