@@ -72,6 +72,7 @@ defmodule Beamlet.Code do
   require Logger
 
   alias Beamlet.Code.Audit
+  alias Beamlet.Code.Source
   alias Beamlet.Code.Tracer
   alias Beamlet.Config
   alias Beamlet.Principal
@@ -624,6 +625,7 @@ defmodule Beamlet.Code do
 
   defp commit(state, staged, buffer_modules, replaced, dependents, principal, placements) do
     compiled = compiled_records()
+    diffs = Map.new(replaced, fn mod -> {mod, replace_diff(state, mod, staged)} end)
 
     Enum.each(staged, fn {mod, staging_file} ->
       {path, _version} = Map.fetch!(placements, mod)
@@ -665,23 +667,45 @@ defmodule Beamlet.Code do
     Audit.record_define(state.code_dir, buffer_modules, replaced, principal)
 
     caller_lines = runtime_caller_lines(calls, replaced, buffer_modules)
-    {:ok, summary(buffer_modules, replaced, dependents, caller_lines, placements), state}
+    {:ok, summary(buffer_modules, replaced, dependents, caller_lines, placements, diffs), state}
+  end
+
+  # What a replace did to the module's functions, read before the
+  # staged text moves over the old file, which is the last moment the
+  # old source exists. A quarantined module's old source is its
+  # quarantined file, whatever else that file holds.
+  defp replace_diff(state, mod, staged) do
+    {^mod, staging_file} = List.keyfind(staged, mod, 0)
+
+    old_file =
+      Map.get(state.modules, mod) ||
+        Enum.find_value(state.quarantined, fn entry -> mod in entry.modules and entry.file end)
+
+    Source.diff(File.read!(old_file), File.read!(staging_file))
   end
 
   # Define does not apply a migration, and the moment of definition is
-  # when the cue to run it matters.
-  defp summary(buffer_modules, replaced, dependents, caller_lines, placements) do
+  # when the cue to run it matters. A replace says what it did to the
+  # module's functions, since a function lost in a re-emission is
+  # otherwise lost silently.
+  defp summary(buffer_modules, replaced, dependents, caller_lines, placements, diffs) do
     lines =
-      Enum.map(buffer_modules, fn mod ->
+      Enum.flat_map(buffer_modules, fn mod ->
         flag = if mod in replaced, do: "replaced", else: "new"
 
-        case Map.fetch!(placements, mod) do
-          {_path, nil} ->
-            "Defined #{inspect(mod)} (#{flag})"
+        head =
+          case Map.fetch!(placements, mod) do
+            {_path, nil} ->
+              "Defined #{inspect(mod)} (#{flag})"
 
-          {_path, version} ->
-            "Defined #{inspect(mod)} (#{flag}) — migration #{version}, pending: run " <>
-              "Host.Migrator.migrate()"
+            {_path, version} ->
+              "Defined #{inspect(mod)} (#{flag}) — migration #{version}, pending: run " <>
+                "Host.Migrator.migrate()"
+          end
+
+        case diffs do
+          %{^mod => diff} -> [head | Source.render_diff(diff)]
+          _new -> [head]
         end
       end)
 
@@ -1298,22 +1322,35 @@ defmodule Beamlet.Code do
 
   # Sources
 
+  # A file that does not parse still names its modules on its
+  # `defmodule` lines, and reading them is what keeps a torn hand edit
+  # listed as quarantined and readable by line range, rather than
+  # vanishing from the beamlet.
   defp parse_modules(file) do
-    with {:ok, code} <- File.read(file),
-         {:ok, ast} <- Code.string_to_quoted(code) do
-      ast
-      |> block_forms()
-      |> Enum.flat_map(fn
-        {:defmodule, _meta, [{:__aliases__, _, parts} | _rest]} ->
-          if is_list(parts) and Enum.all?(parts, &is_atom/1),
-            do: [Module.concat(parts)],
-            else: []
+    case File.read(file) do
+      {:ok, code} ->
+        case Code.string_to_quoted(code) do
+          {:ok, ast} ->
+            ast
+            |> block_forms()
+            |> Enum.flat_map(fn
+              {:defmodule, _meta, [{:__aliases__, _, parts} | _rest]} ->
+                if is_list(parts) and Enum.all?(parts, &is_atom/1),
+                  do: [Module.concat(parts)],
+                  else: []
 
-        _other ->
-          []
-      end)
-    else
-      _unreadable -> []
+              _other ->
+                []
+            end)
+
+          {:error, _reason} ->
+            ~r/^\s*defmodule\s+([A-Z][\w.]*)/m
+            |> Regex.scan(code, capture: :all_but_first)
+            |> Enum.map(fn [name] -> Module.concat([name]) end)
+        end
+
+      {:error, _reason} ->
+        []
     end
   end
 

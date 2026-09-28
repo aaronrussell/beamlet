@@ -188,7 +188,11 @@ defmodule Beamlet.CodeTest do
       """
 
       assert {:ok, summary} = define(replacement, ctx.principal, replace: true)
-      assert summary == "Defined #{ns}.Item (replaced)\nRecompiled dependents: #{ns}.Basket"
+
+      assert summary ==
+               "Defined #{ns}.Item (replaced)\n  - no function changes\n" <>
+                 "Recompiled dependents: #{ns}.Basket"
+
       assert apply(basket, :sample, []) == struct(item, name: "milk", count: 1)
     end
 
@@ -464,6 +468,25 @@ defmodule Beamlet.CodeTest do
       assert log =~ "code boot: quarantined lib/dep.ex"
     end
 
+    test "a file that does not parse is quarantined under its defmodule name", ctx do
+      ns = unique_namespace()
+      torn = Module.concat([ns, Torn])
+      purge_on_exit([torn])
+      file = Path.join(ctx.code_dir, "lib/torn.ex")
+
+      File.write!(file, """
+      defmodule #{ns}.Torn do
+        @moduledoc "Torn."
+        def x do
+      end
+      """)
+
+      ExUnit.CaptureLog.capture_log(fn -> quiet(fn -> restart_code_server() end) end)
+
+      assert [%{file: ^file, modules: [^torn], error: error}] = Code.quarantined()
+      assert error =~ "TokenMissingError"
+    end
+
     test "quarantines a file whose function clauses are scattered", ctx do
       ns = unique_namespace()
       good = Module.concat([ns, Good])
@@ -723,8 +746,136 @@ defmodule Beamlet.CodeTest do
       assert {:ok, summary} = define(compatible, ctx.principal, replace: true)
 
       assert summary ==
-               "Defined #{ns}.Store (replaced)\n" <>
+               "Defined #{ns}.Store (replaced)\n  - changed get/1\n" <>
                  "Note: called at runtime by #{ns}.Client (get/1)"
+    end
+  end
+
+  describe "the replace summary" do
+    @old_list """
+    defmodule NS.List do
+      @moduledoc "A list."
+
+      @doc "Load."
+      def load(id), do: id
+
+      @doc "List."
+      def list, do: []
+
+      @doc "Total."
+      def total(x), do: x
+
+      @doc "Render."
+      def render(x), do: x
+    end
+    """
+
+    @new_list """
+    defmodule NS.List do
+      @moduledoc "A list."
+
+      @doc "Total."
+      def total(x) when is_list(x), do: Enum.sum(x)
+      def total(x), do: x
+
+      @doc "Rendered."
+      def render(x), do: x
+
+      @doc "Remove."
+      def remove(a, b), do: {a, b}
+    end
+    """
+
+    test "names the functions removed, changed and added", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, List])
+      purge_on_exit([mod])
+
+      assert {:ok, _summary} = define(String.replace(@old_list, "NS", ns), ctx.principal)
+
+      assert {:ok, summary} =
+               define(String.replace(@new_list, "NS", ns), ctx.principal, replace: true)
+
+      assert summary ==
+               Enum.join(
+                 [
+                   "Defined #{ns}.List (replaced)",
+                   "  - removed load/1, list/0",
+                   "  - changed total/1 (1 to 2 clauses), render/1",
+                   "  - new remove/2"
+                 ],
+                 "\n"
+               )
+    end
+
+    test "the same source again is unchanged", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, List])
+      purge_on_exit([mod])
+      source = String.replace(@old_list, "NS", ns)
+
+      assert {:ok, _summary} = define(source, ctx.principal)
+      assert {:ok, summary} = define(source, ctx.principal, replace: true)
+      assert summary == "Defined #{ns}.List (replaced)\n  - unchanged"
+    end
+
+    test "a replaced quarantined module is compared with its quarantined source", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, List])
+      purge_on_exit([mod])
+
+      File.write!(Path.join(ctx.code_dir, "lib/list.ex"), """
+      defmodule #{ns}.List do
+        @moduledoc "A list, broken by hand."
+        def load(id), do: undefined_local(id)
+        def total(x), do: x
+      end
+      """)
+
+      ExUnit.CaptureLog.capture_log(fn -> quiet(fn -> restart_code_server() end) end)
+      assert [%{modules: [^mod]}] = Code.quarantined()
+
+      assert {:ok, summary} =
+               define(String.replace(@new_list, "NS", ns), ctx.principal, replace: true)
+
+      assert summary ==
+               Enum.join(
+                 [
+                   "Defined #{ns}.List (replaced)",
+                   "  - removed load/1",
+                   "  - changed total/1 (1 to 2 clauses)",
+                   "  - new render/1, remove/2"
+                 ],
+                 "\n"
+               )
+
+      assert Code.quarantined() == []
+      refute File.exists?(Path.join(ctx.code_dir, "lib/list.ex"))
+    end
+
+    test "a quarantined source that does not parse has nothing to compare", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, List])
+      purge_on_exit([mod])
+
+      File.write!(Path.join(ctx.code_dir, "lib/list.ex"), """
+      defmodule #{ns}.List do
+        @moduledoc "Torn."
+        def load(id) do
+      end
+      """)
+
+      ExUnit.CaptureLog.capture_log(fn -> quiet(fn -> restart_code_server() end) end)
+      assert [%{modules: [^mod]}] = Code.quarantined()
+
+      assert {:ok, summary} =
+               define(String.replace(@new_list, "NS", ns), ctx.principal, replace: true)
+
+      assert summary ==
+               "Defined #{ns}.List (replaced)\n" <>
+                 "  - previous source did not parse, so nothing to compare"
+
+      assert Code.quarantined() == []
     end
   end
 

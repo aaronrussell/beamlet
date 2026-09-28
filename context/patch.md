@@ -1,8 +1,8 @@
 # Beamlet — patch
 
-**Status:** The spec for editing modules in place, agreed 2026-09-26 and sequenced 2026-09-27 into the five phases of § 9, which is the plan. Each phase is a session of its own that starts from this note: a planning pass pinning the phase against the code as it stands, the implementation, the tests, `mix precommit`, and an update to this note. Phase 1 landed 2026-09-27. Phase 2 was reshaped 2026-09-28 in its planning pass: the module becomes the unit of `define` and source is formatted before anything reports a line, so one locator form serves the whole pipeline (§ 6). It is next. The work is next up on the roadmap, ahead of the 0.1 code review, so the reviews and the docs cover three tools. When the last phase lands, the settled parts move into `design.md` and this note goes.
+**Status:** The spec for editing modules in place, agreed 2026-09-26 and sequenced 2026-09-27 into the five phases of § 9, which is the plan. Each phase is a session of its own that starts from this note: a planning pass pinning the phase against the code as it stands, the implementation, the tests, `mix precommit`, and an update to this note. Phase 1 landed 2026-09-27. Phase 2 was reshaped 2026-09-28 in its planning pass: the module becomes the unit of `define` and source is formatted before anything reports a line, so one locator form serves the whole pipeline (§ 6). Phase 3 landed 2026-09-28: the outline, the piecewise reads, and the replace summary as bullets naming the functions removed, changed and new. Phase 4 is next. The work is next up on the roadmap, ahead of the 0.1 code review, so the reviews and the docs cover three tools. When the last phase lands, the settled parts move into `design.md` and this note goes.
 
-**Last updated:** 2026-09-28 (phase 2 reshaped: define takes a list of modules, format first, one locator form)
+**Last updated:** 2026-09-28 (phase 3 landed: the outline, function and range prints, the replace summary's bullets)
 
 ---
 
@@ -25,7 +25,7 @@ Four pieces sharing one parser module, and one guard, on a define whose unit is 
 - **Read in pieces.** `Host.Code.print_outline/1` prints a module's structure with line ranges. `print_source/2` and `print_source/3` print one function, every arity or one, and `print_source/2` with a range prints lines. The outline's range for a function is exactly what a patch's `select` touches.
 - **Store formatted.** Agent source is stored as the formatter lays it out (§ 5). A patched file is byte-identical outside the patched region, `find` always quotes canonical text, and the tool needs no indentation or spacing rules.
 - **Write in pieces.** A third tool, `patch` (§ 3): a list of `{module, anchor, operation}` applied in order as one transaction through the define pipeline. `find` anchors text; `select` anchors a function by `name/arity`; the operation is `replace`, `before` or `after`.
-- **See what changed.** The summary of every replace and every patch names the functions added, changed and dropped, with clause counts, so a lost function is in the tool result at the moment it is lost.
+- **See what changed.** The summary of every replace and every patch says what happened to the module's functions, removed, changed and new as bullets under the module's line, with clause counts where they differ, so a lost function is in the tool result at the moment it is lost.
 - **Guard the stale read.** A patch carries a hash of the source it read, and the code server refuses to write over a module that changed in between (§ 7).
 
 Two small rules land with it: scattered clauses of one function are refused at define and patch (§ 5), and every pipeline error locates by the text of the line rather than by a number (§ 6).
@@ -78,13 +78,16 @@ Every error follows § 6: it names the module, quotes the line, and for a pipeli
 
 ### Summary
 
-One line per module, then define's dependents and runtime-caller lines as they are:
+One line per module with bullets beneath it, then define's dependents and runtime-caller lines as they are:
 
 ```
-Patched Shopping.List: changed total/1 (1 to 2 clauses); added remove/2; dropped load/1
+Patched Shopping.List
+  - removed load/1, list/0
+  - changed total/1 (1 to 2 clauses), render/1
+  - new remove/2
 ```
 
-The same diff line goes on `Defined Shopping.List (replaced)`. Clause counts are what make an accidental second clause visible: Elixir accepts it with at most a warning, and the old clause keeps matching. When the previous source does not parse, a quarantined module being replaced, the summary says so in place of the diff.
+The same bullets go under `Defined Shopping.List (replaced)` (settled 2026-09-28 in phase 3's planning pass, having weighed "removed only" and no diff at all: once the outline exists the three kinds cost the same, and one shape serves both tools). One bullet per kind, removed first, names in source order, no wrapping. A function is changed when its block's text differs, docs included, so a tidied docstring shows; the clause count appears only when it changed, since an accidental second clause is what Elixir accepts with at most a warning while the old clause keeps matching. Private functions are listed with the public ones, unmarked. The empty cases have a bullet each, since a line that says nothing would leave the model unsure the comparison ran: `unchanged` for byte-identical source, `no function changes` for an edit outside every function, and `previous source did not parse, so nothing to compare` for a quarantined module whose old file the parser refuses. The head line keeps no trailing colon, so the migration form reads as before. `Beamlet.Code.Source.render_diff/1` renders the bullets for both tools.
 
 ### Description
 
@@ -119,21 +122,21 @@ The server instructions gain one sentence, phrased to survive a token without th
 
 ### Shape in code
 
-- `Beamlet.Code.Source`, `@moduledoc false`: pure functions over source text. `outline/1`, `select/2` returning a block's line range, the splice operations, and the diff between two outlines. The code server's `split_sources` moves onto it.
+- `Beamlet.Code.Source`, `@moduledoc false`: pure functions over source text, parsed with token metadata and never compiled. `outline/1` lists every top-level item with its range and text; `select/3` returns a function's block by name and arity; `lines/2` slices a range; `diff/2` and `render_diff/1` compare two versions at function level; the splice operations arrive in phase 4.
 - `Beamlet.Patch`: the runtime, in the shape of `Beamlet.Define`: resolves the modules, reads and hashes their sources, applies the patches, formats, scans and docs-gates each result, and hands the modules on with the hashes.
 - `Beamlet.MCP.Patch`: the component, a `use Anubis.Server.Component` with the flat DSL schema, mapping the tuple to a tool result.
-- `Host.Code.print_outline/1`, `print_source/2` and `print_source/3` render through `Beamlet.Code.Discovery`, which calls `Source`. `print_source/2` takes an atom, every arity of a function, or a `Range`, `print_source(Mod, 40..80)`; `/3` takes name and arity, as `print_docs` does. No string form (2026-09-27): one way is the house rule.
+- `Host.Code.print_outline/1`, `print_source/2` and `print_source/3` render through `Beamlet.Code.Discovery`, which calls `Source`. `print_source/2` takes an atom, every arity of a function, or a `Range`, `print_source(Mod, 40..80)`; `/3` takes name and arity, as `print_docs` does. No string form (2026-09-27): one way is the house rule. A function or range print is the stored text verbatim with no line-number gutter, so what an agent copies from it is what `find` will match; the numbers live in the outline. A range is inclusive from line 1; a start past the end is a teaching error naming the line count, an end past it clamps, and a descending or stepped range is refused (2026-09-28).
 
 ## 4. Selections
 
 A selection is what the parser sees, `Code.string_to_quoted/2` with `token_metadata: true`; no text heuristics.
 
 - **Its end** is the last line of its last clause. A one-liner has no `end` token, and the parser's `end_of_expression` metadata gives it (verified 2026-09-27 on 1.20.4: `def one, do: :ok` carries `end: nil` and `end_of_expression: [line: n]`).
-- **Its start** is found by walking upward from the first clause over the forms that belong to a function: `@doc`, `@spec`, `@impl`, `@deprecated`, and Phoenix's `attr` and `slot`. Anything else stops the walk, so a `@default_limit 10` directly above stays where it is.
+- **Its start** is found by walking upward from the first clause over the forms that belong to a function: `@doc`, `@spec`, `@impl`, `@deprecated`, and Phoenix's `attr` and `slot`. Anything else stops the walk, so a `@default_limit 10` directly above stays where it is. The same walk gives a type its `@typedoc` and a callback its `@doc` (2026-09-28).
 - **Comments never attach.** They are not forms. A comment above a removed function stays, visible in the next print and one `find` away; the docs gate steers agent code to `@doc`, so the case is rare.
 - **Naming `attr` and `slot` is a curation record** beside the framework module list. The beamlet ships them and imports them through `Host.Web`, an agent's own `attr` needs `allow_defmacro`, and a macro placed directly above a function in that style is by placement an annotation of it. The general rule, any adjacent bare call attaches, lost: it swallows a `plug :auth` written with no blank line above the action. A missed macro from a future library costs the agent a `find` to tidy, and the compile is loud since an orphaned `attr` fails.
-- **The outline prints each function's range as its selection**, docs included, so the agent sees what a `select` will touch. The outline lists the header items too, moduledoc, directives, attributes, struct and types, with their lines, since a range read needs them.
-- **A module that does not parse has no outline.** `print_outline` on a quarantined module raises with the parser's message and points at `print_source` with a range and at `find`, the two reads and the one anchor that work on unparseable text.
+- **The outline prints each function's range as its selection**, docs included, so the agent sees what a `select` will touch, with the clause count when there is more than one. **What else it shows is decided by what versus how** (2026-09-28, after weighing every statement against functions alone): the outline shows what a module is made of and hides how it works. Shown: functions; types as `@type t` with the `@typedoc` rolled in; callbacks as `@callback start/2` with their `@doc` rolled in; `@behaviour`; and every other top-level form by its first line, trimmed and cut at sixty characters, so `use`, `import`, `alias`, `defstruct`, a nested module and any macro call (`schema`, `plug`, a `for` that generates functions) all appear with no list to curate. Hidden: the moduledoc, attributes holding values (`@default_limit 20`, `@derive`, `@primary_key`) and an orphaned `@doc` or `@spec`. Gaps are fine: the outline is the first step before a targeted `print_source`, not a replacement for it, and the header carries the line count so every gap, the last included, is visible and readable by range. A denylist rather than an allowlist because the safe error is a superfluous row, not a hidden `schema` block. The axis is not built-in versus library. `Source.outline/1` still models every form, kinds marking the hidden ones, since the diff and `select` need the whole file; hiding is the renderer's. A function with default arguments is listed by its head's arity, `def total(items, opts \\ [])` as `total/2`, and a select on `total/1` is not found with `total/2` listed; keying on every implied arity would make one block answer two names.
+- **A module that does not parse has no outline.** `print_outline` on a quarantined module raises with the parser's message and points at `print_source` with a range and at `find`, the two reads and the one anchor that work on unparseable text. For the module to be reachable at all, boot reads a torn file's module names from its `defmodule` lines when the parser refuses it (2026-09-28), so it is listed as quarantined rather than vanishing.
 - **A quarantined module with scattered clauses is the one place `select` can meet a non-contiguous block** (phase 1, 2026-09-27). Define and boot refuse scattered clauses (§ 5), so every defined module is contiguous, but a hand-edited scattered file parses and sits in quarantine. `select` on such a function refuses with a teaching error pointing at `find`; the outline still prints, since the ranges are honest about what is there.
 
 Tests for the walk: doc, spec and impl; attr and slot; a constant directly above that must stay; an adjacent comment that must stay; a one-liner; a private function; a multi-clause function with a `@spec` between clauses.
@@ -234,23 +237,25 @@ Reshaped 2026-09-28 from "store formatted, errors locate by text", which it subs
 
 **Touches.** `lib/beamlet/mcp/define.ex`, `lib/beamlet/define.ex`, `lib/beamlet/code.ex`, `lib/beamlet/scanner.ex`, `lib/beamlet/code/docs.ex`, `lib/beamlet/eval.ex`, `lib/host/code.ex`, `lib/beamlet/mcp/server.ex` where the instructions describe define, and the tests beside each.
 
-### Phase 3. The read side and the diff line
+### Phase 3. The read side and the diff line (landed 2026-09-28)
+
+**Settled against the code.** The summary took its bullet form (§ 3) after weighing a "removed only" line and no diff at all. `Source.diff/2` reads the old file at the top of the code server's commit, the last moment it exists before the staged text renames over it, and a quarantined module's old source is its quarantined file. Boot names a torn file's modules from its `defmodule` lines, since the parser gave none and the module was otherwise unreachable and unlisted. `split_sources` had gone with phase 2, so the code server's only change is the diff. The instructions line about reading before a replace now names `print_outline` first; the `eval` and `define` descriptions did not change.
 
 **Goal.** A module can be read in pieces, and a replace says what it changed.
 
-**Builds.** `Beamlet.Code.Source`, pure over text: `outline/1`, `select/2` returning a block's line range per § 4, and the diff between two outlines with clause counts. `Host.Code.print_outline/1`; `print_source/2` taking an atom or a `Range`; `print_source/3` taking name and arity; all rendered through `Beamlet.Code.Discovery`. The diff line on `Defined X (replaced)`, read from the old file at commit; when the old source does not parse, the summary says so instead. `print_outline` and a function print on a module that does not parse raise per § 4. The `Host.Code` moduledoc and the eval description point at the new reads where they point at `print_source` today, within the caps.
+**Built.** `Beamlet.Code.Source`, pure over text: `outline/1`, `select/3` returning a function's block per § 4, `lines/2`, and `diff/2` with `render_diff/1`. `Host.Code.print_outline/1`; `print_source/2` taking an atom or a `Range`; `print_source/3` taking name and arity; all rendered through `Beamlet.Code.Discovery`. The bullets under `Defined X (replaced)`. `print_outline` and a function print on a module that does not parse raise per § 4, locating by path and quoting the line. The `Host.Code` moduledoc and `print_source/1`'s doc point at the new reads.
 
-**Tests.** The outline's ranges against known sources; the § 4 walk list; the diff line naming added, changed and dropped with clause counts, on a replace and on a replace of a quarantined module; a range print, a function print at each arity, and the not-found copy for each; the unparseable cases.
+**Tests.** The outline's ranges against a known source and the § 4 walk list; the bullets for removed, changed and new with clause counts, on a replace, on a replace of a quarantined module that parses and of one that does not, and the two empty cases; a range print, a clamped end, a start past the end; a function print at every arity and at one, the not-found copy naming the outline, the scattered refusal; the torn file quarantined under its name.
 
 **Not in this phase.** The splice operations, the hash, the tool.
 
-**Touches.** New `lib/beamlet/code/source.ex` and its test; `lib/beamlet/code/discovery.ex`; `lib/host/code.ex`; `lib/beamlet/code.ex` (the split and the commit summary); `lib/beamlet/mcp/eval.ex` if the description changes.
+**Touched.** New `lib/beamlet/code/source.ex` and its test; `lib/beamlet/code/discovery.ex`; `lib/host/code.ex`; `lib/beamlet/code.ex` (the commit summary, boot's module names); `lib/beamlet/mcp/server.ex` (one instructions line); the tests beside each.
 
 ### Phase 4. The patch runtime
 
 **Goal.** `Beamlet.Patch.run/2` applies a list of patches as one transaction through the define pipeline, guarded by the stale-read hash, with every teaching error of § 3 in the shape of § 6.
 
-**Builds.** The splice operations on `Source`: `find` with the exactly-once check and its three operations; `select` with block replace, removal, `before` and `after` under the blank-line rule. `Beamlet.Patch`, in the shape of `Beamlet.Define`: resolve each module as defined or quarantined; read and SHA-256 each source; apply the patches in order, re-parsing per `select`; refuse a `defmodule` rename; format, scan and docs-gate each module's result on its own; hand the modules and the hashes to the code server. The code server's define gains the hashes and the patch kind as options: the compare inside the lane, a missing file counting as changed, the `Patched X: ...` summary line and the `patch:` commit subject in `Beamlet.Code.Audit`. A no-op patch is a summary and an empty commit.
+**Builds.** The splice operations on `Source`: `find` with the exactly-once check and its three operations; `select` with block replace, removal, `before` and `after` under the blank-line rule. `Beamlet.Patch`, in the shape of `Beamlet.Define`: resolve each module as defined or quarantined; read and SHA-256 each source; apply the patches in order, re-parsing per `select`; refuse a `defmodule` rename; format, scan and docs-gate each module's result on its own; hand the modules and the hashes to the code server. The code server's define gains the hashes and the patch kind as options: the compare inside the lane, a missing file counting as changed, the `Patched X` line with § 3's bullets beneath it and the `patch:` commit subject in `Beamlet.Code.Audit`. A no-op patch is a summary and an empty commit.
 
 **Tests.** At the runtime level, as `define_test` is: each anchor with each operation; order of application; a failing second patch failing the whole call with nothing changed; a quarantined module patched by `find` and refused by `select`; a pending migration patched and an applied one refused; the rename refusal; each teaching error, the formatted-source hint included; a stale read refused and its retry succeeding; a module removed in the window refused; the no-op case; the summary's diff line.
 

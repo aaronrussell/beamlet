@@ -83,6 +83,32 @@ defmodule Host.CodeTest do
       assert result =~ "defmodule #{ns}.Note do"
     end
 
+    test "print_outline and print_source read a module in pieces", ctx do
+      {ns, _mod} = define_note!(ctx.principal)
+
+      code = """
+      Host.Code.print_outline(#{ns}.Note)
+      Host.Code.print_source(#{ns}.Note, :text)
+      Host.Code.print_source(#{ns}.Note, :text, 0)
+      Host.Code.print_source(#{ns}.Note, 1..1)
+      """
+
+      assert {:ok, result} = Eval.run(code, ctx.principal)
+
+      assert result =~ "#{ns}.Note — lib/"
+      assert result =~ ~r/^  4-5  def text\/0$/m
+      assert result =~ ~s|  @doc "The note."\n  def text, do: "remember"\n|
+      assert result =~ "\ndefmodule #{ns}.Note do\n"
+      assert String.ends_with?(result, "=> :ok")
+    end
+
+    test "print_source refuses a range that is not ascending", ctx do
+      {ns, _mod} = define_note!(ctx.principal)
+
+      assert {:error, error} = Eval.run("Host.Code.print_source(#{ns}.Note, 3..1)", ctx.principal)
+      assert error =~ "print_source takes an ascending range of lines"
+    end
+
     test "a denied module raises the teaching copy as an eval error", ctx do
       assert {:error, error} = Eval.run("Host.Code.print_docs(Phoenix.PubSub)", ctx.principal)
 
@@ -164,6 +190,10 @@ defmodule Host.CodeTest do
             &Host.Code.print_policy/0,
             fn -> Host.Code.print_docs(Enum) end,
             fn -> Host.Code.print_source(Enum) end,
+            fn -> Host.Code.print_source(Enum, :map) end,
+            fn -> Host.Code.print_source(Enum, 1..2) end,
+            fn -> Host.Code.print_source(Enum, :map, 2) end,
+            fn -> Host.Code.print_outline(Enum) end,
             fn -> Host.Code.remove(Enum) end
           ] do
         assert_raise RuntimeError,

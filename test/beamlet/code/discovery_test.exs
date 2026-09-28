@@ -336,4 +336,142 @@ defmodule Beamlet.Code.DiscoveryTest do
       assert message =~ "nothing named No.Such.Module exists on your beamlet"
     end
   end
+
+  # A hand-written file in the code dir, quarantined at boot because
+  # it does not compile, that still parses (or not, as `source` says).
+  defp quarantine_source!(data_dir, name, source) do
+    file = Path.join(data_dir, "code/lib/#{name}.ex")
+    File.write!(file, source)
+    ExUnit.CaptureLog.capture_log(fn -> quiet(fn -> restart_code_server() end) end)
+    file
+  end
+
+  describe "outline/2" do
+    test "renders a defined module's items with their lines", ctx do
+      {ns, mod} = define_greeter!(ctx.principal)
+      path = "lib/#{Macro.underscore(mod)}.ex"
+
+      assert {:ok, text} = Discovery.outline(effective(), mod)
+
+      assert text ==
+               Enum.join(
+                 [
+                   "#{ns}.Greeter — #{path}, 14 lines",
+                   "  8-9    def hello/1",
+                   "  11-12  def bye/1",
+                   "  13     def bye/2"
+                 ],
+                 "\n"
+               )
+    end
+
+    test "renders a quarantined module that parses", ctx do
+      {ns, mod, _file} = quarantine!(ctx.data_dir)
+
+      assert {:ok, text} = Discovery.outline(effective(), mod)
+
+      assert text == "#{ns}.Bad — lib/bad.ex, 4 lines\n  3  def broken/0"
+    end
+
+    test "a module that does not parse names the line and the range read", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Torn])
+      purge_on_exit([mod])
+
+      quarantine_source!(ctx.data_dir, "torn", """
+      defmodule #{ns}.Torn do
+        @moduledoc "Torn."
+        def x do
+      end
+      """)
+
+      assert {:error, message} = Discovery.outline(effective(), mod)
+
+      assert message ==
+               "#{ns}.Torn does not parse — lib/torn.ex:1: missing terminator: end\n" <>
+                 "    defmodule #{ns}.Torn do\n" <>
+                 "Read it by line range instead: Host.Code.print_source(#{ns}.Torn, 1..4)"
+    end
+
+    test "beamlet modules and unknown modules get source's errors" do
+      assert {:error, message} = Discovery.outline(effective(), Enum)
+      assert message =~ "defined modules only"
+
+      assert {:error, message} = Discovery.outline(effective(), No.Such.Module)
+      assert message =~ "nothing named No.Such.Module exists on your beamlet"
+    end
+  end
+
+  describe "function/4" do
+    test "prints every arity of a function, then one", ctx do
+      {_ns, mod} = define_greeter!(ctx.principal)
+
+      assert {:ok, text} = Discovery.function(effective(), mod, :bye, :any)
+
+      assert text ==
+               ~s|  @doc "Waves goodbye, once or several times."\n| <>
+                 ~s|  def bye(name), do: "bye \#{name}"\n\n| <>
+                 ~s|  def bye(name, times), do: String.duplicate("bye ", times) <> name|
+
+      assert {:ok, text} = Discovery.function(effective(), mod, :bye, 2)
+      assert text == ~s|  def bye(name, times), do: String.duplicate("bye ", times) <> name|
+    end
+
+    test "a missing function lists the module's functions", ctx do
+      {ns, mod} = define_greeter!(ctx.principal)
+
+      assert {:error, message} = Discovery.function(effective(), mod, :wave, :any)
+
+      assert message ==
+               "#{ns}.Greeter has no function wave — Host.Code.print_outline(#{ns}.Greeter) " <>
+                 "lists what it has: hello/1, bye/1, bye/2"
+
+      assert {:error, message} = Discovery.function(effective(), mod, :bye, 3)
+      assert message =~ "#{ns}.Greeter has no function bye/3 — "
+    end
+
+    test "a scattered function is refused with the range read", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Scattered])
+      purge_on_exit([mod])
+
+      quarantine_source!(ctx.data_dir, "scattered", """
+      defmodule #{ns}.Scattered do
+        @moduledoc "Scattered."
+        def a(1), do: 1
+        def b, do: 2
+        def a(2), do: 2
+      end
+      """)
+
+      assert {:error, message} = Discovery.function(effective(), mod, :a, :any)
+
+      assert message ==
+               "#{ns}.Scattered.a/1 has clauses separated by other definitions, so it cannot " <>
+                 "be printed as one block — Host.Code.print_outline(#{ns}.Scattered) shows " <>
+                 "where each clause is; read them with " <>
+                 "Host.Code.print_source(#{ns}.Scattered, first..last)"
+
+      assert {:ok, "  def b, do: 2"} = Discovery.function(effective(), mod, :b, 0)
+    end
+  end
+
+  describe "lines/3" do
+    test "prints an inclusive range, clamping the end", ctx do
+      {ns, mod} = define_greeter!(ctx.principal)
+
+      assert {:ok, text} = Discovery.lines(effective(), mod, 1..2)
+      assert text == "defmodule #{ns}.Greeter do\n  @moduledoc \"\"\""
+
+      assert {:ok, text} = Discovery.lines(effective(), mod, 13..40)
+      assert text == ~s|  def bye(name, times), do: String.duplicate("bye ", times) <> name\nend|
+    end
+
+    test "a range starting past the end is refused with the line count", ctx do
+      {ns, mod} = define_greeter!(ctx.principal)
+
+      assert {:error, message} = Discovery.lines(effective(), mod, 15..20)
+      assert message == "#{ns}.Greeter has 14 lines — the range starts past the end"
+    end
+  end
 end

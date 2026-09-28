@@ -165,7 +165,7 @@ defmodule Beamlet.DefineTest do
 
       replacement = String.replace(code, "do: 1", "do: 2")
 
-      assert {:ok, "Defined #{ns}.Counter (replaced)"} ==
+      assert {:ok, "Defined #{ns}.Counter (replaced)\n  - changed count/0"} ==
                define(replacement, principal, replace: true)
 
       assert apply(mod, :count, []) == 2

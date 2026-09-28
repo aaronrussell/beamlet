@@ -74,7 +74,7 @@ defmodule Beamlet.MCP.ServerTest do
     assert %{"isError" => false, "content" => [%{"type" => "text", "text" => text}]} =
              MCPClient.call_tool(client, "define", %{modules: [%{code: code, replace: true}]})
 
-    assert text == "Defined #{ns}.Greeter (replaced)"
+    assert text == "Defined #{ns}.Greeter (replaced)\n  - unchanged"
   end
 
   test "a define that fails the docs gate is an error result", %{token: token} do

@@ -1,8 +1,9 @@
 defmodule Beamlet.Code.Discovery do
   @moduledoc false
 
-  # The rendering behind Host.Code: the listing, the docs and the
-  # source. Every function takes the effective policy, the principal's
+  # The rendering behind Host.Code: the listing, the docs, the source
+  # and its pieces, the outline, a function and a line range. Every
+  # function takes the effective policy, the principal's
   # policy with the defined modules merged in (Beamlet.Policy.grant/2),
   # so a defined module is granted like any other and needs no special
   # case; it returns {:ok, text} or {:error, text}, and Host.Code
@@ -20,6 +21,7 @@ defmodule Beamlet.Code.Discovery do
   # points at. A refused module gets the scanner's copy, so print_docs
   # teaches what a refused call does.
 
+  alias Beamlet.Code.Source
   alias Beamlet.Policy
   alias Beamlet.Policy.Default
   alias Beamlet.Scanner
@@ -100,11 +102,72 @@ defmodule Beamlet.Code.Discovery do
 
   @spec source(Policy.t(), module()) :: {:ok, String.t()} | {:error, String.t()}
   def source(%Policy{} = policy, module) do
+    with {:ok, _path, contents} <- read_source(policy, module) do
+      {:ok, String.trim_trailing(contents)}
+    end
+  end
+
+  # ── Reading in pieces ─────────────────────────────────────────────
+
+  # The outline is the map an agent reads before a function print or
+  # a patch: one row per top-level item with the lines it spans, a
+  # function's row covering all its clauses and the docs above them.
+  # It shows what the module is made of and hides how: the moduledoc
+  # and the attributes holding values have no row, and the gap they
+  # leave is read by range. Function and range prints are the stored
+  # text verbatim, with no line-number gutter, so what an agent copies
+  # from them matches the source byte for byte.
+
+  @hidden_kinds [:doc, :attribute]
+
+  @spec outline(Policy.t(), module()) :: {:ok, String.t()} | {:error, String.t()}
+  def outline(%Policy{} = policy, module) do
+    with {:ok, path, contents} <- read_source(policy, module),
+         {:ok, items} <- parsed(module, path, contents, Source.outline(contents)) do
+      {:ok, render_outline(module, path, contents, items)}
+    end
+  end
+
+  @spec function(Policy.t(), module(), atom(), arity() | :any) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def function(%Policy{} = policy, module, fun, arity) do
+    with {:ok, path, contents} <- read_source(policy, module),
+         {:ok, items} <- parsed(module, path, contents, Source.outline(contents)) do
+      functions = Enum.filter(items, &(&1.name != nil))
+      matches = Enum.filter(functions, &(&1.name == fun and (arity == :any or &1.arity == arity)))
+
+      scattered =
+        matches
+        |> Enum.group_by(& &1.arity)
+        |> Enum.filter(fn {_arity, pieces} -> length(pieces) > 1 end)
+        |> Enum.map(fn {arity, _pieces} -> arity end)
+        |> Enum.sort()
+
+      cond do
+        matches == [] -> {:error, no_source_function(module, fun, arity, functions)}
+        scattered != [] -> {:error, scattered_function(module, fun, hd(scattered))}
+        true -> {:ok, Enum.map_join(matches, "\n\n", & &1.text)}
+      end
+    end
+  end
+
+  @spec lines(Policy.t(), module(), Range.t()) :: {:ok, String.t()} | {:error, String.t()}
+  def lines(%Policy{} = policy, module, first..last//1) do
+    with {:ok, _path, contents} <- read_source(policy, module) do
+      count = Source.line_count(contents)
+
+      if first > count,
+        do: {:error, "#{inspect(module)} has #{count} lines — the range starts past the end"},
+        else: {:ok, Source.lines(contents, first..min(last, count)//1)}
+    end
+  end
+
+  defp read_source(policy, module) do
     case source_file(module) do
       {:ok, source_file} ->
         case File.read(source_file) do
           {:ok, contents} ->
-            {:ok, String.trim_trailing(contents)}
+            {:ok, Path.relative_to(source_file, Beamlet.Config.code_dir()), contents}
 
           {:error, reason} ->
             {:error, "could not read the source of #{inspect(module)} (#{inspect(reason)})"}
@@ -136,6 +199,41 @@ defmodule Beamlet.Code.Discovery do
         end
     end
   end
+
+  # Only a quarantined module can fail to parse. The range print is
+  # the read that still works on it.
+  defp parsed(_module, _path, _contents, {:ok, items}), do: {:ok, items}
+
+  defp parsed(module, path, contents, {:error, {line, message}}) do
+    {:error,
+     "#{inspect(module)} does not parse — #{Scanner.locate(contents, path, line, message)}\n" <>
+       "Read it by line range instead: Host.Code.print_source(#{inspect(module)}, " <>
+       "1..#{Source.line_count(contents)})"}
+  end
+
+  defp render_outline(module, path, contents, items) do
+    rows =
+      items
+      |> Enum.reject(&(&1.kind in @hidden_kinds))
+      |> Enum.map(fn item -> {range_text(item.range), row_label(item)} end)
+
+    width =
+      rows |> Enum.map(fn {range, _label} -> String.length(range) end) |> Enum.max(fn -> 0 end)
+
+    [
+      "#{inspect(module)} — #{path}, #{Source.line_count(contents)} lines"
+      | Enum.map(rows, fn {range, label} -> "  #{String.pad_trailing(range, width)}  #{label}" end)
+    ]
+    |> Enum.join("\n")
+  end
+
+  defp range_text(first..first//1), do: "#{first}"
+  defp range_text(first..last//1), do: "#{first}-#{last}"
+
+  defp row_label(%{clauses: clauses, label: label}) when is_integer(clauses) and clauses > 1,
+    do: "#{label} (#{clauses} clauses)"
+
+  defp row_label(%{label: label}), do: label
 
   # ── Resolution ────────────────────────────────────────────────────
 
@@ -453,4 +551,22 @@ defmodule Beamlet.Code.Discovery do
 
   defp arity_suffix(:any), do: ""
   defp arity_suffix(arity), do: "/#{arity}"
+
+  defp no_source_function(module, fun, arity, []) do
+    "#{inspect(module)} has no function #{fun}#{arity_suffix(arity)} — it defines no " <>
+      "functions; Host.Code.print_outline(#{inspect(module)}) shows what it holds"
+  end
+
+  defp no_source_function(module, fun, arity, functions) do
+    "#{inspect(module)} has no function #{fun}#{arity_suffix(arity)} — " <>
+      "Host.Code.print_outline(#{inspect(module)}) lists what it has: " <>
+      Enum.map_join(functions, ", ", &Source.fa/1)
+  end
+
+  defp scattered_function(module, fun, arity) do
+    "#{inspect(module)}.#{fun}/#{arity} has clauses separated by other definitions, so it " <>
+      "cannot be printed as one block — Host.Code.print_outline(#{inspect(module)}) shows " <>
+      "where each clause is; read them with Host.Code.print_source(#{inspect(module)}, " <>
+      "first..last)"
+  end
 end
