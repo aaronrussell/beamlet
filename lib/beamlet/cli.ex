@@ -88,7 +88,6 @@ defmodule Beamlet.CLI do
   @shapes Enum.map(@commands, fn {command, args, description} ->
             {String.trim("#{command} #{args}"), description}
           end)
-  @width @shapes |> Enum.map(fn {shape, _} -> String.length(shape) end) |> Enum.max()
 
   @usage """
   Usage: beamlet COMMAND [ARGS]
@@ -97,7 +96,7 @@ defmodule Beamlet.CLI do
   lowercase letters, digits, underscores and hyphens; tokens are
   addressed by the id `beamlet tokens` prints.
 
-  #{Enum.map_join(@shapes, "\n", fn {shape, description} -> "  " <> String.pad_trailing(shape, @width + 2) <> description end)}
+  #{Enum.map_join(@shapes, "\n", fn {shape, description} -> "  #{shape}\n      #{description}" end)}
   """
 
   @doc """
