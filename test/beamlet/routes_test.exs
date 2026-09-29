@@ -200,13 +200,15 @@ defmodule Beamlet.RoutesTest do
       assert html =~ "id=7"
     end
 
-    test "an agent page renders in the agent layout, styled from the CDN", ctx do
+    test "an agent page renders in the agent layout, styled from the CDN, on a canvas for both modes",
+         ctx do
       add_hello!(ctx)
       assert :ok = Routes.regenerate()
 
       html = ctx.conn |> get("/hello/7") |> html_response(200)
 
       assert html =~ "cdn.jsdelivr.net/npm/@tailwindcss/browser"
+      assert html =~ ~s(<body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">)
       refute html =~ "/beamlet/assets/beamlet.css"
     end
 

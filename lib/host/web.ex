@@ -33,7 +33,10 @@ defmodule Host.Web do
   or `<.link patch={...}>` keeps navigation on the LiveView socket
   where a plain `<a href>` reloads the page. Pages render inside
   your beamlet's layout with Tailwind utility classes available; no
-  stylesheet or asset setup is needed. For live updates, broadcast
+  stylesheet or asset setup is needed. The layout paints the page
+  background and text colour for light and dark mode, following the
+  visitor's system setting, so a page's own `dark:` classes land on a
+  matching canvas. For live updates, broadcast
   from the action that receives the change with `Host.PubSub` and
   subscribe in the LiveView's `mount/3`.
   '''

@@ -10,6 +10,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap");
 @import "tailwindcss" source(none);
 @source "../../lib/beamlet";
+/* The agent layout is styled by the CDN build, not this file. */
+@source not "../../lib/beamlet/web/layouts/root.html.heex";
 
 @theme {
   --color-*: initial;
