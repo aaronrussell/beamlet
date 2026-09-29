@@ -58,6 +58,38 @@ defmodule Beamlet.RouterTest do
     assert conn |> get("/beamlet/login") |> html_response(200) =~ "Sign in"
   end
 
+  test "no agent route answers under /beamlet, whatever the table holds", %{
+    conn: conn,
+    token: token
+  } do
+    %{hello: hello, echo: echo} = Beamlet.RouteFixtures.define!(principal(token))
+
+    for {kind, verb, path, module, action} <- [
+          {:live_view, :get, "/:a/:b", hello, nil},
+          {:live_view, :get, "//beamlet/admin", hello, nil},
+          {:controller, :post, "/*rest", echo, "plain"}
+        ] do
+      {:ok, _route} =
+        Beamlet.Routes.create(%{
+          kind: kind,
+          verb: verb,
+          path: path,
+          module: module,
+          action: action,
+          principal: principal(token)
+        })
+    end
+
+    assert :ok = Beamlet.Routes.regenerate()
+    assert conn |> get("/x/y") |> html_response(200) =~ "hello from HelloLive"
+    assert conn |> post("/elsewhere") |> response(200) == "plain"
+
+    assert conn |> get("/beamlet/logout") |> response(404)
+    assert conn |> get("/beamlet/admin") |> response(404)
+    assert conn |> post("/beamlet") |> response(404)
+    assert conn |> post("/beamlet/anything/else") |> response(404)
+  end
+
   test "the root is an agent's: a pointer to /beamlet until one mounts it", %{
     conn: conn,
     token: token

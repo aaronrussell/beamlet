@@ -52,7 +52,7 @@ defmodule Host.Router do
   @spec live(String.t(), module(), atom() | nil) :: :ok
   def live(path, module, action \\ nil) do
     principal = principal!(:live)
-    validate_path!(path)
+    validate_mount_path!(path)
     ensure_defined!(module)
     ensure_live!(module)
     validate_live_action!(action)
@@ -243,7 +243,7 @@ defmodule Host.Router do
 
   defp mount_action(verb, path, module, action) do
     principal = principal!(verb)
-    validate_path!(path)
+    validate_mount_path!(path)
     validate_action!(action)
     ensure_defined!(module)
     ensure_controller!(module, action)
@@ -462,6 +462,13 @@ defmodule Host.Router do
     raise "the path must be a string starting with /, e.g. \"/todos\" — got: #{inspect(path)}"
   end
 
+  defp validate_mount_path!("/" <> _rest = path) do
+    validate_path!(path)
+    reject_empty_segments!(path)
+  end
+
+  defp validate_mount_path!(path), do: validate_path!(path)
+
   defp reject_reserved!(path) do
     case first_segment(path) do
       "beamlet" ->
@@ -472,14 +479,27 @@ defmodule Host.Router do
       "~" <> rest = segment ->
         raise "paths whose first segment starts with ~ are reserved — #{path} cannot " <>
                 "be mounted. Use a first segment that starts with a letter or a digit, " <>
-                "e.g. #{String.replace_prefix(path, "/" <> segment, "/" <> rest)}"
+                "e.g. #{String.replace_prefix(collapse(path), "/" <> segment, "/" <> rest)}"
 
       _segment ->
         :ok
     end
   end
 
-  defp first_segment("/" <> rest), do: rest |> String.split("/", parts: 2) |> hd()
+  defp first_segment(path), do: path |> String.split("/", trim: true) |> List.first("")
+
+  defp reject_empty_segments!(path) do
+    case collapse(path) do
+      ^path ->
+        :ok
+
+      collapsed ->
+        raise "paths have no empty segments — #{path} would be served at #{collapsed}. " <>
+                "Use #{collapsed}"
+    end
+  end
+
+  defp collapse(path), do: "/" <> (path |> String.split("/", trim: true) |> Enum.join("/"))
 
   defp reject_prefixed!(path) do
     case strip_prefix(path) do

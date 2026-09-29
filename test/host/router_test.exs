@@ -362,6 +362,26 @@ defmodule Host.RouterTest do
         Host.Router.live("/beamlet", mod)
       end
 
+      assert_raise RuntimeError, ~r/\/\/beamlet\/admin cannot be mounted/, fn ->
+        Host.Router.live("//beamlet/admin", mod)
+      end
+
+      assert Routes.list() == []
+    end
+
+    test "refuses an empty segment, naming the path it would be served at", ctx do
+      mod = define_live!(ctx)
+      controller = define_controller!(ctx)
+
+      error = assert_raise RuntimeError, fn -> Host.Router.live("/rt//page", mod) end
+
+      assert error.message =~ "paths have no empty segments"
+      assert error.message =~ "/rt//page would be served at /rt/page. Use /rt/page"
+
+      assert_raise RuntimeError, ~r/\/rt\/hooks\/ would be served at \/rt\/hooks\./, fn ->
+        Host.Router.post("/rt/hooks/", controller, :create)
+      end
+
       assert Routes.list() == []
     end
 

@@ -28,9 +28,11 @@ defmodule Beamlet.Router do
   socket and asset paths below. The one exception is the pair of
   OAuth discovery documents (`Beamlet.OAuth.MetadataController`),
   which the specs fix under `/.well-known` at the root; they are exact
-  paths, matched ahead of the forward. Everything else forwards to the
-  router generated from the routes agents mount (`Beamlet.Routes`), so
-  `/` is an agent's to build and answers 404 until one does.
+  paths, matched ahead of the forward. Any other path under `/beamlet`
+  answers 404 here, whatever the route table holds. Everything else
+  forwards to the router generated from the routes agents mount
+  (`Beamlet.Routes`), so `/` is an agent's to build and answers 404
+  until one does.
 
   The sign-in, the consent page and the home page are the app, the
   beamlet's own inner app, as against the pages agents build. The app
@@ -144,5 +146,6 @@ defmodule Beamlet.Router do
   # 3. MCP and Dynamic Router forwards
 
   forward "/beamlet/mcp", Beamlet.MCP.Plug
+  match :*, "/beamlet/*path", Beamlet.Web.NotFound, []
   forward "/", Beamlet.DynamicRouter
 end
