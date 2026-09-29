@@ -163,7 +163,7 @@ defmodule Beamlet.Code.DiscoveryTest do
       assert {:ok, text} = Discovery.list(effective())
 
       assert text =~
-               ~r/^  #{ns}\.Bad — quarantined: .*undefined_local.* \(define it again with replace: true, or Host\.Code\.remove it\)$/m
+               ~r/^  #{ns}\.Bad — quarantined: .*undefined_local.* \(patch it, define it again with replace: true, or Host\.Code\.remove it\)$/m
     end
 
     test "renders placeholders for empty sections" do

@@ -371,8 +371,8 @@ defmodule Beamlet.Code.Discovery do
 
   defp quarantined_lines do
     for entry <- Beamlet.Code.quarantined(), mod <- entry.modules do
-      "  #{inspect(mod)} — quarantined: #{entry.error} (define it again with " <>
-        "replace: true, or Host.Code.remove it)"
+      "  #{inspect(mod)} — quarantined: #{entry.error} (patch it, define it again " <>
+        "with replace: true, or Host.Code.remove it)"
     end
   end
 
