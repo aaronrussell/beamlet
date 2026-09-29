@@ -200,24 +200,30 @@ defmodule Beamlet.Policy.DefaultTest do
       refute Policy.allowed?(policy, Ecto.Migrator)
     end
 
-    test "names the framework modules and describes the packages" do
+    test "names the framework modules" do
       assert Phoenix.LiveView in Default.framework_modules()
       assert Ecto.Query in Default.framework_modules()
-      refute Req in Default.framework_modules()
-
-      assert Default.package_description(:req) =~ "HTTP client"
-      assert Default.package_description(:jason) == nil
+      refute Req.Response in Default.framework_modules()
     end
 
     test "expands the shipped packages, hidden modules excluded", %{policy: policy} do
-      assert Default.packages() == [:jason, :req]
-      assert policy.grants[Req] == :all
-      assert policy.grants[Req.Response] == :all
+      assert Default.packages() == [:jason]
       assert policy.grants[Jason] == :all
       # No moduledoc at all still grants; @moduledoc false does not.
-      assert policy.grants[Req.Test.OwnershipError] == :all
-      refute Policy.allowed?(policy, Req.Utils)
-      refute Policy.allowed?(policy, Req.Application)
+      assert policy.grants[Jason.OrderedObject] == :all
+      refute Policy.allowed?(policy, Jason.Decoder)
+      refute Policy.allowed?(policy, Jason.Codegen)
+    end
+
+    test "HTTP goes through Host.HTTP, with Req's response and exceptions", %{policy: policy} do
+      assert policy.grants[Host.HTTP] == :all
+      assert policy.grants[Req.Response] == :all
+      assert policy.grants[Req.TransportError] == :all
+      assert policy.grants[Req.HTTPError] == :all
+
+      for mod <- [Req, Req.Request, Req.Steps, Req.Finch, Req.Test, Req.Response.Async] do
+        refute Policy.allowed?(policy, mod), "#{inspect(mod)} should not be granted"
+      end
     end
   end
 

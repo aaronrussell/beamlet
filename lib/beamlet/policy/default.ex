@@ -206,6 +206,21 @@ defmodule Beamlet.Policy.Default do
                        match?(%{__exception__: true}, mod.__struct__()),
                        do: mod
 
+  # What Host.HTTP returns and raises. Req itself is not granted:
+  # its options are data that make Req's own code call any module,
+  # plug, socket or file (base_url, auth and aws_sigv4 take
+  # {mod, fun, args}; plug, unix_socket, cache_dir, netrc), and every
+  # request Req builds carries its step funs, which agent code could
+  # call by hand. Host.HTTP takes Req's arguments and checks them;
+  # the response struct and the exceptions are inert data.
+  @http %{Req.Response => :all}
+
+  @http_exceptions for mod <- Application.spec(:req, :modules) || [],
+                       Code.ensure_loaded?(mod),
+                       function_exported?(mod, :__struct__, 0),
+                       match?(%{__exception__: true}, mod.__struct__()),
+                       do: mod
+
   # The host stdlib, one row per module. Every module but Host.Repo
   # is granted whole: each function is meant for agent code, and
   # remove stays in step with the tools by the operator's choice
@@ -219,6 +234,7 @@ defmodule Beamlet.Policy.Default do
   @host %{
     Host.Code => :all,
     Host.File => :all,
+    Host.HTTP => :all,
     Host.KV => :all,
     Host.Migrator => :all,
     Host.PubSub => :all,
@@ -241,21 +257,25 @@ defmodule Beamlet.Policy.Default do
   # per-module entries when the table is built, @moduledoc false
   # modules excluded. Jason rides alongside Elixir's own JSON module:
   # models that predate JSON reach for Jason by training prior, and
-  # turning them away teaches nothing. A description is for the
-  # discovery listing where the package's own says nothing: Req's
-  # .app description is its bare name and its moduledoc opens "The
-  # high-level API."
-  @packages [
-    :jason,
-    {:req, description: "Req is a batteries-included HTTP client for Elixir."}
-  ]
+  # turning them away teaches nothing.
+  @package_names [:jason]
 
-  @package_descriptions Map.new(@packages, fn
-                          {app, opts} -> {app, opts[:description]}
-                          app -> {app, nil}
-                        end)
-
-  @package_names Map.keys(@package_descriptions)
+  # Commented out while no shipped package needs a curated description:
+  # with none set, package_description/1 always returns nil and the
+  # compiler flags the fallback in Beamlet.Code.Discovery as dead code.
+  # A description is for the discovery listing where the package's own
+  # says nothing, written as {app, description: "..."} in @packages.
+  # Restore this, package_description/1 and its call in discovery
+  # together.
+  #
+  # @packages [:jason]
+  #
+  # @package_descriptions Map.new(@packages, fn
+  #                         {app, opts} -> {app, opts[:description]}
+  #                         app -> {app, nil}
+  #                       end)
+  #
+  # @package_names Map.keys(@package_descriptions)
 
   # The language's self-reference: __MODULE__ is always the module
   # being defined, granted by construction. Keyed by the sentinel the
@@ -269,6 +289,8 @@ defmodule Beamlet.Policy.Default do
            |> Map.merge(@web)
            |> Map.merge(@data)
            |> Map.merge(Map.new(@data_exceptions, &{&1, :all}))
+           |> Map.merge(@http)
+           |> Map.merge(Map.new(@http_exceptions, &{&1, :all}))
            |> Map.merge(@host)
            |> Map.merge(@language)
 
@@ -358,7 +380,7 @@ defmodule Beamlet.Policy.Default do
     {"environment and application config may hold credentials",
      [Application, Config, Config.Provider, Config.Reader, :application]},
     {"shell and OS access", [Port, :os]},
-    {"raw network access; Req carries the HTTP story",
+    {"raw network access; Host.HTTP carries the HTTP story",
      [:gen_sctp, :gen_tcp, :gen_udp, :inet, :inet_res, :net, :socket]},
     {"parsing, evaluation, and compilation of code",
      [
@@ -505,6 +527,18 @@ defmodule Beamlet.Policy.Default do
 
   #{@join_names.(@data_exceptions)}
 
+  ## Granted: HTTP
+
+  What `Host.HTTP` returns and raises. Req itself is not granted:
+  `Host.HTTP` takes its arguments and checks the options Req would
+  act on.
+
+  #{@join_names.(Map.keys(@http))}
+
+  Req's exception structs, granted as a family:
+
+  #{@join_names.(@http_exceptions)}
+
   ## Granted: host stdlib
 
   Each `Host.*` module joins here as it lands.
@@ -555,9 +589,11 @@ defmodule Beamlet.Policy.Default do
   @spec packages() :: [atom()]
   def packages, do: @package_names
 
-  @doc "The curated description of a shipped package for the discovery listing, or nil to use the package's own."
-  @spec package_description(atom()) :: String.t() | nil
-  def package_description(app), do: Map.get(@package_descriptions, app)
+  # Commented out with @package_descriptions above.
+  #
+  # @doc "The curated description of a shipped package for the discovery listing, or nil to use the package's own."
+  # @spec package_description(atom()) :: String.t() | nil
+  # def package_description(app), do: Map.get(@package_descriptions, app)
 
   @doc """
   The framework modules: the curated web and data authoring surface,

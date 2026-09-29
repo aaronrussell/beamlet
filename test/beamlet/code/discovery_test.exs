@@ -82,7 +82,9 @@ defmodule Beamlet.Code.DiscoveryTest do
       assert text =~ ~r/\bPlug\.Conn$/m
       refute text =~ ~r/^  Phoenix\.LiveView — /m
       refute text =~ "Phoenix.Flash (:phoenix)"
-      assert text =~ ~r/^  Req \(:req\) — Req is a batteries-included HTTP client/m
+      assert text =~ ~r/^  Host\.HTTP — HTTP requests with Req's arguments/m
+      assert text =~ ~r/^  Req\.Response \(:req\) — The response struct\.$/m
+      refute text =~ ~r/^  Req \(:req\)/m
       assert text =~ ~r/^  Jason \(:jason\) — A blazing fast JSON parser/m
       refute text =~ ~r/^  Req\.Steps\b/m
       refute text =~ ~r/^  Enum\b/m

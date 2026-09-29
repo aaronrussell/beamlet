@@ -65,6 +65,13 @@ defmodule Beamlet.Policy.SignageTest do
       assert Signage.hint(policy, Code) == nil
     end
 
+    test "Req redirects to Host.HTTP while the policy grants it" do
+      assert Signage.hint(Policy.default(), Req) =~ "HTTP requests are made with Host.HTTP"
+
+      {:ok, policy} = Policy.build(:x, deny: [Host.HTTP])
+      assert Signage.hint(policy, Req) == nil
+    end
+
     test "a closure fires under any policy" do
       {:ok, policy} = Policy.build(:x, tools: [], deny: [Host.Repo])
       assert Signage.hint(policy, Task) =~ "process primitives are withheld as a family"

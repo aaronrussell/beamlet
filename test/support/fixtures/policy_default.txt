@@ -73,6 +73,7 @@ Function except capture/3
 FunctionClauseError :all
 Host.Code :all
 Host.File :all
+Host.HTTP :all
 Host.KV :all
 Host.Migrator :all
 Host.PubSub :all
@@ -131,26 +132,14 @@ Range :all
 Record :all
 Regex :all
 Regex.CompileError :all
-Req :all
 Req.ArchiveError :all
-Req.Brotli :all
 Req.ChecksumMismatchError :all
 Req.DecompressError :all
-Req.Finch :all
-Req.Gzip :all
 Req.HTTPError :all
-Req.Plug :all
-Req.Request :all
 Req.Response :all
-Req.Response.Async :all
-Req.Steps :all
-Req.Tar :all
-Req.Test :all
 Req.Test.OwnershipError :all
 Req.TooManyRedirectsError :all
 Req.TransportError :all
-Req.ZIP :all
-Req.Zstd :all
 RuntimeError :all
 Stream :all
 String except to_atom/1, to_existing_atom/1

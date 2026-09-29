@@ -38,6 +38,9 @@ defmodule Beamlet.Policy.Signage do
     routing: {"the URL surface is managed through Host.Router", Host.Router},
     pubsub: {"publish/subscribe goes through Host.PubSub", Host.PubSub},
     migrations: {"migrations are run through Host.Migrator", Host.Migrator},
+    http:
+      {"HTTP requests are made with Host.HTTP, which takes Req's arguments and returns a " <>
+         "Req.Response", Host.HTTP},
     data:
       {"the agent database is reached through Host.Repo; raw SQL is Host.Repo.query!(sql)",
        Host.Repo}
@@ -78,6 +81,9 @@ defmodule Beamlet.Policy.Signage do
     Plug.Router => :routing,
     Phoenix.PubSub => :pubsub,
     Ecto.Migrator => :migrations,
+    Req => :http,
+    Req.Request => :http,
+    Req.Finch => :http,
     Ecto.Repo => :data,
     Ecto.Adapters.SQL => :data
   }

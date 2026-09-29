@@ -22,7 +22,7 @@ defmodule Beamlet.Policy do
             tools: [:eval],
             rules: [allow_dynamic_dispatch: true],
             allow: [Task, {File, only: [read: 1]}],
-            deny: [Host.Repo, Req, Req.Request]
+            deny: [Host.Repo, Host.HTTP]
           ]
         ]
 
