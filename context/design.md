@@ -2,7 +2,7 @@
 
 **Status:** Working note, deliberately light. It records what is settled and why, one decision at a time as the code lands. Nothing is carried over from `../omni_host` unexamined. History lives in git; this note keeps the decisions and the reasons that still bear on the next one, and an alternative only where someone would plausibly propose it again.
 
-**Last updated:** 2026-09-29 (patch folded in: the module as the unit of define, the patch tool, reading in pieces, define as two tools in one)
+**Last updated:** 2026-09-29 (first patch walkthrough: commit bodies, the agent layout's canvas, what the walkthrough showed about patch)
 
 ---
 
@@ -346,7 +346,7 @@ Decided as each step arrives, not before:
 - Whether `eval` declares its output cap to Claude Code through the `anthropic/maxResultSizeChars` tool annotation, which Anubis's tool components support; not yet worth a line. An occasional human read of the instructions and descriptions is `bin/beamlet_server rpc 'IO.puts Beamlet.MCP.Server.server_instructions()'`.
 - Packaging the three web fonts rather than loading them from Google.
 - What a view test should and should not cover, to be written down once the admin pages give it a second case.
-- Patch, after the walkthroughs: whether a precise JSON Schema for the one-anchor, one-operation rule guides models better than the prose, reachable by writing the component as a plain `Anubis.Server.Component.Tool` at the cost of two `@doc false` names; a `select` on attributes and a `replace_all` for renames, each if a session shows the need. `find` with `before` or `after` is allowed for the uniform rule and nothing is expected to use it.
+- Patch, after the walkthroughs. A precise JSON Schema, reachable by writing the component as a plain `Anubis.Server.Component.Tool` at the cost of two `@doc false` names, now has two reasons: whether the one-anchor, one-operation rule guides models better than the prose, and unknown keys. Anubis validates arguments with Peri in `:strict` mode, which drops keys outside the schema rather than refusing them, and the published schema carries no `additionalProperties: false`, so a model is neither told nor corrected; a hand-written schema could say so and the component refuse the key with a teaching error. A `select` on attributes and a `replace_all` for renames, each if a session shows the need: the first walkthrough (2026-09-29, GPT 6 Sol in Raycast) sent a `replaceall` key once, dropped as above, and the several-matches refusal caught it, one signal and not yet two. The same walkthrough contradicted the expectation that nothing would use `find` with `before` or `after`: it was the model's usual way to insert, including a new function, where `select` with `after` was expected; `select` appeared once, removing a function.
 
 ## 4. Deferred
 
