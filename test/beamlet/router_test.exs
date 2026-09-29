@@ -64,11 +64,13 @@ defmodule Beamlet.RouterTest do
   } do
     assert conn |> get("/") |> response(404) =~ "your beamlet has its own pages at /beamlet"
 
+    %{hello: hello} = Beamlet.RouteFixtures.define!(principal(token))
+
     {:ok, _route} =
       Beamlet.Routes.create(%{
         kind: :live_view,
         path: "/",
-        module: "Beamlet.RouteFixtures.HelloLive",
+        module: hello,
         principal: principal(token)
       })
 

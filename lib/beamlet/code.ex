@@ -157,19 +157,19 @@ defmodule Beamlet.Code do
   end
 
   @doc """
-  Compiles derived source, the router `Beamlet.Routes` generates, in
-  this process's lane, so it never interleaves with a define or a
-  boot compile: the compiler options and tracers it swaps are
-  VM-global. The modules load into the VM; nothing is written to
-  disk, no policy gate runs, no edges are recorded and the server's
-  state is untouched. A compile failure returns the error and the
-  previously loaded version keeps serving.
+  Compiles derived quoted form, the router `Beamlet.Routes`
+  generates, in this process's lane, so it never interleaves with a
+  define or a boot compile: the compiler options and tracers it
+  swaps are VM-global. The modules load into the VM; nothing is
+  written to disk, no policy gate runs and no edges are recorded. A
+  compile failure returns the error and puts back the last version
+  this server compiled from the same file, so it keeps serving.
   """
-  @spec compile_artifact(String.t(), String.t()) :: {:ok, [module()]} | {:error, String.t()}
-  def compile_artifact(source, file) when is_binary(source) and is_binary(file) do
+  @spec compile_artifact(Macro.t(), String.t()) :: {:ok, [module()]} | {:error, String.t()}
+  def compile_artifact(quoted, file) when is_binary(file) do
     GenServer.call(
       __MODULE__,
-      {:compile_artifact, source, file},
+      {:compile_artifact, quoted, file},
       Config.define()[:timeout] + 5_000
     )
   end
@@ -236,7 +236,8 @@ defmodule Beamlet.Code do
       modules: %{},
       deps: %{},
       calls: %{},
-      quarantined: []
+      quarantined: [],
+      artifacts: %{}
     }
 
     state = boot_load(state)
@@ -278,19 +279,26 @@ defmodule Beamlet.Code do
 
   # An empty root set keeps the tracer out of it: nothing in a derived
   # artifact is an edge between defined modules.
-  def handle_call({:compile_artifact, source, file}, _from, state) do
+  def handle_call({:compile_artifact, quoted, file}, _from, state) do
     ctx = %{roots: MapSet.new(), granted: MapSet.new()}
 
     result =
       with_compiler_env(ctx, fn ->
         try do
-          {:ok, source |> Code.compile_string(file) |> Enum.map(&elem(&1, 0))}
+          {:ok, Code.compile_quoted(quoted, file)}
         rescue
           exception -> {:error, Exception.message(exception)}
         end
       end)
 
-    {:reply, result, state}
+    case result do
+      {:ok, compiled} ->
+        {:reply, {:ok, Enum.map(compiled, &elem(&1, 0))}, put_in(state.artifacts[file], compiled)}
+
+      {:error, _message} = error ->
+        restore_artifact(Map.get(state.artifacts, file, []), file)
+        {:reply, error, state}
+    end
   end
 
   def handle_call(:deps, _from, state), do: {:reply, state.deps, state}
@@ -1331,6 +1339,16 @@ defmodule Beamlet.Code do
   # warnings are noise for a deliberate replace. Both are VM-global
   # compiler options, like the tracer: set only around the server's
   # serialized compiles, restored after.
+  # A module body that raises partway through a compile unloads the
+  # module's previous version, so the last good binaries go back in.
+  # With none, the module loads again from its compiled-in version.
+  defp restore_artifact(compiled, file) do
+    Enum.each(compiled, fn {mod, binary} ->
+      :code.purge(mod)
+      {:module, ^mod} = :code.load_binary(mod, String.to_charlist(file), binary)
+    end)
+  end
+
   defp with_compiler_env(ctx, fun) do
     previous_tracers = Tracer.install(ctx)
     previous_docs = Code.get_compiler_option(:docs)

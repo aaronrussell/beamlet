@@ -9,10 +9,8 @@ defmodule Beamlet.RoutesTest do
   import Phoenix.LiveViewTest
 
   alias Beamlet.Route
+  alias Beamlet.RouteFixtures
   alias Beamlet.Routes
-
-  @hello "Beamlet.RouteFixtures.HelloLive"
-  @echo "Beamlet.RouteFixtures.EchoController"
 
   setup %{token: token} do
     principal = principal(token)
@@ -20,7 +18,12 @@ defmodule Beamlet.RoutesTest do
     %{
       conn: build_conn(),
       principal: principal,
-      live_attrs: %{kind: :live_view, path: "/hello/:id", module: @hello, principal: principal},
+      live_attrs: %{
+        kind: :live_view,
+        path: "/hello/:id",
+        module: "My.HelloLive",
+        principal: principal
+      },
       controller_attrs: %{
         kind: :controller,
         verb: :post,
@@ -43,7 +46,7 @@ defmodule Beamlet.RoutesTest do
         kind: :controller,
         verb: verb,
         path: path,
-        module: @echo,
+        module: ctx.echo,
         action: action,
         principal: ctx.principal
       })
@@ -169,7 +172,7 @@ defmodule Beamlet.RoutesTest do
 
       assert [^hook, ^show] = Routes.list(path: "/hooks")
       assert [^show] = Routes.list(path: "/hooks", verb: :get)
-      assert [^page] = Routes.list(modules: [@hello, "No.Such"])
+      assert [^page] = Routes.list(modules: ["My.HelloLive", "No.Such"])
       assert [] = Routes.list(modules: [])
     end
 
@@ -180,7 +183,34 @@ defmodule Beamlet.RoutesTest do
     end
   end
 
+  describe "Route.load_changeset/1" do
+    test "a row read back from the table is valid", ctx do
+      {:ok, _route} = Routes.create(ctx.controller_attrs)
+
+      assert [route] = Routes.list()
+      assert Route.load_changeset(route).valid?
+    end
+
+    test "a row with a malformed path, module or action is not" do
+      route = %Route{
+        kind: :controller,
+        verb: :get,
+        path: ~s(/x"),
+        module: "my module",
+        action: "Show()"
+      }
+
+      assert %{path: [_path], module: [_module], action: [_action]} =
+               errors_on(Route.load_changeset(route))
+    end
+  end
+
   describe "the generated router" do
+    setup ctx do
+      %{hello: hello, echo: echo} = RouteFixtures.define!(ctx.principal)
+      %{hello: hello, echo: echo, live_attrs: %{ctx.live_attrs | module: hello}}
+    end
+
     test "the empty generation 404s everything under the forward", %{conn: conn} do
       assert conn |> get("/anything") |> response(404) ==
                "Not Found. Nothing is mounted at this path; your beamlet has its own pages at /beamlet."
@@ -256,7 +286,7 @@ defmodule Beamlet.RoutesTest do
 
       log = capture_log(fn -> assert :ok = Routes.regenerate() end)
 
-      assert log =~ "GET /ghost is not served: No.Such.Module"
+      assert log =~ "GET /ghost is not served: No.Such.Module is not a module defined with define"
       refute Routes.servable?(ghost)
       assert ctx.conn |> get("/ghost") |> response(404)
       {:ok, _view, _html} = live(ctx.conn, "/hello/1")
@@ -264,7 +294,7 @@ defmodule Beamlet.RoutesTest do
     end
 
     test "a live_view route targeting a non-LiveView is left out", ctx do
-      {:ok, _route} = Routes.create(%{ctx.live_attrs | path: "/wrong", module: @echo})
+      {:ok, _route} = Routes.create(%{ctx.live_attrs | path: "/wrong", module: ctx.echo})
 
       log = capture_log(fn -> assert :ok = Routes.regenerate() end)
 
@@ -286,15 +316,63 @@ defmodule Beamlet.RoutesTest do
       {:ok, _view, _html} = live(ctx.conn, "/hello/3")
     end
 
+    test "a module not defined with define is left out, however well it fits", ctx do
+      {:ok, route} =
+        Routes.create(%{ctx.live_attrs | path: "/home", module: "Beamlet.Web.HomeLive"})
+
+      refute Routes.servable?(route)
+
+      assert capture_log(fn -> assert :ok = Routes.regenerate() end) =~
+               "GET /home is not served: Beamlet.Web.HomeLive is not a module defined with define"
+
+      assert ctx.conn |> get("/home") |> response(404)
+    end
+
+    test "a raw row whose path carries code is deleted and nothing runs", ctx do
+      add_hello!(ctx)
+      on_exit(fn -> :persistent_term.erase(:beamlet_route_injection) end)
+
+      path =
+        ~s|/x", #{ctx.hello}\n    :persistent_term.put(:beamlet_route_injection, true)\n    live "/y|
+
+      Host.Repo.query!(
+        "INSERT INTO __routes (kind, verb, path, module, principal, inserted_at) " <>
+          "VALUES ('live_view', 'get', ?, ?, '{}', ?)",
+        [path, ctx.hello, DateTime.to_iso8601(DateTime.utc_now(:second))]
+      )
+
+      log = capture_log(fn -> assert :ok = Routes.regenerate() end)
+
+      assert log =~ "deleted a malformed row"
+      assert log =~ inspect(path)
+      assert :persistent_term.get(:beamlet_route_injection, nil) == nil
+      assert [%Route{path: "/hello/:id"}] = Routes.list()
+      {:ok, _view, _html} = live(ctx.conn, "/hello/1")
+    end
+
+    test "a malformed row stops holding its path once the router is built", ctx do
+      Host.Repo.query!(
+        "INSERT INTO __routes (kind, verb, path, module, principal, inserted_at) " <>
+          "VALUES ('live_view', 'get', '/taken', 'not a module', '{}', ?)",
+        [DateTime.to_iso8601(DateTime.utc_now(:second))]
+      )
+
+      assert {:error, _changeset} = Routes.create(%{ctx.live_attrs | path: "/taken"})
+      assert capture_log(fn -> assert :ok = Routes.regenerate() end) =~ "deleted a malformed row"
+      assert {:ok, _route} = Routes.create(%{ctx.live_attrs | path: "/taken"})
+    end
+
     test "a broken generation is contained: boot logs and the previous router serves", ctx do
       add_hello!(ctx)
       assert :ok = Routes.regenerate()
 
+      # Well-formed, so it passes the row checks, but Plug refuses a
+      # glob anywhere but last.
       Host.Repo.insert!(%Route{
         kind: :controller,
         verb: :get,
-        path: ~s(/"boom),
-        module: @echo,
+        path: "/*rest/more",
+        module: ctx.echo,
         action: "show",
         principal: Beamlet.Principal.to_map(ctx.principal)
       })

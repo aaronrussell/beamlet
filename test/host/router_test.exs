@@ -13,9 +13,6 @@ defmodule Host.RouterTest do
   alias Beamlet.Principal
   alias Beamlet.Routes
 
-  @echo "Beamlet.RouteFixtures.EchoController"
-  @hello "Beamlet.RouteFixtures.HelloLive"
-
   setup %{token: token} do
     act_as(token)
     %{conn: build_conn(), principal: principal(token), base: Beamlet.TestEndpoint.url()}
@@ -191,6 +188,27 @@ defmodule Host.RouterTest do
 
       assert [route] = Routes.list(path: "/rt/plain")
       assert Routes.servable?(route)
+    end
+
+    test "a mount the router cannot build is taken back, and the mounted routes keep serving",
+         ctx do
+      page = define_live!(ctx)
+      hook = define_controller!(ctx)
+      quietly(fn -> Host.Router.live("/rt/page", page) end)
+
+      log =
+        quiet(fn ->
+          capture_log(fn ->
+            assert_raise RuntimeError, ~r/could not mount \/\*rest\/more/, fn ->
+              Host.Router.post("/*rest/more", hook, :create)
+            end
+          end)
+        end)
+
+      assert log =~ "the router failed to regenerate"
+      assert Routes.list(path: "/*rest/more") == []
+      assert %{status: 200, body: body} = Host.Router.call(:get, "/rt/page")
+      assert body =~ "page 1"
     end
   end
 
@@ -643,6 +661,21 @@ defmodule Host.RouterTest do
                "/rt/ghost — No.Such.Live (alice) — not served: the target is missing"
     end
 
+    test "shows a malformed row on one line, quoted, with the fields at fault" do
+      Host.Repo.query!(
+        "INSERT INTO __routes (kind, verb, path, module, principal, inserted_at) " <>
+          "VALUES ('live_view', 'get', ?, 'My.PageLive', '{}', ?)",
+        [~s|/x"\n  live "/y|, DateTime.to_iso8601(DateTime.utc_now(:second))]
+      )
+
+      output = capture_io(&Host.Router.print_routes/0)
+
+      assert output =~
+               ~s|GET    "/x\\"\\n  live \\"/y" — My.PageLive (an unknown user) — | <>
+                 "not served: the row is malformed (path) " <>
+                 "and is deleted the next time the router is built"
+    end
+
     test "annotates a controller route whose target stopped being a controller", ctx do
       ns = unique_namespace()
       mod = define_controller!(ctx, ns)
@@ -674,7 +707,7 @@ defmodule Host.RouterTest do
           kind: kind,
           verb: verb,
           path: path,
-          module: @echo,
+          module: ctx.echo,
           action: action,
           principal: ctx.principal
         })
@@ -683,6 +716,9 @@ defmodule Host.RouterTest do
     end
 
     setup ctx do
+      fixtures = Beamlet.RouteFixtures.define!(ctx.principal)
+      ctx = Map.merge(ctx, fixtures)
+
       mount_fixture!(ctx, :controller, :get, "/rt/echo", "show")
       mount_fixture!(ctx, :controller, :post, "/rt/echo", "create")
       mount_fixture!(ctx, :controller, :get, "/rt/text", "plain")
@@ -693,12 +729,12 @@ defmodule Host.RouterTest do
         Routes.create(%{
           kind: :live_view,
           path: "/rt/hello/:id",
-          module: @hello,
+          module: ctx.hello,
           principal: ctx.principal
         })
 
       assert :ok = Routes.regenerate()
-      :ok
+      fixtures
     end
 
     test "GET sends a map as the query string and decodes a JSON response" do
@@ -743,7 +779,7 @@ defmodule Host.RouterTest do
 
     test "the root path reaches the root route", ctx do
       {:ok, _route} =
-        Routes.create(%{kind: :live_view, path: "/", module: @hello, principal: ctx.principal})
+        Routes.create(%{kind: :live_view, path: "/", module: ctx.hello, principal: ctx.principal})
 
       assert :ok = Routes.regenerate()
 
@@ -763,14 +799,14 @@ defmodule Host.RouterTest do
     test "the route acts as nobody, and the caller's principal comes back after", ctx do
       assert Principal.current() == ctx.principal
 
-      assert %{status: 200, body: %{"principal" => nil}} = Host.Router.call(:get, "/rt/whoami")
+      assert %{status: 200, body: %{"acting" => false}} = Host.Router.call(:get, "/rt/whoami")
       assert Principal.current() == ctx.principal
 
       assert_raise RuntimeError, fn -> Host.Router.call(:get, "/rt/crash") end
       assert Principal.current() == ctx.principal
     end
 
-    test "a crashing route re-raises with the route's stacktrace" do
+    test "a crashing route re-raises with the route's stacktrace", ctx do
       {error, stack} =
         try do
           Host.Router.call(:get, "/rt/crash")
@@ -780,7 +816,8 @@ defmodule Host.RouterTest do
 
       assert error.message == "GET /rt/crash crashed: ** (RuntimeError) boom"
 
-      assert [{Beamlet.RouteFixtures.EchoController, :crash, 2, _location} | _rest] = stack
+      echo = Module.concat([ctx.echo])
+      assert [{^echo, :crash, 2, _location} | _rest] = stack
       refute Enum.any?(stack, &match?({Beamlet.TestEndpoint, _fun, _arity, _loc}, &1))
     end
 
