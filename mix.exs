@@ -60,7 +60,7 @@ defmodule Beamlet.MixProject do
         "ecto.drop -r Beamlet.Repo -r Host.Repo",
         "ecto.setup"
       ],
-      "assets.build": ["tailwind beamlet"],
+      "assets.build": ["tailwind app"],
       precommit: [
         "compile --warnings-as-errors",
         "deps.unlock --unused",

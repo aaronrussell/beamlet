@@ -44,7 +44,7 @@ defmodule Beamlet.Web.HomeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app current_user={@current_user}>
+    <Layouts.shell current_user={@current_user}>
       <h1 class="text-3xl leading-[1.06] tracking-display">Your beamlet</h1>
       <p class="mt-3.5 max-w-[66ch] text-md leading-normal text-muted">
         Your beamlet is an MCP server. Add it to the app or agent you work in, and that app can read what is on your beamlet and build on it.
@@ -76,7 +76,7 @@ defmodule Beamlet.Web.HomeLive do
       <section id="guide" class="mt-6 max-w-[680px]">
         <.guide client={@client} url={@url} user={@current_user} />
       </section>
-    </Layouts.app>
+    </Layouts.shell>
     """
   end
 

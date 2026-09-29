@@ -8,15 +8,15 @@ defmodule Beamlet.Assets do
 
   It serves the LiveView JavaScript from the deps' precompiled
   bundles, so there is no JavaScript build to run, and the stylesheet
-  for the beamlet's own pages from the package's `priv/static`, built
-  from `assets/css/beamlet.css` with `mix assets.build` and shipped
-  built. The root layouts (`Beamlet.Web.Layouts`) reference exactly
+  for the app, the beamlet's own pages, from the package's
+  `priv/static`, built from `assets/css/app.css` with
+  `mix assets.build` and shipped built. The root layouts (`Beamlet.Web.Layouts`) reference exactly
   these:
 
     * `/beamlet/assets/phoenix/phoenix.mjs` from `:phoenix`
     * `/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js` from
       `:phoenix_live_view`
-    * `/beamlet/assets/beamlet.css` from `:beamlet`
+    * `/beamlet/assets/app.css` from `:beamlet`
 
   Nothing else under those directories is reachable; the other builds
   of the same bundles answer 404. `/beamlet/assets` is one of the paths a
@@ -39,5 +39,5 @@ defmodule Beamlet.Assets do
   plug Plug.Static,
     at: "/beamlet/assets",
     from: {:beamlet, "priv/static"},
-    only: ~w(beamlet.css)
+    only: ~w(app.css)
 end

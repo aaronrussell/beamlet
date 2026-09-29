@@ -25,8 +25,8 @@ defmodule Beamlet.AssetsTest do
              ["text/javascript"]
   end
 
-  test "serves the stylesheet for the beamlet's own pages", %{conn: conn} do
-    conn = get(conn, "/beamlet/assets/beamlet.css")
+  test "serves the stylesheet for the app", %{conn: conn} do
+    conn = get(conn, "/beamlet/assets/app.css")
 
     assert conn.status == 200
     assert conn.resp_body =~ "tailwindcss"

@@ -239,7 +239,7 @@ defmodule Beamlet.RoutesTest do
 
       assert html =~ "cdn.jsdelivr.net/npm/@tailwindcss/browser"
       assert html =~ ~s(<body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">)
-      refute html =~ "/beamlet/assets/beamlet.css"
+      refute html =~ "/beamlet/assets/app.css"
     end
 
     test "a live action reaches the page", ctx do
@@ -400,6 +400,27 @@ defmodule Beamlet.RoutesTest do
       assert html =~ "id=2"
       assert ctx.conn |> get("/pages/echo") |> json_response(200)
       assert ctx.conn |> get("/hello/2") |> response(404)
+    end
+
+    test "an agent route writing user_id to its session signs nobody in to the app", ctx do
+      add_echo!(ctx, :get, "session", "/door")
+      assert :ok = Routes.regenerate()
+
+      conn = get(ctx.conn, "/door", user_id: ctx.user.id)
+      assert json_response(conn, 200) == %{"user_id" => to_string(ctx.user.id)}
+
+      assert conn |> get("/beamlet") |> redirected_to() == "/beamlet/login"
+    end
+
+    test "a browser signed in to the app brings no app session to an agent route", ctx do
+      {:ok, _user} = Beamlet.Users.update_password(ctx.user, "correct horse")
+      add_echo!(ctx, :get, "session", "/peek")
+      assert :ok = Routes.regenerate()
+
+      conn = post(ctx.conn, "/beamlet/login", user: %{name: "alice", password: "correct horse"})
+      assert conn |> get("/beamlet") |> html_response(200) =~ "Signed in as alice."
+
+      assert conn |> get("/peek") |> json_response(200) == %{}
     end
   end
 end

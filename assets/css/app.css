@@ -1,4 +1,4 @@
-/* The stylesheet for the beamlet's own pages. Tailwind scans the
+/* The stylesheet for the app, the beamlet's own pages. Tailwind scans the
    library's modules and templates for the classes it uses; the pages
    agents build are styled from Tailwind's CDN instead (Beamlet.Web.Layouts).
 
@@ -11,7 +11,7 @@
 @import "tailwindcss" source(none);
 @source "../../lib/beamlet";
 /* The agent layout is styled by the CDN build, not this file. */
-@source not "../../lib/beamlet/web/layouts/root.html.heex";
+@source not "../../lib/beamlet/web/layouts/beamlet.html.heex";
 
 @theme {
   --color-*: initial;

@@ -33,9 +33,13 @@ defmodule Beamlet.Users do
   A user signs in on the web with a password the operator sets
   (`update_password/2`); `authenticate_password/2` is how the sign-in
   form finds the user, and a user with no password cannot sign in.
-  The password is stored only as a hash. A web sign-in is a user on a
-  request and nothing more: no token and no policy, since a browser
-  authors no code.
+  The password is stored only as a hash. A sign-in creates a session
+  (`Beamlet.Session`) whose secret the browser holds: `create_session/1`
+  shows it once, `authenticate_session/1` turns it back into the
+  session and user, and `delete_session/1` signs that browser out.
+  Resetting a password ends every session the user has. A web sign-in
+  is a user on a request and nothing more: no token and no policy,
+  since a browser authors no code.
 
   Operator-only. Nothing under `Host.*` reaches these functions, and
   deleting a user deletes their tokens with them. The command line
@@ -46,6 +50,7 @@ defmodule Beamlet.Users do
   import Ecto.Query
 
   alias Beamlet.Repo
+  alias Beamlet.Session
   alias Beamlet.Token
   alias Beamlet.User
 
@@ -95,12 +100,21 @@ defmodule Beamlet.Users do
   @spec find_by(keyword()) :: {:ok, User.t()} | {:error, :not_found}
   def find_by(clauses), do: wrap(Repo.get_by(User, clauses))
 
-  @doc "Sets or resets a user's password, 8 to 128 characters; only its hash is stored."
+  @doc """
+  Sets or resets a user's password, 8 to 128 characters; only its hash
+  is stored. Every session the user has ends with it, so a browser
+  signed in with the old password is signed out.
+  """
   @spec update_password(User.t(), String.t()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
-  def update_password(%User{} = user, password) do
-    user
-    |> User.password_changeset(%{password: password})
-    |> Repo.update()
+  def update_password(%User{id: user_id} = user, password) do
+    changeset = User.password_changeset(user, %{password: password})
+
+    Repo.transact(fn ->
+      with {:ok, user} <- Repo.update(changeset) do
+        Repo.delete_all(from(s in Session, where: s.user_id == ^user_id))
+        {:ok, user}
+      end
+    end)
   end
 
   @doc """
@@ -255,6 +269,39 @@ defmodule Beamlet.Users do
     |> put_secret(:refresh_secret)
     |> Repo.update()
   end
+
+  @doc """
+  Creates a session for a user, for a web sign-in. The returned
+  session carries its `secret`; nothing else ever will.
+  """
+  @spec create_session(User.t()) :: {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def create_session(%User{id: user_id}) do
+    %Session{user_id: user_id}
+    |> Ecto.Changeset.change()
+    |> put_secret(:secret)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Turns a browser's session secret into its session, with the user
+  loaded. Anything that is not the secret of a stored session,
+  including one that was signed out, is `{:error, :unknown_session}`.
+  """
+  @spec authenticate_session(term()) :: {:ok, Session.t()} | {:error, :unknown_session}
+  def authenticate_session(secret) when is_binary(secret) do
+    hash = hash(secret)
+
+    case Repo.one(from(s in Session, where: s.secret_hash == ^hash, preload: :user)) do
+      nil -> {:error, :unknown_session}
+      %Session{} = session -> {:ok, session}
+    end
+  end
+
+  def authenticate_session(_other), do: {:error, :unknown_session}
+
+  @doc "Deletes a session, signing its browser out."
+  @spec delete_session(Session.t()) :: {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  def delete_session(%Session{} = session), do: Repo.delete(session)
 
   # The policy is read as a field rather than a change: a cli token
   # named with no policy carries the schema's default, and a bounded

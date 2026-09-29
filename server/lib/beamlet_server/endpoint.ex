@@ -15,6 +15,10 @@ defmodule BeamletServer.Endpoint do
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 
+  socket "/beamlet/app/live", Phoenix.LiveView.Socket,
+    websocket: [connect_info: [session: {Beamlet.Web.Auth, :session_options, []}]],
+    longpoll: [connect_info: [session: {Beamlet.Web.Auth, :session_options, []}]]
+
   plug Plug.RewriteOn, [:x_forwarded_proto]
 
   plug Beamlet.Assets

@@ -92,8 +92,9 @@ defmodule Beamlet.Case do
 
   @doc "Signs the user in on the conn's test session, as `Beamlet.Web.Auth.log_in/2` would."
   @spec sign_in(Plug.Conn.t(), Beamlet.User.t()) :: Plug.Conn.t()
-  def sign_in(conn, %Beamlet.User{id: id}) do
-    Plug.Test.init_test_session(conn, user_id: id)
+  def sign_in(conn, %Beamlet.User{} = user) do
+    {:ok, session} = Users.create_session(user)
+    Plug.Test.init_test_session(conn, session_secret: session.secret)
   end
 
   @doc """

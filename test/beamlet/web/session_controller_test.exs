@@ -33,7 +33,15 @@ defmodule Beamlet.Web.SessionControllerTest do
       conn = post(conn, "/beamlet/login", user: %{name: "alice", password: "correct horse"})
 
       assert redirected_to(conn) == "/beamlet"
-      assert get_session(conn, :user_id) == user.id
+
+      assert {:ok, %{user: %{id: id}}} =
+               Users.authenticate_session(get_session(conn, :session_secret))
+
+      assert id == user.id
+
+      cookie = conn.resp_cookies["_beamlet_app_key"]
+      assert cookie.path == "/beamlet"
+      assert cookie.http_only
     end
 
     test "returns to the path require_auth stored, once", %{conn: conn} do
@@ -52,7 +60,7 @@ defmodule Beamlet.Web.SessionControllerTest do
       conn = post(conn, "/beamlet/login", user: %{name: "alice", password: "wrong"})
 
       assert redirected_to(conn) == "/beamlet/login"
-      assert get_session(conn, :user_id) == nil
+      assert get_session(conn, :session_secret) == nil
 
       {:ok, view, _html} = live(conn, "/beamlet/login")
       assert has_element?(view, "#flash-error", "Wrong name or password.")
@@ -65,7 +73,7 @@ defmodule Beamlet.Web.SessionControllerTest do
         conn = post(conn, "/beamlet/login", user: %{name: name, password: "correct horse"})
         assert redirected_to(conn) == "/beamlet/login"
         assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Wrong name or password."
-        assert get_session(conn, :user_id) == nil
+        assert get_session(conn, :session_secret) == nil
       end
     end
 
@@ -73,16 +81,19 @@ defmodule Beamlet.Web.SessionControllerTest do
       conn = post(conn, "/beamlet/login", %{})
       assert redirected_to(conn) == "/beamlet/login"
       assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Wrong name or password."
-      assert get_session(conn, :user_id) == nil
+      assert get_session(conn, :session_secret) == nil
     end
   end
 
   describe "POST /beamlet/logout" do
-    test "clears the session and returns to the login page", %{conn: conn, user: user} do
-      conn = conn |> sign_in(user) |> post("/beamlet/logout")
+    test "ends the session and returns to the login page", %{conn: conn, user: user} do
+      conn = sign_in(conn, user)
+      secret = get_session(conn, :session_secret)
+      conn = post(conn, "/beamlet/logout")
 
       assert redirected_to(conn) == "/beamlet/login"
-      assert get_session(conn, :user_id) == nil
+      assert get_session(conn, :session_secret) == nil
+      assert Users.authenticate_session(secret) == {:error, :unknown_session}
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Signed out."
     end
   end

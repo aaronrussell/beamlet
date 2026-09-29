@@ -25,13 +25,21 @@ defmodule Beamlet.Router do
   login too, `Beamlet.OAuth.AuthorizeLive`) and `/beamlet/token`
   (`Beamlet.OAuth.TokenController`, which clients post to directly, so
   no session and no CSRF check), and on the host's endpoint the
-  socket and asset paths
-  below. The one exception is the pair of OAuth discovery documents
-  (`Beamlet.OAuth.MetadataController`), which the specs fix under
-  `/.well-known` at the root; they are exact paths, matched ahead of
-  the forward. Everything else forwards to the router generated from
-  the routes agents mount (`Beamlet.Routes`), so `/` is an agent's to
-  build and answers 404 until one does.
+  socket and asset paths below. The one exception is the pair of
+  OAuth discovery documents (`Beamlet.OAuth.MetadataController`),
+  which the specs fix under `/.well-known` at the root; they are exact
+  paths, matched ahead of the forward. Everything else forwards to the
+  router generated from the routes agents mount (`Beamlet.Routes`), so
+  `/` is an agent's to build and answers 404 until one does.
+
+  The sign-in, the consent page and the home page are the app, the
+  beamlet's own inner app, as against the pages agents build. The app
+  keeps its own session in its own cookie, scoped to `/beamlet`
+  (`Beamlet.Web.Auth.session_options/0`), which this router's browser
+  pipeline plugs in place of the endpoint's, and its pages connect to
+  their own LiveView socket. Agent pages never receive the app's
+  cookie or its session, and nothing they write to theirs signs
+  anyone in.
 
   ## What the host carries
 
@@ -47,18 +55,22 @@ defmodule Beamlet.Router do
 
   In the endpoint:
 
-    * The LiveView socket at `/beamlet/live`, the path the root
-      layout (`Beamlet.Web.Layouts`) connects to:
+    * The LiveView socket for agent pages at `/beamlet/live`, the
+      path the `beamlet` layout (`Beamlet.Web.Layouts`) connects to:
       `socket "/beamlet/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]`.
+    * The LiveView socket for the app at `/beamlet/app/live`, the
+      path the `app` layout connects to, decoding the app's cookie:
+      `socket "/beamlet/app/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: {Beamlet.Web.Auth, :session_options, []}]]`.
     * `plug Beamlet.Assets` before the parsers, serving the LiveView
       JavaScript and the beamlet's own stylesheet under
       `/beamlet/assets`.
     * `Plug.Parsers` with the JSON and urlencoded parsers: JSON for
       controller routes, urlencoded for the sign-in form.
-    * `Plug.Session`, which carries the sign-in and which the browser
-      pipeline fetches. Behind a proxy that terminates TLS, add
-      `plug Plug.RewriteOn, [:x_forwarded_proto]` ahead of it so the
-      session cookie is marked secure.
+    * `Plug.Session`, the session agent pages fetch: their CSRF
+      token, their flash and whatever an agent's app keeps there. It
+      does not carry the sign-in. Behind a proxy that terminates TLS,
+      add `plug Plug.RewriteOn, [:x_forwarded_proto]` ahead of it so
+      both session cookies are marked secure.
 
   In config:
 
@@ -79,9 +91,10 @@ defmodule Beamlet.Router do
 
   pipeline :browser do
     plug :accepts, ["html"]
+    plug Plug.Session, Beamlet.Web.Auth.session_options()
     plug :fetch_session
     plug :fetch_live_flash
-    plug :put_root_layout, html: {Beamlet.Web.Layouts, :beamlet}
+    plug :put_root_layout, html: {Beamlet.Web.Layouts, :app}
     plug :protect_from_forgery
     plug :put_secure_browser_headers
     plug :fetch_current_user

@@ -1,6 +1,7 @@
 defmodule Beamlet.UsersTest do
   use Beamlet.Case
 
+  alias Beamlet.Session
   alias Beamlet.Token
   alias Beamlet.User
   alias Beamlet.Users
@@ -107,12 +108,14 @@ defmodule Beamlet.UsersTest do
   end
 
   describe "delete/1" do
-    test "deletes the user and their tokens", %{user: user, token: token} do
+    test "deletes the user, their tokens and their sessions", %{user: user, token: token} do
       {:ok, _} = Users.create_token(user, name: "laptop")
+      {:ok, session} = Users.create_session(user)
 
       assert {:ok, %User{}} = Users.delete(user)
       assert {:error, :not_found} = Users.find(user.id)
       assert {:error, :unknown_token} = Users.authenticate(token.secret)
+      assert {:error, :unknown_session} = Users.authenticate_session(session.secret)
       assert Beamlet.Repo.aggregate(Token, :count) == 0
     end
   end
@@ -512,6 +515,70 @@ defmodule Beamlet.UsersTest do
       {:ok, _user} = Users.update_password(user, "second one")
       assert {:ok, _user} = Users.authenticate_password("alice", "second one")
       assert {:error, :invalid_credentials} = Users.authenticate_password("alice", "first one")
+    end
+
+    test "ends the user's sessions, and only theirs", %{user: user} do
+      {:ok, bob} = Users.create(name: "bob")
+      {:ok, alices} = Users.create_session(user)
+      {:ok, bobs} = Users.create_session(bob)
+
+      {:ok, _user} = Users.update_password(user, "correct horse")
+
+      assert {:error, :unknown_session} = Users.authenticate_session(alices.secret)
+      assert {:ok, %Session{}} = Users.authenticate_session(bobs.secret)
+    end
+
+    test "a refused password ends nothing", %{user: user} do
+      {:ok, session} = Users.create_session(user)
+
+      assert {:error, _changeset} = Users.update_password(user, "short")
+      assert {:ok, %Session{}} = Users.authenticate_session(session.secret)
+    end
+  end
+
+  describe "create_session/1" do
+    test "returns the secret once and stores only its hash", %{user: user} do
+      assert {:ok, %Session{secret: secret, secret_hash: hash, user_id: user_id}} =
+               Users.create_session(user)
+
+      assert user_id == user.id
+      assert is_binary(secret) and byte_size(secret) >= 43
+      assert hash == :crypto.hash(:sha256, secret)
+
+      assert %Session{secret: nil, secret_hash: ^hash} =
+               Beamlet.Repo.get_by(Session, user_id: user.id)
+    end
+
+    test "gives each session its own secret", %{user: user} do
+      {:ok, first} = Users.create_session(user)
+      {:ok, second} = Users.create_session(user)
+      refute first.secret == second.secret
+    end
+  end
+
+  describe "authenticate_session/1" do
+    test "finds the session with its user", %{user: user} do
+      {:ok, %Session{id: id, secret: secret}} = Users.create_session(user)
+
+      assert {:ok, %Session{id: ^id, secret: nil, user: %User{name: "alice"}}} =
+               Users.authenticate_session(secret)
+    end
+
+    test "refuses anything that is not a stored session's secret" do
+      assert {:error, :unknown_session} = Users.authenticate_session("not-a-secret")
+      assert {:error, :unknown_session} = Users.authenticate_session(nil)
+      assert {:error, :unknown_session} = Users.authenticate_session(42)
+    end
+  end
+
+  describe "delete_session/1" do
+    test "signs that session out and leaves the user's others", %{user: user} do
+      {:ok, first} = Users.create_session(user)
+      {:ok, second} = Users.create_session(user)
+
+      assert {:ok, %Session{}} = Users.delete_session(first)
+      assert {:error, :unknown_session} = Users.authenticate_session(first.secret)
+      assert {:ok, %Session{}} = Users.authenticate_session(second.secret)
     end
   end
 

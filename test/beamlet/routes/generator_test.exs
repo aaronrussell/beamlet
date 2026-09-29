@@ -38,7 +38,7 @@ defmodule Beamlet.Routes.GeneratorTest do
     source = source([live_route("/hello/:id", "My.HelloLive")], "")
 
     assert source =~ ~s|live("/hello/:id", My.HelloLive)|
-    assert source =~ ~s|put_root_layout, html: {Beamlet.Web.Layouts, :root}|
+    assert source =~ ~s|put_root_layout, html: {Beamlet.Web.Layouts, :beamlet}|
     assert source =~ "plug(:protect_from_forgery)"
   end
 

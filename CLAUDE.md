@@ -56,6 +56,7 @@ Run the affected tests while working and `mix precommit` before claiming done.
 ## Conventions
 
 - Terminology: **Beamlet** is the project, **a beamlet** is a running instance, **my beamlet** is where your code lives. Every other noun stays ordinary: modules, routes, tools, applications, users, tokens. **Tool use**, not "tool call".
+- **The app** is Beamlet's own inner app: the sign-in, the consent page, the home page and the admin pages to come. Its pieces take the name (`/beamlet/app/live`, the `app` layout, `app.css`, the `_beamlet_app_key` cookie); "beamlet" in a name means what the agent side uses. Nothing of the app's is shared with agent pages.
 - Path naming: `*_dir` for directories, `*_file` for files, `*_path` for generic or URL paths.
 - Public functions return `{:ok, result} | {:error, reason}`. Match existing error shapes.
 - Errors that agents see are **teaching errors**: they say what went wrong and what to do instead, in the agent's vocabulary.

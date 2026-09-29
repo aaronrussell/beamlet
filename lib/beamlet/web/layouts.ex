@@ -1,25 +1,27 @@
 defmodule Beamlet.Web.Layouts do
   @moduledoc """
   The layouts pages on a beamlet render inside: one root for the
-  pages agents build, one for the beamlet's own.
+  pages agents build, one for the app, the beamlet's own pages.
 
   Both roots carry the wiring a LiveView page needs: the CSRF token,
   the LiveView JavaScript loaded as ES modules from the paths the
-  host's endpoint serves them at (`Beamlet.Assets`), and the socket
-  connection at `/beamlet/live`. They differ in how a page is styled.
+  host's endpoint serves them at (`Beamlet.Assets`), and a socket
+  connection. They differ in the socket and in how a page is styled.
 
-  `root/1` is for agent pages, which `Beamlet.Routes` puts on every
-  route agents mount. It loads Tailwind from its CDN, so a page can be
+  `beamlet/1` is for agent pages, which `Beamlet.Routes` puts on every
+  route agents mount. It connects to `/beamlet/live`, whose session is
+  the endpoint's, and loads Tailwind from its CDN, so a page can be
   styled with utility classes and no build step, and says nothing
   about how the page looks. Styling needs the internet; accepted for a
   substrate with no bundler.
 
-  `beamlet/1` is for the beamlet's own pages, the sign-in, the consent
-  page and the home page. It links the stylesheet built from
-  `assets/css/beamlet.css` and shipped in `priv/static`. Inside it,
+  `app/1` is for the app: the sign-in, the consent page and the home
+  page. It connects to `/beamlet/app/live`, whose session is the app's
+  own (`Beamlet.Web.Auth`), and links the stylesheet built from
+  `assets/css/app.css` and shipped in `priv/static`. Inside it,
   `split/1` is the layout for the pages a person arrives at from
   elsewhere, the sign-in and the consent page: a panel with the
-  wordmark and a tagline beside the form. `app/1` is the layout the
+  wordmark and a tagline beside the form. `shell/1` is the layout the
   signed-in pages render inside: the top bar naming the beamlet and
   the person, with the sign-out.
   """
@@ -70,14 +72,14 @@ defmodule Beamlet.Web.Layouts do
   end
 
   @doc """
-  The layout for the beamlet's own signed-in pages: the top bar with
+  The layout for the app's signed-in pages: the top bar with
   the wordmark, the beamlet's host, the signed-in name and the
   sign-out, then the page.
   """
   attr :current_user, Beamlet.User, required: true
   slot :inner_block, required: true
 
-  def app(assigns) do
+  def shell(assigns) do
     ~H"""
     <header class="flex h-[52px] items-center gap-4 border-b border-line bg-card px-5">
       <a href="/beamlet" class="no-underline"><.wordmark class="text-[18px]" /></a>

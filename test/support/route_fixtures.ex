@@ -35,7 +35,8 @@ defmodule Beamlet.RouteFixtures do
   end
 
   # whoami answers whether the request acts as someone: print_policy
-  # needs a principal and raises without one.
+  # needs a principal and raises without one. session writes its query
+  # params into the endpoint's session and answers with what it holds.
   defp echo(ns) do
     """
     defmodule #{ns}.EchoController do
@@ -59,6 +60,11 @@ defmodule Beamlet.RouteFixtures do
           end
 
         json(conn, %{acting: acting})
+      end
+
+      def session(conn, params) do
+        conn = Enum.reduce(params, fetch_session(conn), fn {k, v}, conn -> put_session(conn, k, v) end)
+        json(conn, get_session(conn))
       end
     end
     """

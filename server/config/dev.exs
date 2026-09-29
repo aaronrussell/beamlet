@@ -43,11 +43,11 @@ config :phoenix_live_view,
 
 # The library is where the pages live, so development reloads it as
 # well as the server: the code reloader recompiles both on a request,
-# the Tailwind watcher rebuilds the stylesheet for the beamlet's own
-# pages as the library's templates change (the build is the
-# library's, `mix tailwind beamlet` from `..`, so the server declares
-# no Tailwind config of its own), and live reload watches the
-# library's directory beside the server's, by absolute path since
+# the Tailwind watcher rebuilds the stylesheet for the app, the
+# beamlet's own pages, as the library's templates change (the build
+# is the library's, `mix tailwind app` from `..`, so the server
+# declares no Tailwind config of its own), and live reload watches
+# the library's directory beside the server's, by absolute path since
 # the watcher's default is the server's root alone.
 library_dir = Path.expand("../..", __DIR__)
 
@@ -55,7 +55,7 @@ config :beamlet_server, BeamletServer.Endpoint,
   code_reloader: true,
   reloadable_apps: [:beamlet, :beamlet_server],
   watchers: [
-    mix: ["tailwind", "beamlet", "--watch", cd: library_dir]
+    mix: ["tailwind", "app", "--watch", cd: library_dir]
   ],
   live_reload: [
     patterns: [

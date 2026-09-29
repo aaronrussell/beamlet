@@ -52,10 +52,10 @@ defmodule Beamlet.Web.HomeLiveTest do
     assert has_element?(view, "h2", "ChatGPT")
   end
 
-  test "renders in the beamlet's own layout, with the built stylesheet", %{conn: conn, user: user} do
+  test "renders in the app layout, with the built stylesheet", %{conn: conn, user: user} do
     html = conn |> sign_in(user) |> get("/beamlet") |> html_response(200)
 
-    assert html =~ ~s(<link rel="stylesheet" href="/beamlet/assets/beamlet.css")
+    assert html =~ ~s(<link rel="stylesheet" href="/beamlet/assets/app.css")
     refute html =~ "cdn.jsdelivr.net"
   end
 
