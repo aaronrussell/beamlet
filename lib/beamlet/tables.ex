@@ -32,7 +32,7 @@ defmodule Beamlet.Tables do
 
   @steps [
     [
-      "CREATE TABLE __kv (key TEXT PRIMARY KEY, value BLOB NOT NULL) WITHOUT ROWID",
+      "CREATE TABLE __kv (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID",
       """
       CREATE TABLE __routes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
