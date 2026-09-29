@@ -17,6 +17,7 @@ defmodule Beamlet.Code.Audit do
 
   require Logger
 
+  alias Beamlet.Code.Source
   alias Beamlet.Principal
 
   @committer [{"GIT_COMMITTER_NAME", "beamlet"}, {"GIT_COMMITTER_EMAIL", "beamlet@beamlet"}]
@@ -46,12 +47,12 @@ defmodule Beamlet.Code.Audit do
   @spec after_boot(Path.t()) :: :ok
   def after_boot(code_dir) do
     if init_repo(code_dir),
-      do: commit(code_dir, "initial snapshot", Principal.system()),
+      do: commit(code_dir, "initial snapshot", nil, Principal.system()),
       else: sweep(code_dir)
   end
 
-  @spec record_define(Path.t(), [module()], [module()], Principal.t()) :: :ok
-  def record_define(code_dir, modules, replaced, %Principal{} = principal) do
+  @spec record_define(Path.t(), [module()], [module()], map(), Principal.t()) :: :ok
+  def record_define(code_dir, modules, replaced, diffs, %Principal{} = principal) do
     subject =
       "define: " <>
         Enum.map_join(modules, ", ", fn mod ->
@@ -59,17 +60,18 @@ defmodule Beamlet.Code.Audit do
           "#{inspect(mod)} (#{flag})"
         end)
 
-    commit(code_dir, subject, principal)
+    commit(code_dir, subject, diff_body(modules, diffs), principal)
   end
 
-  @spec record_patch(Path.t(), [module()], Principal.t()) :: :ok
-  def record_patch(code_dir, modules, %Principal{} = principal) do
-    commit(code_dir, "patch: " <> Enum.map_join(modules, ", ", &inspect/1), principal)
+  @spec record_patch(Path.t(), [module()], map(), Principal.t()) :: :ok
+  def record_patch(code_dir, modules, diffs, %Principal{} = principal) do
+    subject = "patch: " <> Enum.map_join(modules, ", ", &inspect/1)
+    commit(code_dir, subject, diff_body(modules, diffs), principal)
   end
 
   @spec record_remove(Path.t(), [module()], Principal.t()) :: :ok
   def record_remove(code_dir, modules, %Principal{} = principal) do
-    commit(code_dir, "remove: " <> Enum.map_join(modules, ", ", &inspect/1), principal)
+    commit(code_dir, "remove: " <> Enum.map_join(modules, ", ", &inspect/1), nil, principal)
   end
 
   defp init_repo(code_dir) do
@@ -95,17 +97,33 @@ defmodule Beamlet.Code.Audit do
             (dirty |> String.trim_trailing() |> String.replace(~r/^/m, "  "))
         )
 
-        commit(code_dir, "manual changes", Principal.system())
+        commit(code_dir, "manual changes", nil, Principal.system())
 
       {output, _status} ->
         log_failure("status", output)
     end
   end
 
+  # The same function-level summary the tool result carries, so the
+  # history says what a replace changed without a diff. A new module
+  # has nothing to compare against and is left out.
+  defp diff_body(modules, diffs) do
+    case for(mod <- modules, Map.has_key?(diffs, mod), do: mod) do
+      [] ->
+        nil
+
+      replaced ->
+        Enum.map_join(replaced, "\n", fn mod ->
+          Enum.join([inspect(mod) | Source.render_diff(Map.fetch!(diffs, mod))], "\n")
+        end)
+    end
+  end
+
   # Empty commits are allowed so that a replace with the same source
   # is still on the record.
-  defp commit(code_dir, subject, %Principal{} = principal) do
-    message = ["-m", subject, "-m", Principal.to_trailers(principal)]
+  defp commit(code_dir, subject, body, %Principal{} = principal) do
+    paragraphs = [subject, body, Principal.to_trailers(principal)] |> Enum.reject(&is_nil/1)
+    message = Enum.flat_map(paragraphs, &["-m", &1])
     args = ["-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty" | message]
 
     with {_out, 0} <- git(code_dir, ["add", "-A"]),

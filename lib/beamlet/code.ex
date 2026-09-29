@@ -745,8 +745,8 @@ defmodule Beamlet.Code do
     publish(state)
 
     case verb do
-      :define -> Audit.record_define(state.code_dir, buffer_modules, replaced, principal)
-      :patch -> Audit.record_patch(state.code_dir, buffer_modules, principal)
+      :define -> Audit.record_define(state.code_dir, buffer_modules, replaced, diffs, principal)
+      :patch -> Audit.record_patch(state.code_dir, buffer_modules, diffs, principal)
     end
 
     caller_lines = runtime_caller_lines(calls, replaced, buffer_modules)

@@ -164,7 +164,35 @@ defmodule Beamlet.Code.AuditTest do
                  verb: :patch
                )
 
-      assert last_message(ctx.code_dir) =~ "patch: #{ns}.Patched\n\nUser: alice"
+      assert last_message(ctx.code_dir) =~
+               "patch: #{ns}.Patched\n\n#{ns}.Patched\n  - unchanged\n\nUser: alice"
+    end
+
+    test "a replace carries the function changes of each replaced module in the body", ctx do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, Shelf]), Module.concat([ns, Rack])])
+
+      shelf = fn funs ->
+        defs = Enum.map_join(funs, "\n", &"  @doc \"#{&1}.\"\n  def #{&1}, do: :#{&1}\n")
+        "defmodule #{ns}.Shelf do\n  @moduledoc \"Shelf.\"\n\n#{defs}end\n"
+      end
+
+      assert {:ok, _summary} = Code.define([entry(shelf.(~w(a b)))], ctx.principal)
+
+      changed = shelf.(~w(b c)) |> String.replace("def b, do: :b", "def b, do: :bee")
+      rack = "defmodule #{ns}.Rack do\n  @moduledoc \"Rack.\"\nend\n"
+
+      assert {:ok, _summary} =
+               Code.define([entry(changed, replace: true), entry(rack)], ctx.principal)
+
+      message = last_message(ctx.code_dir)
+
+      assert message =~
+               "define: #{ns}.Shelf (replaced), #{ns}.Rack (new)\n\n" <>
+                 "#{ns}.Shelf\n  - removed a/0\n  - changed b/0\n  - new c/0\n\nUser: alice"
+
+      assert {:ok, decoded} = Principal.from_trailers(message)
+      assert decoded == ctx.principal
     end
   end
 
