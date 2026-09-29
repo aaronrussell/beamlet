@@ -571,8 +571,8 @@ defmodule Beamlet.Code do
         line -> " — \"#{line}\""
       end
 
-    "#{inspect(mod)} already exists#{quote_part}. To evolve it, set replace: true on " <>
-      "its entry; to build something new, choose a different name."
+    "#{inspect(mod)} already exists#{quote_part}. To change it, patch it; to rewrite it " <>
+      "whole, set replace: true on its entry; to build something new, choose a different name."
   end
 
   defp taken_error(mod) do

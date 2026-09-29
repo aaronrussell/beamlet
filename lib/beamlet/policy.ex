@@ -3,7 +3,9 @@ defmodule Beamlet.Policy do
   A policy: what a token's requests may do on your beamlet.
 
   Three parts. **Tools** are which of the MCP tools the token may
-  use, `define` and `eval`. **Rules** are the shape rules on the code
+  use: `eval`, and `define`, which is two tools in one, since the
+  `define` and `patch` tools both write modules through the same
+  pipeline under the same limit. **Rules** are the shape rules on the code
   it submits (`Beamlet.Policy.Rules`). **Grants** are the modules and
   functions its code may call: a module maps to everything, an
   `only` list or an `except` list, and a module absent from the
@@ -46,7 +48,7 @@ defmodule Beamlet.Policy do
   `default` is reserved.
 
   Tools and grants are independent: a policy with `tools: [:eval]`
-  cannot define modules but can still remove them through
+  cannot define or patch modules but can still remove them through
   `Host.Code.remove/1`, since the default grants `Host.Code` whole.
   A token that should not tear modules down gets
   `allow: [{Host.Code, except: [remove: 1]}]`.
@@ -101,6 +103,23 @@ defmodule Beamlet.Policy do
   @doc "The tools a policy may grant."
   @spec tools() :: [tool()]
   def tools, do: @tools
+
+  @doc """
+  The MCP tools a policy puts in a token's tool list, in name order.
+
+  `define` is two tools in one: a policy granting it lists the
+  `define` and `patch` tools, since both write modules through the
+  same pipeline under the same limit.
+  """
+  @spec tool_list(t()) :: [:define | :eval | :patch]
+  def tool_list(%__MODULE__{tools: tools}) do
+    tools
+    |> Enum.flat_map(fn
+      :define -> [:define, :patch]
+      :eval -> [:eval]
+    end)
+    |> Enum.sort()
+  end
 
   @doc "The policy Beamlet ships: both tools, strict rules, the curated grants."
   @spec default() :: t()
@@ -199,7 +218,7 @@ defmodule Beamlet.Policy do
 
     Enum.join(
       [
-        "Policy: #{policy.name}\nTools: #{render_tools(policy.tools)}",
+        "Policy: #{policy.name}\nTools: #{render_tools(policy)}",
         "Standard Elixir and Erlang are available; this is what the policy " <>
           "deliberately withholds. Anything else denied is simply not granted " <>
           "on your beamlet. Host.Code.print_modules() shows what is.",
@@ -410,14 +429,19 @@ defmodule Beamlet.Policy do
 
   # ── Rendering ─────────────────────────────────────────────────────
 
-  defp render_tools([]), do: "(none)"
+  # The one place that names every tool and says which this policy
+  # withholds, so the static copy elsewhere can name tools plainly.
+  defp render_tools(policy) do
+    case tool_list(policy) do
+      [] ->
+        "(none)"
 
-  defp render_tools(tools) do
-    rendered = Enum.join(tools, ", ")
-
-    if :define in tools,
-      do: rendered,
-      else: rendered <> " (no define: modules cannot be added with this token)"
+      granted ->
+        case tool_list(default()) -- granted do
+          [] -> Enum.join(granted, ", ")
+          withheld -> "#{Enum.join(granted, ", ")} (not granted: #{Enum.join(withheld, ", ")})"
+        end
+    end
   end
 
   # Only rules in force are listed: a relaxed rule says nothing, and

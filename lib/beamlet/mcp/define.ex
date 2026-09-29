@@ -42,8 +42,9 @@ defmodule Beamlet.MCP.Define do
     `Host.Code.print_source(Shopping.List)` prints.
 
     A module that already exists is refused unless its entry sets
-    `replace: true`. The flag is permission, not an assertion, so it
-    is harmless on a new module. A replace recompiles the module's
+    `replace: true`; to change part of it, `patch` it instead. The
+    flag is permission, not an assertion, so it is harmless on a new
+    module. A replace recompiles the module's
     dependents, and a mounted route serves the new module without
     remounting; dropping a function another module still calls is
     refused, and if a dependent no longer compiles the error names it.

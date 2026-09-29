@@ -49,4 +49,4 @@ Hex packages at runtime: propose, operator approves, the beamlet installs, the p
 
 ## Deferred
 
-Design § 4 holds the list. Two follow-ups with no version: a walkthrough run on a local model, on the same script; the modern-era MCP protocol (2026-07-28), waiting on Anubis.
+Design § 4 holds the list. Two follow-ups with no version: a walkthrough run on a local model, on the same script; the modern-era MCP protocol (2026-07-28), waiting on Anubis. A third (2026-09-29): a policy's `tools:` names `eval` and `define`, and `define` grants the `define` and `patch` tools; a `capabilities:` key naming `eval` and `code`, with a `code:` config key for the compile timeout, may read clearer once there are more tools.

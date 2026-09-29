@@ -595,12 +595,12 @@ defmodule Beamlet.CLITest do
       assert {:ok, output} = with_io(fn -> CLI.main(["policies.show", "restricted"]) end)
 
       assert output =~
-               ~r/^Policy: restricted\nTools: eval \(no define: modules cannot be added with this token\)\n/
+               ~r/^Policy: restricted\nTools: eval \(not granted: define, patch\)\n/
 
       assert output =~ "Rules for your code:"
 
       assert {:ok, output} = with_io(fn -> CLI.main(["policies.show", "default"]) end)
-      assert output =~ ~r/^Policy: default\nTools: define, eval\n/
+      assert output =~ ~r/^Policy: default\nTools: define, eval, patch\n/
     end
 
     test "an unknown policy says how to list them" do

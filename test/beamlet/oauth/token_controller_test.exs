@@ -110,7 +110,7 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       assert get_resp_header(conn, "cache-control") == ["no-store"]
 
       {client, _result} = MCPClient.initialize(%Token{secret: access})
-      assert Enum.map(MCPClient.list_tools(client), & &1["name"]) == ["define", "eval"]
+      assert Enum.map(MCPClient.list_tools(client), & &1["name"]) == ["define", "eval", "patch"]
 
       assert [%Token{kind: :cli}, %Token{kind: :oauth} = token] = Users.list_tokens(user)
       assert token.client == @client_id

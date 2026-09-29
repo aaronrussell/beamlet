@@ -1,8 +1,8 @@
 # Beamlet — patch
 
-**Status:** The spec for editing modules in place, agreed 2026-09-26 and sequenced 2026-09-27 into the five phases of § 9, which is the plan. Each phase is a session of its own that starts from this note: a planning pass pinning the phase against the code as it stands, the implementation, the tests, `mix precommit`, and an update to this note. Phase 1 landed 2026-09-27. Phase 2 was reshaped 2026-09-28 in its planning pass: the module becomes the unit of `define` and source is formatted before anything reports a line, so one locator form serves the whole pipeline (§ 6). Phase 3 landed 2026-09-28: the outline, the piecewise reads, and the replace summary as bullets naming the functions removed, changed and new. Phase 4 landed 2026-09-28: the splices, `Beamlet.Patch`, the stale-read compare and the patch verb in the code server. Phase 5 is next. The work is next up on the roadmap, ahead of the 0.1 code review, so the reviews and the docs cover three tools. When the last phase lands, the settled parts move into `design.md` and this note goes.
+**Status:** The spec for editing modules in place, agreed 2026-09-26 and sequenced 2026-09-27 into the five phases of § 9, which is the plan. Each phase is a session of its own that starts from this note: a planning pass pinning the phase against the code as it stands, the implementation, the tests, `mix precommit`, and an update to this note. Phase 1 landed 2026-09-27. Phase 2 was reshaped 2026-09-28 in its planning pass: the module becomes the unit of `define` and source is formatted before anything reports a line, so one locator form serves the whole pipeline (§ 6). Phase 3 landed 2026-09-28: the outline, the piecewise reads, and the replace summary as bullets naming the functions removed, changed and new. Phase 4 landed 2026-09-28: the splices, `Beamlet.Patch`, the stale-read compare and the patch verb in the code server. Phase 5 landed 2026-09-29: the tool, with `define` as two tools in one in the policy. The close-out is next: the settled parts move into `design.md` and this note goes.
 
-**Last updated:** 2026-09-28 (phase 4 landed: the splices, the patch runtime, the hash compare and the patch verb)
+**Last updated:** 2026-09-29 (phase 5 landed: the tool, define as two tools in one, the `Tools:` line as the one place naming availability)
 
 ---
 
@@ -116,7 +116,9 @@ The server instructions gain one sentence, phrased to survive a token without th
 
 ### Policy and audit
 
-`patch` joins the valid tool names beside `eval` and `define`; `default` grants all three, a custom `tools:` list names what it wants, and the per-request listing filter and the call refusal work unchanged. A token with define and no patch is odd but legal, since the tools list is independent of grants. The audit gains a third commit kind.
+**`define` is two tools in one** (2026-09-29, in phase 5's planning pass, replacing `patch` as a third valid tool name). A policy's `tools:` names `eval` and/or `define`, and a policy with `define` lists the `define` and `patch` tools: both write modules through the same pipeline, the same scanner under the same policy, the same audit and the same compile timeout, and neither restricts anything the other allows, so offering them separately was a false choice and the reason `patch` is bounded by `config :beamlet, define: [timeout:]`. Operators do not care; agents see two tool surfaces. `Beamlet.Policy.tool_list/1` expands the grant, the server's listing filter and call refusal read it, and the per-request behaviour is unchanged. The audit gains a third commit kind. The alternative, a `capabilities:` key naming `eval` and `code` with a `code:` config key for the compile timeout, is on the roadmap's deferred list for when there are more tools.
+
+**One place names which tools a token has** (2026-09-29). The instructions and descriptions are static per server and cannot know a token's policy, which is why the define sentence hedged with "when it is in your tool list". Now `print_policy`'s `Tools:` line always names all three tools and marks the withheld ones, `Tools: eval (not granted: define, patch)`, the instructions cover availability in one sentence pointing there, and every other static mention names tools plainly. The scanner's per-request no-define hint stays, since it reads the policy at the moment of the slip.
 
 **The patcher's policy governs the whole resulting module** (2026-09-27). The scanner runs over the patched source entire, under the patching principal's policy, so a one-line patch by bob to a module alice defined can be refused on a line bob never wrote. This is already what a replace does, it is the safe answer, since no principal ends up with a module doing what their policy denies, and the error quotes the line so the cause is plain. What it points at is that Beamlet has no concept of code ownership; that is a discussion for after 0.1 (design § 4 already defers per-module ownership), and until then this is accepted.
 
@@ -265,17 +267,19 @@ Reshaped 2026-09-28 from "store formatted, errors locate by text", which it subs
 
 **Touched.** `lib/beamlet/code/source.ex`; new `lib/beamlet/patch.ex` and `lib/beamlet/code/entry.ex`; `lib/beamlet/define.ex` (onto `Entry`); `lib/beamlet/scanner.ex` (`locate/5`'s context); `lib/beamlet/code.ex`; `lib/beamlet/code/audit.ex`; new `test/beamlet/patch_test.exs` and the tests beside each.
 
-### Phase 5. The patch tool
+### Phase 5. The patch tool (landed 2026-09-29)
+
+**Settled against the code.** `:patch` never joined the policy's valid names: `define` is two tools in one (§ 3), `Beamlet.Policy.tool_list/1` expands it, and the `Tools:` line of `print_policy` became the one place naming every tool and which are withheld, so the instructions dropped the "when it is in your tool list" hedge for one sentence pointing at `print_policy`. The one-anchor, one-operation refusal had moved into the runtime in phase 4, so the component is as thin as define's: the six keys handed on with the absent ones dropped. The description closes with define's timeout sentence, interpolated from the same config key. The consent page and the CLI's `policies.show` render the expanded list.
 
 **Goal.** `patch` is in the tool list of every token whose policy grants it, and the three tools describe each other.
 
-**Builds.** `Beamlet.MCP.Patch` with the flat DSL schema of § 3, each field's description carrying its half of the rule and the tool description carrying it whole, and the one-anchor, one-operation refusal in `execute`. `:patch` in `Beamlet.Policy`'s tool names, type, validation message and rendering, with `default` granting all three. The description under the cap and in the cap test; the instructions sentence; define's exists error naming both doors; the component line and the moduledoc on `Beamlet.MCP.Server`; the policy moduledoc where it lists the tools.
+**Built.** `Beamlet.MCP.Patch` with the flat DSL schema of § 3, each field's description carrying its half of the rule and the tool description carrying it whole, handing the maps to the runtime. `Beamlet.Policy.tool_list/1` and the `Tools:` line in its four shapes. The description under the cap and in the cap test; the instructions paragraph naming the three tools and the availability sentence; define's description and exists error naming both doors; `Host.Code`'s moduledoc and the outline and source docs naming what `select` and `find` match; the component line and the moduledoc on `Beamlet.MCP.Server`; the policy moduledoc where it lists the tools.
 
-**Tests.** Through the plug, as define's are: the listing shows `patch` under `default` and not under `tools: [:eval]`; a call is refused as unknown for a token without it; a patch end to end with its summary; the both-anchors and neither-anchor errors; the description under the cap; the policy tests for the new name and its refusal message.
+**Tests.** Through the plug, as define's are: the listing shows all three under `default`, `eval` alone under `tools: [:eval]` and `define` with `patch` under `tools: [:define]`; a call to `patch` is refused as unknown for a token without it; a patch end to end with its summary; the both-anchors and neither-anchor errors; the description under the cap; `tool_list/1` and the four `Tools:` shapes; the consent page, the CLI and `print_policy` reading `define, eval, patch`.
 
 **Not in this phase.** Nothing else; this is wiring and copy.
 
-**Touches.** New `lib/beamlet/mcp/patch.ex`; `lib/beamlet/mcp/server.ex`; `lib/beamlet/policy.ex`; `lib/beamlet/mcp/define.ex`; `lib/beamlet/code.ex` (the exists error); the tests beside each.
+**Touched.** New `lib/beamlet/mcp/patch.ex`; `lib/beamlet/mcp/server.ex`; `lib/beamlet/policy.ex`; `lib/beamlet/mcp/define.ex`; `lib/beamlet/code.ex` (the exists error); `lib/host/code.ex`; `lib/beamlet/oauth/authorize_live.ex`; the tests beside each.
 
 **After phase 5.** The settled parts of this note move into `design.md` (§ 2 Define, Discovery, Policy and MCP), the roadmap step is marked done, § 11 moves to the roadmap's deferred list, and this note goes.
 

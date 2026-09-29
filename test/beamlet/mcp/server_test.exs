@@ -4,6 +4,7 @@ defmodule Beamlet.MCP.ServerTest do
 
   alias Beamlet.MCP.Define
   alias Beamlet.MCP.Eval
+  alias Beamlet.MCP.Patch
   alias Beamlet.MCP.Server
   alias Beamlet.MCPClient
   alias Beamlet.Users
@@ -15,13 +16,17 @@ defmodule Beamlet.MCP.ServerTest do
     assert result["instructions"] == Server.server_instructions()
   end
 
-  test "lists define and eval with their descriptions", %{token: token} do
+  test "lists define, eval and patch with their descriptions", %{token: token} do
     {client, _result} = MCPClient.initialize(token)
     tools = MCPClient.list_tools(client)
 
-    assert Enum.map(tools, & &1["name"]) == ["define", "eval"]
-    assert Enum.map(tools, & &1["description"]) == [Define.description(), Eval.description()]
-    assert Enum.map(tools, & &1["inputSchema"]["required"]) == [["modules"], ["code"]]
+    assert Enum.map(tools, & &1["name"]) == ["define", "eval", "patch"]
+
+    assert Enum.map(tools, & &1["description"]) ==
+             [Define.description(), Eval.description(), Patch.description()]
+
+    assert Enum.map(tools, & &1["inputSchema"]["required"]) ==
+             [["modules"], ["code"], ["patches"]]
   end
 
   test "eval evaluates and returns the inspected result", %{token: token} do
@@ -77,6 +82,71 @@ defmodule Beamlet.MCP.ServerTest do
     assert text == "Defined #{ns}.Greeter (replaced)\n  - unchanged"
   end
 
+  test "patch edits a defined module and returns the summary", %{token: token} do
+    {client, _result} = MCPClient.initialize(token)
+    ns = unique_namespace()
+    purge_on_exit([Module.concat([ns, Greeter])])
+
+    code = """
+    defmodule #{ns}.Greeter do
+      @moduledoc "Greets."
+
+      @doc "Says hi."
+      def hi, do: "hi"
+    end
+    """
+
+    assert %{"isError" => false} =
+             MCPClient.call_tool(client, "define", %{modules: [%{code: code}]})
+
+    patches = [
+      %{
+        module: "#{ns}.Greeter",
+        select: "hi/0",
+        replace: ~s|@doc "Says hello."\ndef hi, do: "hello"|
+      }
+    ]
+
+    assert %{"isError" => false, "content" => [%{"type" => "text", "text" => text}]} =
+             MCPClient.call_tool(client, "patch", %{patches: patches})
+
+    assert text == "Patched #{ns}.Greeter\n  - changed hi/0"
+
+    assert %{"isError" => false, "content" => [%{"type" => "text", "text" => ~s|=> "hello"|}]} =
+             MCPClient.call_tool(client, "eval", %{code: "#{ns}.Greeter.hi()"})
+  end
+
+  test "a patch breaking the one-anchor, one-operation rule is an error result", %{
+    token: token
+  } do
+    {client, _result} = MCPClient.initialize(token)
+    ns = unique_namespace()
+    purge_on_exit([Module.concat([ns, Greeter])])
+
+    code = """
+    defmodule #{ns}.Greeter do
+      @moduledoc "Greets."
+
+      @doc "Says hi."
+      def hi, do: "hi"
+    end
+    """
+
+    assert %{"isError" => false} =
+             MCPClient.call_tool(client, "define", %{modules: [%{code: code}]})
+
+    patches = [
+      %{module: "#{ns}.Greeter", find: "x", select: "hi/0", replace: "y"},
+      %{module: "#{ns}.Greeter", replace: "y"}
+    ]
+
+    assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
+             MCPClient.call_tool(client, "patch", %{patches: patches})
+
+    assert text =~ "patch 1 has both find and select — one anchor per patch"
+    assert text =~ "patch 2 has no anchor — one anchor per patch"
+  end
+
   test "a define that fails the docs gate is an error result", %{token: token} do
     {client, _result} = MCPClient.initialize(token)
 
@@ -128,6 +198,14 @@ defmodule Beamlet.MCP.ServerTest do
       assert Enum.map(MCPClient.list_tools(client), & &1["name"]) == ["eval"]
     end
 
+    @tag policies: [writer: [tools: [:define]]]
+    test "define is two tools in one, define and patch", %{user: user} do
+      {:ok, token} = Users.create_token(user, name: "phone", policy: "writer")
+      {client, _result} = MCPClient.initialize(token)
+
+      assert Enum.map(MCPClient.list_tools(client), & &1["name"]) == ["define", "patch"]
+    end
+
     @tag policies: [restricted: [tools: [:eval]]]
     @tag :capture_log
     test "a call to a tool the policy withholds is an unknown tool", %{user: user} do
@@ -139,6 +217,11 @@ defmodule Beamlet.MCP.ServerTest do
       assert conn.status == 200
 
       assert %{"error" => %{"code" => -32602, "data" => %{"message" => "Tool not found: define"}}} =
+               JSON.decode!(conn.resp_body)
+
+      conn = MCPClient.rpc(client, "tools/call", %{name: "patch", arguments: %{patches: []}})
+
+      assert %{"error" => %{"code" => -32602, "data" => %{"message" => "Tool not found: patch"}}} =
                JSON.decode!(conn.resp_body)
 
       assert %{"isError" => false} = MCPClient.call_tool(client, "eval", %{code: "1 + 1"})
@@ -159,11 +242,13 @@ defmodule Beamlet.MCP.BudgetTest do
 
   alias Beamlet.MCP.Define
   alias Beamlet.MCP.Eval
+  alias Beamlet.MCP.Patch
   alias Beamlet.MCP.Server
+  alias Beamlet.Policy
 
-  test "the server's tools are the ones a policy can grant" do
+  test "the server's tools are the ones the default policy lists" do
     assert Enum.map(Server.__components__(:tool), & &1.name) ==
-             Enum.map(Beamlet.Policy.tools(), &Atom.to_string/1)
+             Enum.map(Policy.tool_list(Policy.default()), &Atom.to_string/1)
   end
 
   # Claude Code truncates server instructions and each tool
@@ -179,5 +264,6 @@ defmodule Beamlet.MCP.BudgetTest do
   test "tool descriptions fits Claude Code's 2KB cut" do
     assert byte_size(Define.description()) <= @budget
     assert byte_size(Eval.description()) <= @budget
+    assert byte_size(Patch.description()) <= @budget
   end
 end

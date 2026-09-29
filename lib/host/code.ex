@@ -8,8 +8,9 @@ defmodule Host.Code do
   `:ok`. A failure raises with a teaching message, like any other
   error, and everything printed before it survives.
 
-  Explore with `eval`, then build with `define`: anything worth
-  calling again belongs in a module. Each `eval` starts clean, so
+  Explore with `eval`, then build with `define` and edit with
+  `patch`: anything worth calling again belongs in a module. Each
+  `eval` starts clean, so
   read what exists first. Other agents and clients share the same
   pool of modules, and this is how you see its current state. A
   defined module is read whole with `print_source/1`, or in pieces:
@@ -95,8 +96,9 @@ defmodule Host.Code do
 
   One row per item, e.g. `10-17  def total/1 (2 clauses)`: a
   function's row covers all its clauses and the `@doc`, `@spec`,
-  `@impl`, `attr` and `slot` directly above them; a type's row
-  covers its `@typedoc`. `use`, `import`, `alias`, `defstruct` and
+  `@impl`, `attr` and `slot` directly above them, which is exactly
+  what a `patch` `select` touches; a type's row covers its
+  `@typedoc`. `use`, `import`, `alias`, `defstruct` and
   any other top-level form show by their first line. The moduledoc
   and attributes holding values have no row, so a gap between rows
   is one of those: read it by line range. Read the outline first,
@@ -117,8 +119,8 @@ defmodule Host.Code do
   `lib/shopping/list.ex:42`: the module's path, and a line of what
   this prints. For a long module read `print_outline/1` and then a
   function or a line range with `print_source/2`. Read a module
-  before replacing it with `replace: true`. Serves defined modules
-  only; for anything else use `print_docs/1`.
+  before replacing or patching it. Serves defined modules only; for
+  anything else use `print_docs/1`.
   """
   @spec print_source(module()) :: :ok
   def print_source(module) when is_atom(module) do
@@ -131,8 +133,8 @@ defmodule Host.Code do
   `print_source(Shopping.List, 40..80)`.
 
   A function prints as its whole block, all clauses and the docs
-  above them, exactly as stored, so text copied from it matches the
-  source. A range is inclusive and counts from line 1, as
+  above them, exactly as stored, so text copied from it is what a
+  `patch` `find` matches. A range is inclusive and counts from line 1, as
   `print_outline/1` shows; an end past the last line prints to the
   end.
   """

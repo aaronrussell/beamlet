@@ -35,6 +35,7 @@ defmodule Beamlet.OAuth.AuthorizeLive do
   alias Beamlet.OAuth.Clients
   alias Beamlet.OAuth.Codes
   alias Beamlet.Policies
+  alias Beamlet.Policy
   alias Beamlet.Users
   alias Beamlet.Web.Layouts
 
@@ -174,7 +175,7 @@ defmodule Beamlet.OAuth.AuthorizeLive do
 
     policies =
       for name <- names, {:ok, policy} <- [Policies.fetch(name)] do
-        {name, Enum.map_join(policy.tools, ", ", &to_string/1)}
+        {name, Enum.map_join(Policy.tool_list(policy), ", ", &to_string/1)}
       end
 
     assign(socket,

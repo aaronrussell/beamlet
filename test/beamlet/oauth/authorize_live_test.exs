@@ -89,7 +89,7 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
                ~s(#consent-form input[type=radio][name=policy][value=default][checked])
              )
 
-      assert html =~ "define, eval"
+      assert html =~ "define, eval, patch"
       assert has_element?(view, ~s(#consent-form button[name=decision][value=allow]))
       assert has_element?(view, ~s(#consent-form button[name=decision][value=deny]))
       assert has_element?(view, "#signed-in", "alice")

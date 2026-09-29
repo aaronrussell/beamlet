@@ -51,7 +51,7 @@ defmodule Host.CodeTest do
     test "print_policy renders the token's policy", ctx do
       assert {:ok, result} = Eval.run("Host.Code.print_policy()", ctx.principal)
 
-      assert result =~ "Policy: default\nTools: define, eval"
+      assert result =~ "Policy: default\nTools: define, eval, patch"
       assert result =~ "Not available:"
       assert result =~ "Partially granted:"
       assert result =~ "defmacro/defmacrop are not permitted in define"

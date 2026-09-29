@@ -1,6 +1,6 @@
 defmodule Beamlet.MCP.Server do
   @moduledoc """
-  A beamlet's MCP server: the `define` and `eval` tools over
+  A beamlet's MCP server: the `define`, `eval` and `patch` tools over
   Streamable HTTP, for any MCP client.
 
   Runs as a child of `Beamlet`. A host serves it at `/beamlet/mcp` by
@@ -33,15 +33,19 @@ defmodule Beamlet.MCP.Server do
 
   component(Beamlet.MCP.Define)
   component(Beamlet.MCP.Eval)
+  component(Beamlet.MCP.Patch)
 
   @instructions """
   These tools work on your beamlet: a running Elixir application you
   extend from the inside. They apply only when working on it.
 
   `eval` evaluates Elixir code on your beamlet and returns the
-  result. `define`, when it is in your tool list, compiles modules,
-  one per entry, into the running system and keeps them across
-  restarts; anything worth calling again belongs in a module.
+  result. `define` compiles modules, one per entry, into the running
+  system and keeps them across restarts; anything worth calling
+  again belongs in a module. `patch` edits a defined module's source
+  by find and replace or by function. Your policy sets which of the
+  three you have: `Host.Code.print_policy()` names them, and a tool
+  it withholds is not in your list.
 
   Start with `eval`. `Host.Code.print_modules()` lists what exists,
   `Host.Code.print_docs(Module)` prints the documentation of any
@@ -60,7 +64,7 @@ defmodule Beamlet.MCP.Server do
     top of any eval or module that queries.
   - Your beamlet is shared with other users and agents. Read what
     exists before building, and `Host.Code.print_outline(Module)`
-    then `print_source` before replacing a module.
+    then `print_source` before replacing or patching a module.
   - Verify before reporting done: call a mounted route with
     `Host.Router.call(verb, path)`, query the rows you wrote.
   """
@@ -98,7 +102,7 @@ defmodule Beamlet.MCP.Server do
 
   # The plug has already refused a token whose policy is not declared.
   defp granted?(frame, name) do
-    {:ok, %Policy{tools: tools}} = Policies.fetch(frame.assigns.principal.policy)
-    name in Enum.map(tools, &Atom.to_string/1)
+    {:ok, policy} = Policies.fetch(frame.assigns.principal.policy)
+    name in Enum.map(Policy.tool_list(policy), &Atom.to_string/1)
   end
 end

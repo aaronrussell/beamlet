@@ -198,6 +198,21 @@ defmodule Beamlet.PolicyTest do
     end
   end
 
+  describe "tool_list/1" do
+    test "define is two tools in one" do
+      assert Policy.tool_list(Policy.default()) == [:define, :eval, :patch]
+
+      {:ok, policy} = Policy.build(:x, tools: [:eval])
+      assert Policy.tool_list(policy) == [:eval]
+
+      {:ok, policy} = Policy.build(:x, tools: [:define])
+      assert Policy.tool_list(policy) == [:define, :patch]
+
+      {:ok, policy} = Policy.build(:x, tools: [])
+      assert Policy.tool_list(policy) == []
+    end
+  end
+
   describe "allowed?/4 and fetch/2" do
     test "only grants exactly the listed pairs" do
       policy = %Policy{grants: %{Req => {:only, [get: 2]}}}
@@ -225,12 +240,18 @@ defmodule Beamlet.PolicyTest do
   end
 
   describe "render/1" do
-    test "opens with the name and tools" do
+    test "opens with the name and every tool, naming the ones withheld" do
       text = Policy.render(Policy.default())
-      assert String.starts_with?(text, "Policy: default\nTools: define, eval\n")
+      assert String.starts_with?(text, "Policy: default\nTools: define, eval, patch\n")
+
+      {:ok, policy} = Policy.build(:x, tools: [:eval])
+      assert Policy.render(policy) =~ "\nTools: eval (not granted: define, patch)\n"
+
+      {:ok, policy} = Policy.build(:x, tools: [:define])
+      assert Policy.render(policy) =~ "\nTools: define, patch (not granted: eval)\n"
 
       {:ok, policy} = Policy.build(:x, tools: [])
-      assert Policy.render(policy) =~ "Tools: (none)"
+      assert Policy.render(policy) =~ "\nTools: (none)\n"
     end
 
     test "renders the deliberate denials with their reasons" do
