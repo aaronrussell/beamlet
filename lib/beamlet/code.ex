@@ -254,22 +254,12 @@ defmodule Beamlet.Code do
     {:ok, state}
   end
 
-  # The caller is Anubis's tool process, which a client cancel kills.
-  # Monitoring it for the life of the define is what turns a cancel
-  # into an abort: a queued define never starts, a compiling one is
-  # stopped and rolled back, and a committing one completes.
   @impl GenServer
   def handle_call({:define, entries, principal, run}, {caller, _tag}, state) do
-    caller_ref = Process.monitor(caller)
-
     outcome =
-      receive do
-        {:DOWN, ^caller_ref, :process, _pid, _reason} -> :cancelled
-      after
-        0 -> run_define(state, entries, principal, run, caller_ref)
-      end
-
-    Process.demonitor(caller_ref, [:flush])
+      unless_cancelled(caller, fn caller_ref ->
+        run_define(state, entries, principal, run, caller_ref)
+      end)
 
     case outcome do
       {:ok, summary, state} -> {:reply, {:ok, summary}, state}
@@ -278,10 +268,11 @@ defmodule Beamlet.Code do
     end
   end
 
-  def handle_call({:remove, modules, principal}, _from, state) do
-    case run_remove(state, modules, principal) do
+  def handle_call({:remove, modules, principal}, {caller, _tag}, state) do
+    case unless_cancelled(caller, fn _caller_ref -> run_remove(state, modules, principal) end) do
       {:ok, state} -> {:reply, :ok, state}
       {:error, message} -> {:reply, {:error, message}, state}
+      :cancelled -> {:noreply, state}
     end
   end
 
@@ -311,6 +302,21 @@ defmodule Beamlet.Code do
 
   def handle_call(:deps, _from, state), do: {:reply, state.deps, state}
   def handle_call(:calls, _from, state), do: {:reply, state.calls, state}
+
+  # The caller is Anubis's tool process or an eval's child, which a
+  # client cancel or the eval's timeout kills. A call still queued
+  # when its caller died never starts, so a cancel is an abort. A
+  # define also hands the monitor to its compile, which stops and
+  # rolls back on it; a remove, once started, completes. A monitor on
+  # a process already dead signals its DOWN, which a `receive` with
+  # `after 0` can run ahead of, so the check is `Process.alive?/1`,
+  # taken after the monitor so a death in between still reaches it.
+  defp unless_cancelled(caller, fun) do
+    caller_ref = Process.monitor(caller)
+    outcome = if Process.alive?(caller), do: fun.(caller_ref), else: :cancelled
+    Process.demonitor(caller_ref, [:flush])
+    outcome
+  end
 
   # Define
 

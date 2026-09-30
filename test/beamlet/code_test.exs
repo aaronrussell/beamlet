@@ -1114,6 +1114,50 @@ defmodule Beamlet.CodeTest do
       assert Code.calls() == %{}
     end
 
+    test "a remove whose caller died while it was queued never runs", ctx do
+      ns = unique_namespace()
+      keep = Module.concat([ns, Keep])
+      purge_on_exit([keep, Module.concat([ns, Slow])])
+      Process.register(self(), :define_probe)
+
+      assert {:ok, _summary} =
+               define("defmodule #{ns}.Keep do\n  @moduledoc \"Keep.\"\nend", ctx.principal)
+
+      slow = """
+      defmodule #{ns}.Slow do
+        @moduledoc "Compiles when let go."
+        send(:define_probe, {:compiling, self()})
+        receive do: (:go -> :ok)
+      end
+      """
+
+      test = self()
+      spawn(fn -> send(test, {:defined, define(slow, ctx.principal)}) end)
+      assert_receive {:compiling, compiler}, 5_000
+
+      # Tracing the server's receives shows the remove queued behind
+      # the define before its caller is killed.
+      server = Process.whereis(Code)
+      :erlang.trace(server, true, [:receive])
+      remover = spawn(fn -> Code.remove([keep], ctx.principal) end)
+
+      assert_receive {:trace, ^server, :receive, {:"$gen_call", _from, {:remove, [^keep], _}}},
+                     5_000
+
+      :erlang.trace(server, false, [:receive])
+      remover_ref = Process.monitor(remover)
+      Process.exit(remover, :kill)
+      assert_receive {:DOWN, ^remover_ref, :process, ^remover, :killed}
+
+      send(compiler, :go)
+      assert_receive {:defined, {:ok, _summary}}, 5_000
+      :sys.get_state(Code)
+
+      assert keep in Code.defined()
+      assert loaded?(keep)
+      assert File.exists?(Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}/keep.ex"))
+    end
+
     test "a removal survives a restart", ctx do
       ns = unique_namespace()
       keep = Module.concat([ns, Keep])
