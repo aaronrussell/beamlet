@@ -422,5 +422,25 @@ defmodule Beamlet.RoutesTest do
 
       assert conn |> get("/peek") |> json_response(200) == %{}
     end
+
+    test "regenerate compiles the table as it stands when the compile runs", ctx do
+      server = Process.whereis(Beamlet.Code)
+      :erlang.trace(server, true, [:receive])
+      :ok = :sys.suspend(server)
+
+      add_hello!(ctx, "/first")
+      task = Task.async(&Routes.regenerate/0)
+
+      assert_receive {:trace, ^server, :receive,
+                      {:"$gen_call", _from, {:compile_artifact, _source, _file}}}
+
+      :erlang.trace(server, false, [:receive])
+
+      add_hello!(ctx, "/second")
+      :ok = :sys.resume(server)
+      assert :ok = Task.await(task)
+
+      assert Enum.map(Beamlet.DynamicRouter.__routes__(), & &1.path) == ["/first", "/second"]
+    end
   end
 end

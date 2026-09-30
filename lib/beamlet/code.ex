@@ -166,17 +166,23 @@ defmodule Beamlet.Code do
   @doc """
   Compiles derived quoted form, the router `Beamlet.Routes`
   generates, in this process's lane, so it never interleaves with a
-  define or a boot compile: the compiler options and tracers it
-  swaps are VM-global. The modules load into the VM; nothing is
-  written to disk, no policy gate runs and no edges are recorded. A
-  compile failure returns the error and puts back the last version
-  this server compiled from the same file, so it keeps serving.
+  define, a boot compile or another artifact compile: the compiler
+  options and tracers it swaps are VM-global.
+
+  `source` returns the quoted form and runs inside the lane too, so
+  whatever it reads is current when the compile runs, and two
+  callers can never land their builds out of order. It runs in this
+  process, so it must not call this server. The modules load into
+  the VM; nothing is written to disk, no policy gate runs and no
+  edges are recorded. A raise in `source` or a compile failure
+  returns the error and puts back the last version this server
+  compiled from the same file, so it keeps serving.
   """
-  @spec compile_artifact(Macro.t(), String.t()) :: {:ok, [module()]} | {:error, String.t()}
-  def compile_artifact(quoted, file) when is_binary(file) do
+  @spec compile_artifact((-> Macro.t()), String.t()) :: {:ok, [module()]} | {:error, String.t()}
+  def compile_artifact(source, file) when is_function(source, 0) and is_binary(file) do
     GenServer.call(
       __MODULE__,
-      {:compile_artifact, quoted, file},
+      {:compile_artifact, source, file},
       Config.define()[:timeout] + 5_000
     )
   end
@@ -278,17 +284,16 @@ defmodule Beamlet.Code do
 
   # An empty root set keeps the tracer out of it: nothing in a derived
   # artifact is an edge between defined modules.
-  def handle_call({:compile_artifact, quoted, file}, _from, state) do
+  def handle_call({:compile_artifact, source, file}, _from, state) do
     ctx = %{roots: MapSet.new(), granted: MapSet.new()}
 
     result =
-      with_compiler_env(ctx, fn ->
-        try do
-          {:ok, Code.compile_quoted(quoted, file)}
-        rescue
-          exception -> {:error, Exception.message(exception)}
-        end
-      end)
+      try do
+        quoted = source.()
+        {:ok, with_compiler_env(ctx, fn -> Code.compile_quoted(quoted, file) end)}
+      rescue
+        exception -> {:error, Exception.message(exception)}
+      end
 
     case result do
       {:ok, compiled} ->

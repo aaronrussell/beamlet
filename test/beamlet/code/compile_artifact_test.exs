@@ -16,7 +16,7 @@ defmodule Beamlet.Code.CompileArtifactTest do
 
     source = quoted("defmodule #{ns}.Artifact do\n  def answer, do: 42\nend\n")
 
-    assert {:ok, [^mod]} = Code.compile_artifact(source, "artifact.ex")
+    assert {:ok, [^mod]} = Code.compile_artifact(fn -> source end, "artifact.ex")
     assert mod.answer() == 42
     refute mod in Code.defined()
   end
@@ -28,8 +28,8 @@ defmodule Beamlet.Code.CompileArtifactTest do
     v1 = quoted("defmodule #{ns}.Artifact do\n  def version, do: 1\nend\n")
     v2 = quoted("defmodule #{ns}.Artifact do\n  def version, do: 2\nend\n")
 
-    assert {:ok, [^mod]} = Code.compile_artifact(v1, "artifact.ex")
-    assert {:ok, [^mod]} = Code.compile_artifact(v2, "artifact.ex")
+    assert {:ok, [^mod]} = Code.compile_artifact(fn -> v1 end, "artifact.ex")
+    assert {:ok, [^mod]} = Code.compile_artifact(fn -> v2 end, "artifact.ex")
     assert mod.version() == 2
   end
 
@@ -40,10 +40,24 @@ defmodule Beamlet.Code.CompileArtifactTest do
     good = quoted("defmodule #{ns}.Artifact do\n  def version, do: 1\nend\n")
     bad = quoted("defmodule #{ns}.Artifact do\n  def version, do: 2\n  raise \"boom\"\nend\n")
 
-    assert {:ok, [^mod]} = Code.compile_artifact(good, "artifact.ex")
-    assert {:error, "boom"} = quiet(fn -> Code.compile_artifact(bad, "artifact.ex") end)
+    assert {:ok, [^mod]} = Code.compile_artifact(fn -> good end, "artifact.ex")
+    assert {:error, "boom"} = quiet(fn -> Code.compile_artifact(fn -> bad end, "artifact.ex") end)
 
     assert mod.version() == 1
+  end
+
+  test "a source that raises returns the message and the last good version keeps serving",
+       %{ns: ns} do
+    mod = Module.concat([ns, "Artifact"])
+    purge_on_exit([mod])
+
+    good = quoted("defmodule #{ns}.Artifact do\n  def version, do: 1\nend\n")
+
+    assert {:ok, [^mod]} = Code.compile_artifact(fn -> good end, "artifact.ex")
+    assert {:error, "no table"} = Code.compile_artifact(fn -> raise "no table" end, "artifact.ex")
+
+    assert mod.version() == 1
+    assert {:ok, [^mod]} = Code.compile_artifact(fn -> good end, "artifact.ex")
   end
 
   test "a first compile that fails leaves nothing loaded", %{ns: ns} do
@@ -52,7 +66,7 @@ defmodule Beamlet.Code.CompileArtifactTest do
 
     bad = quoted("defmodule #{ns}.Artifact do\n  raise \"boom\"\nend\n")
 
-    assert {:error, "boom"} = quiet(fn -> Code.compile_artifact(bad, "artifact.ex") end)
+    assert {:error, "boom"} = quiet(fn -> Code.compile_artifact(fn -> bad end, "artifact.ex") end)
     refute loaded?(mod)
   end
 
@@ -64,8 +78,10 @@ defmodule Beamlet.Code.CompileArtifactTest do
 
     source = quoted("defmodule #{ns}.Artifact do\n  def answer, do: 42\nend\n")
     bad = quoted("defmodule #{ns}.Artifact do\n  raise \"boom\"\nend\n")
-    assert {:ok, _modules} = Code.compile_artifact(source, "artifact.ex")
-    assert {:error, _message} = quiet(fn -> Code.compile_artifact(bad, "artifact.ex") end)
+    assert {:ok, _modules} = Code.compile_artifact(fn -> source end, "artifact.ex")
+
+    assert {:error, _message} =
+             quiet(fn -> Code.compile_artifact(fn -> bad end, "artifact.ex") end)
 
     assert Elixir.Code.get_compiler_option(:docs) == docs
     assert Elixir.Code.get_compiler_option(:ignore_module_conflict) == conflict

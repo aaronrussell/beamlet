@@ -5,11 +5,13 @@ defmodule Beamlet.Routes do
   Rows (`Beamlet.Route`) in the `__routes` table of the agent database
   are the durable record of the URL surface agents build; the router
   that serves them, `Beamlet.DynamicRouter`, is a derived artifact:
-  built from the rows as quoted form, compiled through the code
-  server's lane (`Beamlet.Code.compile_artifact/2`) and hot-swapped
-  into the VM, never written to disk and never committed. It is
-  rebuilt at boot, by a synchronous child of `Beamlet` right after
-  the code server, and after every change to the table.
+  built from the rows as quoted form and compiled, both inside the
+  code server's lane (`Beamlet.Code.compile_artifact/2`), then
+  hot-swapped into the VM, never written to disk and never
+  committed. Reading the rows in the lane is what keeps two
+  regenerations racing from landing an older table over a newer
+  one. It is rebuilt at boot, by a synchronous child of `Beamlet`
+  right after the code server, and after every change to the table.
 
   `create`, `delete` and `list` change or read the table and nothing
   else. Regeneration is the caller's to compose, which is what
@@ -74,18 +76,14 @@ defmodule Beamlet.Routes do
   Rebuilds the router from the table: malformed rows are deleted and
   rows whose targets cannot serve are left out, with a warning each,
   and the rest are built under the configured prefix and compiled
-  in. On a compile failure the previous router keeps serving and the
-  error is returned.
+  in. The table is read inside the code server's lane, so the router
+  that lands is the table as it stands when the compile runs. On a
+  failure the previous router keeps serving and the error is
+  returned.
   """
   @spec regenerate() :: :ok | {:error, String.t()}
   def regenerate do
-    {rows, malformed} = Enum.split_with(list(), &Route.load_changeset(&1).valid?)
-    Enum.each(malformed, &prune/1)
-    {servable, broken} = Enum.split_with(rows, &servable?/1)
-    Enum.each(broken, &log_broken/1)
-    quoted = Generator.quoted(servable, Config.web()[:prefix])
-
-    case Beamlet.Code.compile_artifact(quoted, "dynamic_router.ex") do
+    case Beamlet.Code.compile_artifact(&render/0, "dynamic_router.ex") do
       {:ok, _modules} ->
         :ok
 
@@ -96,6 +94,16 @@ defmodule Beamlet.Routes do
 
         {:error, message}
     end
+  end
+
+  # Runs inside the code server's lane, so nothing here may call it:
+  # servable?/1 reads the defined set from its table.
+  defp render do
+    {rows, malformed} = Enum.split_with(list(), &Route.load_changeset(&1).valid?)
+    Enum.each(malformed, &prune/1)
+    {servable, broken} = Enum.split_with(rows, &servable?/1)
+    Enum.each(broken, &log_broken/1)
+    Generator.quoted(servable, Config.web()[:prefix])
   end
 
   @doc """
@@ -155,7 +163,8 @@ defmodule Beamlet.Routes do
       :ignore
   end
 
-  # Concurrent regenerations can both see the row, hence allow_stale.
+  # An unmount can delete the row between the list and the prune,
+  # hence allow_stale.
   defp prune(route) do
     Host.Repo.delete!(route, allow_stale: true)
     fields = [:id, :kind, :verb, :path, :module, :action, :principal, :inserted_at]
