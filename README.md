@@ -38,6 +38,9 @@ Configuration is by environment variable:
 | `BEAMLET_URL` | `http://localhost:4000` | The address the beamlet is reached at. LiveView rejects sockets from any other origin. |
 | `SECRET_KEY_BASE` | generated | Signs cookies. Generated on first boot and kept in the data dir when unset. |
 | `PORT` | `4000` | The port the server listens on. |
+| `BEAMLET_EVAL_TIMEOUT` | `30000` | Milliseconds one eval may run before it is stopped and its output so far returned. |
+| `BEAMLET_DEFINE_TIMEOUT` | `30000` | Milliseconds one define or patch may spend compiling. |
+| `BEAMLET_MCP_REQUEST_TIMEOUT` | `65000` | Milliseconds the server waits for any MCP request before answering "Server unavailable". Must be greater than both timeouts above. |
 
 TLS is left to whatever sits in front of the container.
 

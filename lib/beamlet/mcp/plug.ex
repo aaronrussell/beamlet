@@ -30,6 +30,11 @@ defmodule Beamlet.MCP.Plug do
   naming a policy outside its user's current list
   (`Beamlet.Users.policies/1`), which is how narrowing a user's
   policies takes effect on their existing tokens at once.
+
+  The transport waits `config :beamlet, mcp: [request_timeout: ...]`
+  for a request's answer (`Beamlet.Config.mcp/0`), read per request
+  since `init/1` runs when the router compiles, before any runtime
+  config is known.
   """
 
   @behaviour Plug
@@ -37,6 +42,7 @@ defmodule Beamlet.MCP.Plug do
   import Plug.Conn
 
   alias Anubis.Server.Transport.StreamableHTTP
+  alias Beamlet.Config
   alias Beamlet.OAuth
   alias Beamlet.Policies
   alias Beamlet.Principal
@@ -56,7 +62,7 @@ defmodule Beamlet.MCP.Plug do
          :ok <- granted(token) do
       conn
       |> assign(:principal, Principal.from_token(token))
-      |> StreamableHTTP.Plug.call(transport_opts)
+      |> StreamableHTTP.Plug.call(%{transport_opts | timeout: Config.mcp()[:request_timeout]})
     else
       {:error, {:no_policy, token}} -> forbidden(conn, token, :undeclared)
       {:error, {:not_granted, token}} -> forbidden(conn, token, :not_granted)

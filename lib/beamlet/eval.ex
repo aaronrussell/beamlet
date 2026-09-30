@@ -31,8 +31,8 @@ defmodule Beamlet.Eval do
   - `timeout` (30 seconds) protects the session. An MCP session runs
     one request at a time, so a run that never ended would stall
     every request behind it. The evaluation is stopped and the output
-    so far returned. The MCP transport's own request timeout is set
-    from this one plus a margin, so it is never the one that fires.
+    so far returned. The MCP request timeout (`Beamlet.Config.mcp/0`)
+    must be longer, so it is never the one that fires.
   - `max_heap_bytes` (256MB) protects the beamlet: a runaway
     allocation is stopped before it takes the VM down.
   - `max_output` (16KB) protects the model's context. A longer result

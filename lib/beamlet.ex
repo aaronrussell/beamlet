@@ -76,13 +76,7 @@ defmodule Beamlet do
     ]
   end
 
-  # The transport's request timeout answers "Server unavailable" and
-  # leaves the request running, so a tool's own timeout must fire
-  # first: eval's, or define's, which may wait a full compile behind
-  # another define before its own (Beamlet.Code.define/5).
   defp children(nil) do
-    define_timeout = Config.define()[:timeout]
-
     [
       Beamlet.Policies,
       Beamlet.Repo,
@@ -95,9 +89,7 @@ defmodule Beamlet do
       Beamlet.Routes,
       Beamlet.OAuth.Clients,
       Beamlet.OAuth.Codes,
-      {Beamlet.MCP.Server,
-       transport: {:streamable_http, start: true},
-       request_timeout: max(Config.eval()[:timeout], 2 * define_timeout + 5_000) + 5_000}
+      {Beamlet.MCP.Server, transport: {:streamable_http, start: true}}
     ]
   end
 

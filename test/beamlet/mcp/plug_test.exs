@@ -111,6 +111,25 @@ defmodule Beamlet.MCP.PlugTest do
     assert conn.assigns.principal == Principal.from_token(authenticated)
   end
 
+  @tag :capture_log
+  test "the transport waits the configured request timeout, read per request", %{token: token} do
+    {client, _result} = MCPClient.initialize(token)
+    Application.put_env(:beamlet, :mcp, request_timeout: 200)
+    on_exit(fn -> Application.delete_env(:beamlet, :mcp) end)
+
+    code = """
+    receive do
+    after
+      2_000 -> :ok
+    end
+    """
+
+    conn = MCPClient.rpc(client, "tools/call", %{name: "eval", arguments: %{code: code}})
+
+    assert %{"error" => %{"data" => %{"message" => "Server unavailable"}}} =
+             JSON.decode!(conn.resp_body)
+  end
+
   defp request(authorization) do
     :post
     |> conn(

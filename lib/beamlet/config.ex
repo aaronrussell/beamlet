@@ -15,19 +15,22 @@ defmodule Beamlet.Config do
   the databases under `db/`, the defined modules under `code/`
   (`Beamlet.Code`) and the files agent code keeps under `files/`
   (`Host.File`). Policies are declared here too (`Beamlet.Policy`),
-  the limits on the two tools (`Beamlet.Eval`, `Beamlet.Define`), and
-  the web surface: the host's endpoint, which serves the routes agents
-  mount (`Beamlet.Router`), and the prefix they are served under.
+  the limits on the two tools (`Beamlet.Eval`, `Beamlet.Define`), the
+  MCP request timeout, and the web surface: the host's endpoint, which
+  serves the routes agents mount (`Beamlet.Router`), and the prefix
+  they are served under.
 
       config :beamlet,
         data_dir: "/var/lib/beamlet",
         web: [endpoint: MyAppWeb.Endpoint],
         eval: [timeout: 60_000],
-        define: [timeout: 60_000]
+        define: [timeout: 60_000],
+        mcp: [request_timeout: 90_000]
   """
 
   @eval_defaults [timeout: 30_000, max_heap_bytes: 268_435_456, max_output: 16_384]
   @define_defaults [timeout: 30_000]
+  @mcp_defaults [request_timeout: 65_000]
   @web_defaults [endpoint: nil, prefix: ""]
   @prefix_format ~r{\A/[A-Za-z0-9_\-/]*[A-Za-z0-9_\-]\z}
 
@@ -38,11 +41,13 @@ defmodule Beamlet.Config do
   set and absolute, since it holds state that must never silently
   depend on the working directory; the policies must be a keyword
   list of name to document, each document checked by
-  `Beamlet.Policies` when it builds them; the eval and define limits
-  must be known keys with positive integers; the web group's endpoint
-  must be a module and its prefix empty or a path with a leading
-  slash and no trailing one. Whether an endpoint is set is checked by
-  the full boot, not here, since the system half runs without one.
+  `Beamlet.Policies` when it builds them; the eval, define and mcp
+  limits must be known keys with positive integers, and the MCP
+  request timeout longer than both tool timeouts; the web group's
+  endpoint must be a module and its prefix empty or a path with a
+  leading slash and no trailing one. Whether an endpoint is set is
+  checked by the full boot, not here, since the system half runs
+  without one.
   """
   @spec validate!() :: :ok
   def validate! do
@@ -50,6 +55,8 @@ defmodule Beamlet.Config do
     validate_policies!(Application.get_env(:beamlet, :policies, []))
     validate_limits!(:eval, @eval_defaults, Application.get_env(:beamlet, :eval, []))
     validate_limits!(:define, @define_defaults, Application.get_env(:beamlet, :define, []))
+    validate_limits!(:mcp, @mcp_defaults, Application.get_env(:beamlet, :mcp, []))
+    validate_request_timeout!()
     validate_web!(Application.get_env(:beamlet, :web, []))
     :ok
   end
@@ -96,6 +103,14 @@ defmodule Beamlet.Config do
   """
   @spec define() :: keyword()
   def define, do: limits(:define, @define_defaults)
+
+  @doc """
+  The MCP limits, merged over the defaults: `request_timeout` 65
+  seconds, how long the transport waits for a request's answer before
+  replying "Server unavailable" (`Beamlet.MCP.Plug`).
+  """
+  @spec mcp() :: keyword()
+  def mcp, do: limits(:mcp, @mcp_defaults)
 
   @doc """
   The web surface, merged over the defaults: `endpoint`, the host's
@@ -146,6 +161,23 @@ defmodule Beamlet.Config do
       raise ArgumentError,
             "config :beamlet, #{inspect(key)}: the limits are #{list(names)}, " <>
               "each a positive integer, got: #{inspect({name, value})}"
+    end
+  end
+
+  # The transport's timeout answers "Server unavailable" and leaves
+  # the request running, so a tool's own timeout, whose error says
+  # what happened, must fire first.
+  defp validate_request_timeout! do
+    request_timeout = mcp()[:request_timeout]
+    eval_timeout = eval()[:timeout]
+    define_timeout = define()[:timeout]
+
+    unless request_timeout > max(eval_timeout, define_timeout) do
+      raise ArgumentError,
+            "config :beamlet, :mcp: request_timeout (#{request_timeout}) must be greater " <>
+              "than the eval timeout (#{eval_timeout}) and the define timeout " <>
+              "(#{define_timeout}), or a tool that runs to its own timeout is answered " <>
+              "\"Server unavailable\" instead of its error"
     end
   end
 

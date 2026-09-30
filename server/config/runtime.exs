@@ -65,3 +65,31 @@ if beamlet_url = System.get_env("BEAMLET_URL") do
   config :beamlet_server, BeamletServer.Endpoint,
     url: [host: url.host, port: url.port, scheme: url.scheme]
 end
+
+# The timeouts, in milliseconds as config takes them. Only a variable
+# that is set lands in config, so the defaults stay in Beamlet.Config
+# and the operator file in the data dir, merged after this, still has
+# the last word.
+milliseconds = fn name ->
+  if value = System.get_env(name) do
+    case Integer.parse(value) do
+      {ms, ""} when ms > 0 ->
+        ms
+
+      _other ->
+        raise """
+        environment variable #{name} must be a positive whole number of \
+        milliseconds, got: #{inspect(value)}
+        """
+    end
+  end
+end
+
+for {name, group, key} <- [
+      {"BEAMLET_EVAL_TIMEOUT", :eval, :timeout},
+      {"BEAMLET_DEFINE_TIMEOUT", :define, :timeout},
+      {"BEAMLET_MCP_REQUEST_TIMEOUT", :mcp, :request_timeout}
+    ],
+    ms = milliseconds.(name) do
+  config :beamlet, group, [{key, ms}]
+end

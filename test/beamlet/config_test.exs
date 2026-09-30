@@ -12,6 +12,7 @@ defmodule Beamlet.ConfigTest do
       Application.delete_env(:beamlet, :policies)
       Application.delete_env(:beamlet, :eval)
       Application.delete_env(:beamlet, :define)
+      Application.delete_env(:beamlet, :mcp)
     end)
 
     %{configured: previous}
@@ -76,6 +77,36 @@ defmodule Beamlet.ConfigTest do
       assert_raise ArgumentError, ~r/:define: the limits are timeout, each a positive/, fn ->
         Config.validate!()
       end
+    end
+
+    test "raises on an unknown mcp limit, naming the one there is" do
+      Application.put_env(:beamlet, :mcp, timeout: 100)
+
+      assert_raise ArgumentError, ~r/:mcp: the limits are request_timeout, each a positive/, fn ->
+        Config.validate!()
+      end
+    end
+
+    test "raises when the request timeout is not greater than both tool timeouts" do
+      Application.put_env(:beamlet, :eval, timeout: 65_000)
+
+      assert_raise ArgumentError,
+                   ~r/request_timeout \(65000\) must be greater than the eval timeout \(65000\) and the define timeout \(30000\)/,
+                   fn -> Config.validate!() end
+
+      Application.delete_env(:beamlet, :eval)
+      Application.put_env(:beamlet, :define, timeout: 70_000)
+
+      assert_raise ArgumentError, ~r/"Server unavailable" instead of its error/, fn ->
+        Config.validate!()
+      end
+    end
+
+    test "passes a request timeout one millisecond past the larger tool timeout" do
+      Application.put_env(:beamlet, :eval, timeout: 90_000)
+      Application.put_env(:beamlet, :mcp, request_timeout: 90_001)
+
+      assert :ok = Config.validate!()
     end
 
     test "raises on an unknown web key" do
@@ -172,6 +203,13 @@ defmodule Beamlet.ConfigTest do
 
       Application.put_env(:beamlet, :define, timeout: 100)
       assert Config.define() == [timeout: 100]
+    end
+
+    test "mcp/0 is the default request timeout when unset, the configured one otherwise" do
+      assert Config.mcp() == [request_timeout: 65_000]
+
+      Application.put_env(:beamlet, :mcp, request_timeout: 100)
+      assert Config.mcp() == [request_timeout: 100]
     end
 
     test "code_dir/0 is the code directory under the data dir", %{configured: configured} do
