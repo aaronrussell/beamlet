@@ -5,6 +5,7 @@ defmodule Beamlet.MCP.Define do
 
   alias Anubis.Server.Response
   alias Beamlet.Define
+  alias Beamlet.MCP.Server
 
   schema do
     embeds_many :modules, required: true, description: "The modules to define, one per entry" do
@@ -62,11 +63,13 @@ defmodule Beamlet.MCP.Define do
 
   @impl true
   def execute(%{modules: modules}, frame) do
-    entries = Enum.map(modules, &%{code: &1[:code], replace: &1[:replace] == true})
+    with :ok <- Server.authorize("define", frame) do
+      entries = Enum.map(modules, &%{code: &1[:code], replace: &1[:replace] == true})
 
-    case Define.run(entries, frame.assigns.principal) do
-      {:ok, text} -> {:reply, Response.text(Response.tool(), text), frame}
-      {:error, text} -> {:reply, Response.error(Response.tool(), text), frame}
+      case Define.run(entries, frame.assigns.principal) do
+        {:ok, text} -> {:reply, Response.text(Response.tool(), text), frame}
+        {:error, text} -> {:reply, Response.error(Response.tool(), text), frame}
+      end
     end
   end
 end

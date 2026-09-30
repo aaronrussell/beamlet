@@ -4,6 +4,7 @@ defmodule Beamlet.MCP.Patch do
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
+  alias Beamlet.MCP.Server
   alias Beamlet.Patch
 
   @keys [:module, :find, :select, :replace, :before, :after]
@@ -74,14 +75,16 @@ defmodule Beamlet.MCP.Patch do
 
   @impl true
   def execute(%{patches: patches}, frame) do
-    patches =
-      Enum.map(patches, fn patch ->
-        patch |> Map.take(@keys) |> Map.reject(fn {_key, value} -> is_nil(value) end)
-      end)
+    with :ok <- Server.authorize("patch", frame) do
+      patches =
+        Enum.map(patches, fn patch ->
+          patch |> Map.take(@keys) |> Map.reject(fn {_key, value} -> is_nil(value) end)
+        end)
 
-    case Patch.run(patches, frame.assigns.principal) do
-      {:ok, text} -> {:reply, Response.text(Response.tool(), text), frame}
-      {:error, text} -> {:reply, Response.error(Response.tool(), text), frame}
+      case Patch.run(patches, frame.assigns.principal) do
+        {:ok, text} -> {:reply, Response.text(Response.tool(), text), frame}
+        {:error, text} -> {:reply, Response.error(Response.tool(), text), frame}
+      end
     end
   end
 end

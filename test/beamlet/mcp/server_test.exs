@@ -2,6 +2,8 @@ defmodule Beamlet.MCP.ServerTest do
   # The define test loads a module into the VM.
   use Beamlet.Case, async: false
 
+  alias Anubis.MCP.Error
+  alias Anubis.Server.Frame
   alias Beamlet.MCP.Define
   alias Beamlet.MCP.Eval
   alias Beamlet.MCP.Patch
@@ -225,6 +227,25 @@ defmodule Beamlet.MCP.ServerTest do
                JSON.decode!(conn.resp_body)
 
       assert %{"isError" => false} = MCPClient.call_tool(client, "eval", %{code: "1 + 1"})
+    end
+
+    @tag policies: [nothing: [tools: []]]
+    test "each tool refuses a token its policy withholds it from, however it is reached", %{
+      user: user
+    } do
+      {:ok, token} = Users.create_token(user, name: "phone", policy: "nothing")
+      frame = Frame.new(%{principal: principal(token)})
+
+      for {component, name, params} <- [
+            {Define, "define", %{modules: []}},
+            {Eval, "eval", %{code: "1 + 1"}},
+            {Patch, "patch", %{patches: []}}
+          ] do
+        assert {:error, %Error{code: -32602, data: %{message: message}}, ^frame} =
+                 component.execute(params, frame)
+
+        assert message == "Tool not found: #{name}"
+      end
     end
 
     @tag policies: [nothing: [tools: []]]

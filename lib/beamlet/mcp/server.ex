@@ -78,7 +78,8 @@ defmodule Beamlet.MCP.Server do
   # Anubis generates its own handle_request/2 after this module's body,
   # so there is no super to call: each clause dispatches to the same
   # handler the generated one would. The listing goes to the tools
-  # handler directly, whose spec knows the reply is a map.
+  # handler directly, whose spec knows the reply is a map. A call is
+  # gated in each tool's execute instead (authorize/2).
   @impl true
   def handle_request(%{"method" => "tools/list"} = request, frame) do
     case Handlers.Tools.handle_list(request, frame, __MODULE__) do
@@ -90,15 +91,21 @@ defmodule Beamlet.MCP.Server do
     end
   end
 
-  def handle_request(%{"method" => "tools/call", "params" => %{"name" => name}} = request, frame) do
-    if granted?(frame, name) do
-      Handlers.handle(request, __MODULE__, frame)
-    else
-      {:error, Error.protocol(:invalid_params, %{message: "Tool not found: #{name}"}), frame}
-    end
-  end
-
   def handle_request(request, frame), do: Handlers.handle(request, __MODULE__, frame)
+
+  # Anubis runs a task-augmented tools/call without passing through
+  # handle_request/2, so the gate sits where every path ends: the
+  # tool's execute. The refusal is the one Anubis gives for a tool it
+  # does not have, since to this token it does not.
+  @doc false
+  @spec authorize(String.t(), Anubis.Server.Frame.t()) ::
+          :ok | {:error, Error.t(), Anubis.Server.Frame.t()}
+  def authorize(name, frame) do
+    if granted?(frame, name),
+      do: :ok,
+      else:
+        {:error, Error.protocol(:invalid_params, %{message: "Tool not found: #{name}"}), frame}
+  end
 
   # The plug has already refused a token whose policy is not declared.
   defp granted?(frame, name) do
