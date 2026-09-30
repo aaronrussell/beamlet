@@ -156,6 +156,68 @@ defmodule Beamlet.CodeTest do
       assert summary == "Defined #{ns}.Fresh (new)"
     end
 
+    test "a name that maps to a defined module's file is refused, that file untouched", ctx do
+      ns = unique_namespace()
+      held = Module.concat([ns, HTTPClient])
+      purge_on_exit([held, Module.concat([ns, HttpClient])])
+
+      code = """
+      defmodule #{ns}.HTTPClient do
+        @moduledoc "Fetches."
+      end
+      """
+
+      assert {:ok, _summary} = define(code, ctx.principal)
+
+      assert {:error, message} =
+               define("defmodule #{ns}.HttpClient do\nend", ctx.principal, replace: true)
+
+      assert message ==
+               "#{ns}.HttpClient would be stored at lib/#{Macro.underscore(ns)}/http_client.ex, " <>
+                 "which already holds #{ns}.HTTPClient. Choose another name for " <>
+                 "#{ns}.HttpClient: a module's file is named for its underscored name, so " <>
+                 "names that differ only in capitalisation share one."
+
+      file = Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}/http_client.ex")
+      assert File.read!(file) == code
+      assert Code.defined() == [held]
+      refute Elixir.Code.ensure_loaded?(Module.concat([ns, HttpClient]))
+    end
+
+    test "a name that maps to a quarantined file is refused", ctx do
+      ns = unique_namespace()
+      held = Module.concat([ns, HTTPClient])
+      purge_on_exit([held, Module.concat([ns, HttpClient])])
+
+      file = Path.join(ctx.code_dir, "lib/#{Macro.underscore(ns)}/http_client.ex")
+      File.mkdir_p!(Path.dirname(file))
+      File.write!(file, "defmodule #{ns}.HTTPClient do\n  def go(x), do: missing(x)\nend\n")
+
+      ExUnit.CaptureLog.capture_log(fn -> quiet(fn -> restart_code_server() end) end)
+      assert [%{modules: [^held]}] = Code.quarantined()
+
+      assert {:error, message} = define("defmodule #{ns}.HttpClient do\nend", ctx.principal)
+      assert message =~ "which already holds #{ns}.HTTPClient"
+      assert File.exists?(file)
+    end
+
+    test "two names in one call that map to one file are refused", ctx do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, HTTPClient]), Module.concat([ns, HttpClient])])
+
+      assert {:error, message} =
+               define(
+                 ["defmodule #{ns}.HTTPClient do\nend", "defmodule #{ns}.HttpClient do\nend"],
+                 ctx.principal
+               )
+
+      assert message =~
+               "#{ns}.HTTPClient and #{ns}.HttpClient would both be stored at " <>
+                 "lib/#{Macro.underscore(ns)}/http_client.ex. Choose another name for one of them"
+
+      assert Code.defined() == []
+    end
+
     test "replace recompiles the dependent and reports it", ctx do
       ns = unique_namespace()
       item = Module.concat([ns, Item])

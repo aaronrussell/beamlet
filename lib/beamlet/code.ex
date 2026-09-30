@@ -320,7 +320,8 @@ defmodule Beamlet.Code do
     with :ok <- check_hashes(state, entries),
          {:ok, new_mods, replaced} <- classify(state, entries),
          :ok <- check_not_applied(state, replaced, verb_word(run.verb)),
-         {:ok, placements} <- placements(state, entries) do
+         {:ok, placements} <- placements(state, entries),
+         :ok <- check_paths(state, entries, placements) do
       dependents =
         state.deps
         |> dependents_closure(replaced)
@@ -616,6 +617,9 @@ defmodule Beamlet.Code do
 
   # Placement
 
+  @path_rule "a module's file is named for its underscored name, so names that " <>
+               "differ only in capitalisation share one."
+
   # Where each entry's source lands, decided before the compile so the
   # staged file already carries the path every error names. A
   # migration is recognised by its `use Ecto.Migration` line and filed
@@ -648,6 +652,53 @@ defmodule Beamlet.Code do
 
       {:ok, Map.new(placements)}
     end
+  end
+
+  # `Macro.underscore/1` folds case, so `HTTPClient` and `HttpClient`
+  # share a file, as can a hand-made file and a module named like it.
+  # A second module placed at a taken path would replace the holder's
+  # source and lose it at the next boot. A quarantined file is the
+  # unit of deletion, so it never blocks one of its own modules.
+  defp check_paths(state, entries, placements) do
+    {errors, _claimed} =
+      Enum.flat_map_reduce(entries, %{}, fn %{module: mod}, claimed ->
+        {path, _version} = Map.fetch!(placements, mod)
+
+        defined = for {other, ^path} <- state.modules, other != mod, do: other
+
+        quarantined =
+          for %{file: ^path, modules: mods} <- state.quarantined,
+              mod not in mods,
+              other <- mods,
+              do: other
+
+        holders = defined ++ quarantined
+
+        error =
+          case {Map.fetch(claimed, path), holders} do
+            {{:ok, other}, _holders} -> [shared_path_error(state, other, mod, path)]
+            {:error, []} -> []
+            {:error, holders} -> [held_path_error(state, mod, holders, path)]
+          end
+
+        {error, Map.put(claimed, path, mod)}
+      end)
+
+    case errors do
+      [] -> :ok
+      errors -> {:error, Enum.join(errors, "\n")}
+    end
+  end
+
+  defp held_path_error(state, mod, holders, path) do
+    "#{inspect(mod)} would be stored at #{relative(state, path)}, which already holds " <>
+      "#{Enum.map_join(holders, ", ", &inspect/1)}. Choose another name for " <>
+      "#{inspect(mod)}: #{@path_rule}"
+  end
+
+  defp shared_path_error(state, first, second, path) do
+    "#{inspect(first)} and #{inspect(second)} would both be stored at " <>
+      "#{relative(state, path)}. Choose another name for one of them: #{@path_rule}"
   end
 
   # The `use` line decided the placement; the compiled module is the
