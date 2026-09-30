@@ -261,17 +261,33 @@ defmodule Beamlet.Users do
   the old secrets stop authenticating at once. The returned token
   carries the new `secret` and `refresh_secret`. A `cli` token has
   nothing to rotate and answers `{:error, :cli_token}`.
+
+  A refresh secret redeems once. The rotation only lands while the
+  row still holds the refresh secret `token` was loaded with, so of
+  two rotations from one secret the second answers
+  `{:error, :unknown_token}`, as a spent secret does.
   """
   @spec rotate_token(Token.t(), map() | keyword()) ::
-          {:ok, Token.t()} | {:error, Ecto.Changeset.t() | :cli_token}
+          {:ok, Token.t()} | {:error, Ecto.Changeset.t() | :cli_token | :unknown_token}
   def rotate_token(%Token{kind: :cli}, _attrs), do: {:error, :cli_token}
 
-  def rotate_token(%Token{kind: :oauth} = token, attrs) do
-    token
-    |> Token.rotate_changeset(Map.new(attrs))
-    |> put_secret(:secret)
-    |> put_secret(:refresh_secret)
-    |> Repo.update()
+  def rotate_token(%Token{kind: :oauth, id: id, refresh_hash: refresh_hash} = token, attrs) do
+    changeset =
+      token
+      |> Token.rotate_changeset(Map.new(attrs))
+      |> put_secret(:secret)
+      |> put_secret(:refresh_secret)
+      |> Ecto.Changeset.put_change(:updated_at, NaiveDateTime.utc_now(:second))
+
+    with {:ok, rotated} <- Ecto.Changeset.apply_action(changeset, :update) do
+      changes = changeset.changes |> Map.drop([:secret, :refresh_secret]) |> Keyword.new()
+      query = from(t in Token, where: t.id == ^id and t.refresh_hash == ^refresh_hash)
+
+      case Repo.update_all(query, set: changes) do
+        {1, _rows} -> {:ok, rotated}
+        {0, _rows} -> {:error, :unknown_token}
+      end
+    end
   end
 
   @doc """

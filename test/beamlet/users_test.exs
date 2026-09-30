@@ -477,6 +477,21 @@ defmodule Beamlet.UsersTest do
       assert {:error, :unknown_token} = Users.authenticate_refresh(token.refresh_secret)
     end
 
+    test "a refresh secret rotates once, however many loaded it", %{user: user} do
+      {:ok, token} = Users.create_token(user, oauth_attrs("https://claude.ai/c.json"))
+      {:ok, first} = Users.authenticate_refresh(token.refresh_secret)
+      {:ok, second} = Users.authenticate_refresh(token.refresh_secret)
+      later = DateTime.add(DateTime.utc_now(:second), 7200, :second)
+      attrs = [expires_at: later, refresh_expires_at: later]
+
+      assert {:ok, rotated} = Users.rotate_token(first, attrs)
+      assert {:error, :unknown_token} = Users.rotate_token(second, attrs)
+
+      assert {:ok, %Token{id: id}} = Users.authenticate_refresh(rotated.refresh_secret)
+      assert id == token.id
+      assert {:ok, %Token{id: ^id}} = Users.authenticate(rotated.secret)
+    end
+
     test "requires both expiries and refuses a cli token", %{user: user, token: cli} do
       {:ok, token} = Users.create_token(user, oauth_attrs("https://claude.ai/c.json"))
       attrs = %{expires_at: nil, refresh_expires_at: nil}

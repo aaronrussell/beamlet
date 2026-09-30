@@ -153,8 +153,14 @@ defmodule Beamlet.OAuth.TokenController do
 
   defp rotate(token) do
     case Users.rotate_token(token, OAuth.expiries()) do
-      {:ok, token} -> {:ok, token}
-      {:error, _reason} -> {:error, "invalid_grant", "the token could not be refreshed"}
+      {:ok, token} ->
+        {:ok, token}
+
+      {:error, :unknown_token} ->
+        {:error, "invalid_grant", "the refresh token is unknown or already used"}
+
+      {:error, _reason} ->
+        {:error, "invalid_grant", "the token could not be refreshed"}
     end
   end
 
