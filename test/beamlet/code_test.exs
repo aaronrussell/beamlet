@@ -447,6 +447,62 @@ defmodule Beamlet.CodeTest do
       refute message =~ "fine.ex"
       assert Code.defined() == []
     end
+
+    test "an exception raised in the module body locates by its frame", ctx do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, Thing])])
+
+      code = """
+      defmodule #{ns}.Thing do
+        @moduledoc "Thing."
+        use Ecto.Schema
+
+        schema "things" do
+          field :name, :no_such_type
+        end
+      end
+      """
+
+      assert {:error, message} = quiet(fn -> define(code, ctx.principal) end)
+      path = "lib/#{Macro.underscore(ns)}/thing.ex"
+
+      assert message =~
+               ~r/\A#{Regex.escape(path)}:6: \*\* \(ArgumentError\) unknown type :no_such_type for field :name\n/
+
+      assert message =~ "Ecto.Schema.__field__/4"
+      assert message =~ "\n    #{path}:6: (module)\n"
+      assert message =~ "field :name, :no_such_type"
+      refute message =~ "elixir_compiler"
+      refute message =~ ".staging"
+    end
+
+    test "a defined module's frames in the trace read as locators", ctx do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, Boom]), Module.concat([ns, Caller])])
+
+      boom = """
+      defmodule #{ns}.Boom do
+        @moduledoc "Boom."
+        def boom!, do: raise(ArgumentError, "boom")
+      end
+      """
+
+      caller = """
+      defmodule #{ns}.Caller do
+        @moduledoc "Caller."
+        @value #{ns}.Boom.boom!()
+        def value, do: @value
+      end
+      """
+
+      assert {:ok, _summary} = define(boom, ctx.principal)
+      assert {:error, message} = quiet(fn -> define(caller, ctx.principal) end)
+      dir = "lib/#{Macro.underscore(ns)}"
+
+      assert message =~ ~r/\A#{Regex.escape(dir)}\/caller.ex:3: \*\* \(ArgumentError\) boom\n/
+      assert message =~ "#{dir}/boom.ex:3: #{ns}.Boom.boom!/0"
+      refute message =~ ".staging"
+    end
   end
 
   describe "migrations" do

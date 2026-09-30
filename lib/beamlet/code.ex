@@ -381,7 +381,13 @@ defmodule Beamlet.Code do
         end)
 
       locators = locators(state, staged, entries, placements, dependents)
-      render = %{context: run.context, locators: locators}
+
+      render = %{
+        context: run.context,
+        locators: locators,
+        code_dir: state.code_dir,
+        staging_dir: state.staging_dir
+      }
 
       case outcome do
         {:ok, {:ok, _modules, %{compile_warnings: warnings}}} ->
@@ -1046,18 +1052,15 @@ defmodule Beamlet.Code do
     diag_line(diagnostic) == 0 and diagnostic.message =~ "cannot compile module"
   end
 
-  defp render_diagnostic(diagnostic, %{context: context, locators: locators}) do
-    line = diag_line(diagnostic)
+  defp render_diagnostic(diagnostic, %{context: context, locators: locators} = render) do
+    {line, message} = line_and_message(diagnostic, render)
 
     case Map.get(locators, diagnostic.file) do
       nil ->
-        "line #{line}: #{diagnostic.message}"
+        "line #{line}: #{message}"
 
       %{locator: locator, source: source, label: label} ->
-        labelled(
-          label,
-          Scanner.locate(source, locator, line, diagnostic.message, context: context)
-        )
+        labelled(label, Scanner.locate(source, locator, line, message, context: context))
     end
   end
 
@@ -1067,6 +1070,68 @@ defmodule Beamlet.Code do
   defp diag_line(%{position: {line, _column}}), do: line
   defp diag_line(%{position: line}) when is_integer(line), do: line
   defp diag_line(_diagnostic), do: 0
+
+  # An exception raised while a module body runs arrives at line 0,
+  # its trace formatted into the message and naming the staged copy.
+  # The line is taken from the trace's frame in the failing file, and
+  # the trace is formatted again up to that frame, as Elixir's own
+  # message is, with each file under the code dir as its locator.
+  defp line_and_message(
+         %{stacktrace: [_ | _] = stacktrace, details: {kind, reason}} = diagnostic,
+         render
+       ) do
+    if diag_line(diagnostic) == 0 do
+      file = Path.expand(diagnostic.file)
+      {inner, from} = Enum.split_while(stacktrace, &(frame_file(&1) != file))
+
+      line =
+        case from do
+          [{_mod, _fun, _arity, location} | _rest] -> Keyword.get(location, :line, 0)
+          [] -> 0
+        end
+
+      frames = Enum.map(inner ++ Enum.take(from, 1), &locate_frame(&1, render))
+      {line, kind |> Exception.format(reason, frames) |> String.trim_trailing()}
+    else
+      {diag_line(diagnostic), diagnostic.message}
+    end
+  end
+
+  defp line_and_message(diagnostic, _render), do: {diag_line(diagnostic), diagnostic.message}
+
+  defp frame_file({_mod, _fun, _arity, location}) when is_list(location) do
+    if file = location[:file], do: Path.expand(to_string(file))
+  end
+
+  defp frame_file(_frame), do: nil
+
+  defp locate_frame({mod, fun, arity, location} = frame, render) when is_list(location) do
+    case frame_file(frame) do
+      nil ->
+        frame
+
+      file ->
+        {mod, fun, arity, Keyword.put(location, :file, frame_locator(file, location, render))}
+    end
+  end
+
+  defp locate_frame(frame, _render), do: frame
+
+  # The staging dir mirrors the code dir, so a staged file's locator is
+  # its path under either. A defined module's beam records the staged
+  # copy it was compiled from, so its frames are rewritten the same way.
+  defp frame_locator(file, location, %{staging_dir: staging_dir, code_dir: code_dir}) do
+    cond do
+      String.starts_with?(file, staging_dir <> "/") ->
+        file |> Path.relative_to(staging_dir) |> String.to_charlist()
+
+      String.starts_with?(file, code_dir <> "/") ->
+        file |> Path.relative_to(code_dir) |> String.to_charlist()
+
+      true ->
+        location[:file]
+    end
+  end
 
   # Elixir only warns when clauses of one function are separated by
   # other definitions, and the module compiles and runs. The warning
