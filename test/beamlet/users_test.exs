@@ -496,18 +496,25 @@ defmodule Beamlet.UsersTest do
       assert {:ok, %User{password: nil, password_hash: ^hash}} = Users.find(user.id)
     end
 
-    test "takes 8 to 128 characters", %{user: user} do
+    test "takes at least 8 characters and at most 128 bytes", %{user: user} do
       assert {:error, changeset} = Users.update_password(user, "seven77")
       assert %{password: ["should be at least 8 character(s)"]} = errors_on(changeset)
 
       assert {:error, changeset} = Users.update_password(user, String.duplicate("a", 129))
-      assert %{password: ["should be at most 128 character(s)"]} = errors_on(changeset)
+      assert %{password: ["should be at most 128 byte(s)"]} = errors_on(changeset)
+
+      assert {:error, changeset} = Users.update_password(user, String.duplicate("é", 65))
+      assert %{password: ["should be at most 128 byte(s)"]} = errors_on(changeset)
 
       assert {:error, changeset} = Users.update_password(user, "")
       assert %{password: ["can't be blank"]} = errors_on(changeset)
 
       assert {:ok, _user} = Users.update_password(user, "eight888")
       assert {:ok, _user} = Users.update_password(user, String.duplicate("a", 128))
+      assert {:ok, _user} = Users.update_password(user, String.duplicate("é", 64))
+
+      assert {:error, changeset} = Users.update_password(user, "éééé")
+      assert %{password: ["should be at least 8 character(s)"]} = errors_on(changeset)
     end
 
     test "replaces an earlier password", %{user: user} do
@@ -606,6 +613,19 @@ defmodule Beamlet.UsersTest do
       assert {:error, :invalid_credentials} = Users.authenticate_password("bob", "")
       assert {:error, :invalid_credentials} = Users.authenticate_password(nil, "correct horse")
       assert {:error, :invalid_credentials} = Users.authenticate_password("alice", nil)
+    end
+
+    test "refuses a password longer than any user can have", %{user: user} do
+      longest = String.duplicate("a", 128)
+      {:ok, _user} = Users.update_password(user, longest)
+
+      assert {:ok, _user} = Users.authenticate_password("alice", longest)
+
+      assert {:error, :invalid_credentials} =
+               Users.authenticate_password("alice", longest <> "a")
+
+      assert {:error, :invalid_credentials} =
+               Users.authenticate_password("alice", String.duplicate("a", 1_000_000))
     end
   end
 

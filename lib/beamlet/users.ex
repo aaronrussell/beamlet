@@ -101,9 +101,10 @@ defmodule Beamlet.Users do
   def find_by(clauses), do: wrap(Repo.get_by(User, clauses))
 
   @doc """
-  Sets or resets a user's password, 8 to 128 characters; only its hash
-  is stored. Every session the user has ends with it, so a browser
-  signed in with the old password is signed out.
+  Sets or resets a user's password, at least 8 characters and at most
+  128 bytes; only its hash is stored. Every session the user has ends
+  with it, so a browser signed in with the old password is signed
+  out.
   """
   @spec update_password(User.t(), String.t()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
   def update_password(%User{id: user_id} = user, password) do
@@ -122,16 +123,19 @@ defmodule Beamlet.Users do
 
   A wrong password, an unknown name and a user with no password all
   fail the same way, `{:error, :invalid_credentials}`, and take the
-  same time, so the reply reveals nothing about which.
+  same time, so the reply reveals nothing about which. A password
+  longer than any user can have fails the same way without being
+  hashed, since hashing cost grows with its length.
   """
   @spec authenticate_password(term(), term()) :: {:ok, User.t()} | {:error, :invalid_credentials}
   def authenticate_password(name, password) when is_binary(name) and is_binary(password) do
-    case Repo.get_by(User, name: name) do
-      %User{password_hash: hash} = user when is_binary(hash) ->
-        if Pbkdf2.verify_pass(password, hash),
-          do: {:ok, user},
-          else: {:error, :invalid_credentials}
-
+    with true <- byte_size(password) <= User.max_password_bytes(),
+         %User{password_hash: hash} = user when is_binary(hash) <-
+           Repo.get_by(User, name: name) do
+      if Pbkdf2.verify_pass(password, hash),
+        do: {:ok, user},
+        else: {:error, :invalid_credentials}
+    else
       _other ->
         Pbkdf2.no_user_verify()
         {:error, :invalid_credentials}

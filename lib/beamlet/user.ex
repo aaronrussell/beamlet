@@ -60,17 +60,27 @@ defmodule Beamlet.User do
   end
 
   @doc """
-  Changeset for setting a password: 8 to 128 characters, stored only
-  as a PBKDF2 hash.
+  Changeset for setting a password: at least 8 characters and at most
+  `max_password_bytes/0` bytes, stored only as a PBKDF2 hash.
   """
   @spec password_changeset(t(), map()) :: Ecto.Changeset.t()
   def password_changeset(user, attrs) do
     user
     |> cast(attrs, [:password])
     |> validate_required([:password])
-    |> validate_length(:password, min: 8, max: 128)
+    |> validate_length(:password, min: 8)
+    |> validate_length(:password, max: max_password_bytes(), count: :bytes)
     |> hash_password()
   end
+
+  @doc """
+  The longest password a user may have, in bytes.
+
+  Counted in bytes because PBKDF2's cost grows with the password's
+  byte length, and sign-in refuses anything longer before hashing it.
+  """
+  @spec max_password_bytes() :: pos_integer()
+  def max_password_bytes, do: 128
 
   defp validate_policies(changeset) do
     validate_change(changeset, :policies, fn :policies, names ->
