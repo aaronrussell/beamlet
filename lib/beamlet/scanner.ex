@@ -14,10 +14,18 @@ defmodule Beamlet.Scanner do
   modules, and a `define` entry is exclusively top-level `defmodule`s.
   The targets of `alias`, `import`, `require` and `use`, and the
   data-position targets the compiler expands (`defdelegate to:`, the
-  compile hooks, `@derive`, `@compile`) stay literal under any
-  policy, and `@compile` may name no parse or core transform. Every
+  compile hooks, `@compile`) stay literal under any policy, and
+  `@compile` may name no parse or core transform. `@derive` is
+  refused, as `defimpl` is: protocols are consolidated at build, so
+  an implementation added at runtime is never dispatched to. Every
   violation is collected and reported together, each with its
   locator and the offending line quoted beneath it.
+
+  Struct literals are not checked against the grants. A struct is a
+  map with a `__struct__` key, which `struct/2` or a plain map
+  literal builds under any name, so refusing `%File.Stream{}` steers
+  nothing; and a macro-generated module, an inline embedded schema,
+  is named in its parent's own source before it exists.
 
   This is an anti-accident guardrail, not a security boundary. The
   approximations are deliberate: alias and import tracking is
@@ -36,6 +44,9 @@ defmodule Beamlet.Scanner do
   @expression_error "define declares modules — run expressions with eval"
   @protocol_error "defprotocol and defimpl are not supported — define a plain module"
   @nested_error "nested module definitions are not permitted"
+  @derive_error "@derive is not supported — protocols are consolidated when your beamlet is " <>
+                  "built, so an implementation added later is never used. Convert the " <>
+                  "struct instead, like Map.take(order, [:id, :total]) before Jason.encode!/1"
 
   @doc """
   Scans an `eval` buffer under the policy. Returns `:ok`, or every
@@ -357,22 +368,6 @@ defmodule Beamlet.Scanner do
     {:ok, check_local(acc, meta, fun, arity)}
   end
 
-  defp handle({:%, _meta, [{:__aliases__, meta, _parts} = target, map]}, acc) do
-    acc =
-      case literal_module(target, acc.aliases) do
-        {:ok, module} ->
-          if Policy.allowed?(acc.policy, module),
-            do: acc,
-            else:
-              violation(acc, meta, "%#{inspect(module)}{} — #{denied_module(acc.policy, module)}")
-
-        :error ->
-          acc
-      end
-
-    {{:__block__, [], [map]}, acc}
-  end
-
   # defdelegate's to: target sits in data position, but each head is
   # a real call into it, so the delegated name/arity (honouring as:)
   # is checked against the grants. The heads keep walking, since
@@ -445,22 +440,8 @@ defmodule Beamlet.Scanner do
     end
   end
 
-  # @derive invokes the target protocol's deriving macro at compile
-  # time: a single module, a {Protocol, opts} tuple, or a list of
-  # either. The options keep walking, since attribute values are
-  # evaluated.
-  defp handle({:@, _at_meta, [{:derive, meta, [target]}]}, acc) do
-    {rest, acc} =
-      target
-      |> List.wrap()
-      |> Enum.map_reduce(acc, fn
-        # A 2-tuple is the {Protocol, opts} form; bare modules are
-        # alias or __MODULE__ nodes (3-tuples) or plain atoms.
-        {mod, opts}, acc -> {opts, check_module_target(acc, meta, mod, "@derive")}
-        entry, acc -> {:ok, check_module_target(acc, meta, entry, "@derive")}
-      end)
-
-    {{:__block__, [], rest}, acc}
+  defp handle({:@, _at_meta, [{:derive, meta, [_target]}]}, acc) do
+    {:ok, violation(acc, meta, @derive_error)}
   end
 
   defp handle({{:., _dot_meta, [target, fun]}, meta, args}, acc)

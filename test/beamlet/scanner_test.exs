@@ -159,8 +159,8 @@ defmodule Beamlet.ScannerTest do
       assert scan_error("Enum.map([\"a\"], &String.to_atom/1)") =~ "String.to_atom/1"
     end
 
-    test "structs of denied modules are rejected" do
-      assert scan_error("%File{}") =~ "File is not permitted"
+    test "struct literals are unchecked: struct/2 builds any of them anyway" do
+      assert :ok = scan("%File.Stat{size: 0}")
     end
 
     test "a module that does not exist teaches define, not policy" do
@@ -672,30 +672,18 @@ defmodule Beamlet.ScannerTest do
              """) =~ "@before_compile target must be a literal module"
     end
 
-    test "@derive checks every entry, tuple options included" do
+    test "@derive is refused: a runtime implementation of a consolidated protocol is never used" do
       message =
         scan_define_error("""
         defmodule Scan.Fixture.S do
           @moduledoc "S."
-          @derive [Inspect, {File, only: [:a]}]
+          @derive [Inspect, {JSON.Encoder, only: [:a]}]
           defstruct [:a]
         end
         """)
 
-      assert [violation, _quoted] = String.split(message, "\n")
-      assert violation =~ "@derive File — File is not permitted"
-      refute violation =~ "Inspect"
-    end
-
-    test "@derive of granted protocols passes" do
-      assert {:ok, _modules} =
-               scan_define("""
-               defmodule Scan.Fixture.T do
-                 @moduledoc "T."
-                 @derive [Inspect, {JSON.Encoder, only: [:a]}]
-                 defstruct [:a]
-               end
-               """)
+      assert message =~ "line 3: @derive is not supported — protocols are consolidated"
+      assert message =~ "Map.take(order, [:id, :total])"
     end
 
     test "@behaviour is deliberately unchecked: it names a module but executes nothing" do
