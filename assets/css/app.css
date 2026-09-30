@@ -1,6 +1,7 @@
 /* The stylesheet for the app, the beamlet's own pages. Tailwind scans the
-   library's modules and templates for the classes it uses; the pages
-   agents build are styled from Tailwind's CDN instead (Beamlet.Web.Layouts).
+   directories the app's markup lives in, lib/beamlet/web and the consent
+   page in lib/beamlet/oauth, for the classes it uses; the pages agents
+   build are styled from Tailwind's CDN instead (Beamlet.Web.Layouts).
 
    The design language is the Beamlet design system's foundations:
    warm putty grounds, ink type, slate as the one action colour, rust
@@ -9,7 +10,8 @@
    can name. */
 @import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Schibsted+Grotesk:ital,wght@0,400..800;1,400..800&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap");
 @import "tailwindcss" source(none);
-@source "../../lib/beamlet";
+@source "../../lib/beamlet/web";
+@source "../../lib/beamlet/oauth";
 /* The agent layout is styled by the CDN build, not this file. */
 @source not "../../lib/beamlet/web/layouts/beamlet.html.heex";
 
