@@ -8,9 +8,14 @@ defmodule Beamlet.OAuth.Clients do
   document naming the client and the redirect URIs it may be sent
   to. `fetch/1` fetches the document and checks it: the id must be
   an https URL, the document's own `client_id` must equal it, and it
-  must list at least one redirect URI. Nothing else in the document
-  is read; a display name is only what its author says, so the
-  consent page and the token label show the URL's host instead.
+  must list at least one redirect URI, each https, loopback http, or
+  a custom scheme such as `raycast:`. The consent page follows a
+  custom scheme through a link on the beamlet's own origin, so
+  schemes a browser runs or reads locally (`javascript`, `data`,
+  `vbscript`, `file`, `blob`) refuse the whole document. Nothing else
+  in the document is read; a display name is only what its author
+  says, so the consent page and the token label show the URL's host
+  instead.
 
   Fetching a URL somebody else chose is how a server gets pointed at
   its own network, so the fetch is guarded: `ReqSSRF` refuses any
@@ -37,6 +42,7 @@ defmodule Beamlet.OAuth.Clients do
   @max_body 65_536
   @timeout 5_000
   @loopback_hosts ["localhost", "127.0.0.1"]
+  @script_schemes ["javascript", "data", "vbscript", "file", "blob"]
 
   @typedoc "What the beamlet keeps of a client metadata document."
   @type document :: %{client_id: String.t(), redirect_uris: [String.t()]}
@@ -168,12 +174,23 @@ defmodule Beamlet.OAuth.Clients do
   defp parse(client_id, body) do
     with {:ok, %{"client_id" => ^client_id, "redirect_uris" => [_ | _] = uris}} <-
            Jason.decode(body),
-         true <- Enum.all?(uris, &is_binary/1) do
+         true <- Enum.all?(uris, &redirect_uri_valid?/1) do
       {:ok, %{client_id: client_id, redirect_uris: uris}}
     else
       _other -> {:error, :invalid_document}
     end
   end
+
+  defp redirect_uri_valid?(uri) when is_binary(uri) do
+    case URI.new(uri) do
+      {:ok, %URI{scheme: "https", host: host}} -> is_binary(host) and host != ""
+      {:ok, %URI{scheme: "http"}} -> loopback?(uri)
+      {:ok, %URI{scheme: scheme}} when is_binary(scheme) -> scheme not in @script_schemes
+      _no_scheme_or_invalid -> false
+    end
+  end
+
+  defp redirect_uri_valid?(_other), do: false
 
   defp loopback_match?(listed, presented) do
     with %URI{scheme: "http", host: host, path: path, query: query} <- URI.parse(listed),

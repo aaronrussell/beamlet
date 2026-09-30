@@ -77,6 +77,31 @@ defmodule Beamlet.OAuth.ClientsTest do
       assert Clients.fetch(@client_id) == {:error, :invalid_document}
     end
 
+    test "every redirect URI must be https, loopback http, or a custom scheme a browser does not run" do
+      for uri <- [
+            "javascript:alert(document.cookie)//",
+            "JavaScript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "vbscript:msgbox(1)",
+            "file:///etc/passwd",
+            "blob:https://chat.example/1",
+            "http://chat.example/callback",
+            "https:///callback",
+            "/callback",
+            " javascript:alert(1)"
+          ] do
+        serve(%{@document | "redirect_uris" => [@redirect_uri, uri]})
+        assert Clients.fetch(@client_id) == {:error, :invalid_document}, uri
+      end
+    end
+
+    test "https, loopback http and custom schemes are accepted" do
+      uris = [@redirect_uri, "http://127.0.0.1:4321/callback", "raycast://oauth", "vscode:/cb"]
+      serve(%{@document | "redirect_uris" => uris})
+
+      assert {:ok, %{redirect_uris: ^uris}} = Clients.fetch(@client_id)
+    end
+
     test "a status other than 200, or no answer, is unreachable" do
       Req.Test.stub(Clients, fn conn ->
         conn |> Plug.Conn.put_status(404) |> Req.Test.json(%{})
@@ -125,12 +150,6 @@ defmodule Beamlet.OAuth.ClientsTest do
     test "the loopback rule goes both ways" do
       document = %{client_id: @client_id, redirect_uris: ["http://127.0.0.1/callback"]}
       assert Clients.redirect_uri_allowed?(document, "http://localhost:4321/callback")
-    end
-
-    test "a listed http URI that is not loopback still matches exactly" do
-      document = %{client_id: @client_id, redirect_uris: ["http://chat.example/callback"]}
-      assert Clients.redirect_uri_allowed?(document, "http://chat.example/callback")
-      refute Clients.redirect_uri_allowed?(document, "http://chat.example:8080/callback")
     end
   end
 
