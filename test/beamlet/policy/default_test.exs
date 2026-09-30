@@ -105,8 +105,15 @@ defmodule Beamlet.Policy.DefaultTest do
 
     test "grants the Erlang gap-fillers", %{policy: policy} do
       assert policy.grants[:math] == :all
-      assert policy.grants[:crypto] == :all
       assert policy.grants[:queue] == :all
+    end
+
+    test "grants :crypto without the engine family", %{policy: policy} do
+      assert Policy.allowed?(policy, :crypto, :hash, 2)
+      assert Policy.allowed?(policy, :crypto, :strong_rand_bytes, 1)
+      refute Policy.allowed?(policy, :crypto, :engine_load, 3)
+      refute Policy.allowed?(policy, :crypto, :engine_by_id, 1)
+      refute Policy.allowed?(policy, :crypto, :ensure_engine_loaded, 2)
     end
 
     test "limits System to clock and VM introspection", %{policy: policy} do
@@ -123,11 +130,13 @@ defmodule Beamlet.Policy.DefaultTest do
       refute Policy.allowed?(policy, :erlang, :binary_to_term, 1)
     end
 
-    test "scrubs the laundering functions from Kernel and String", %{policy: policy} do
+    test "scrubs the laundering functions from Kernel, String and List", %{policy: policy} do
       refute Policy.allowed?(policy, Kernel, :apply, 2)
       refute Policy.allowed?(policy, Kernel, :spawn, 1)
       refute Policy.allowed?(policy, Kernel, :send, 2)
       refute Policy.allowed?(policy, String, :to_atom, 1)
+      refute Policy.allowed?(policy, List, :to_atom, 1)
+      refute Policy.allowed?(policy, List, :to_existing_atom, 1)
       assert Policy.allowed?(policy, Kernel, :to_string, 1)
       assert Policy.allowed?(policy, String, :upcase, 1)
     end

@@ -1,6 +1,6 @@
 :__MODULE__ :all
 :binary :all
-:crypto :all
+:crypto except engine_add/1, engine_by_id/1, engine_ctrl_cmd_string/3, engine_ctrl_cmd_string/4, engine_get_all_methods/0, engine_get_id/1, engine_get_name/1, engine_list/0, engine_load/3, engine_load/4, engine_methods_convert_to_bitmask/2, engine_register/2, engine_remove/1, engine_unload/1, engine_unload/2, engine_unregister/2, ensure_engine_loaded/2, ensure_engine_loaded/3, ensure_engine_unloaded/1, ensure_engine_unloaded/2
 :erlang only adler32/1, adler32/2, crc32/1, crc32/2, external_size/1, external_size/2, phash2/1, phash2/2
 :graph :all
 :math :all
@@ -105,7 +105,7 @@ Kernel except apply/2, apply/3, exit/1, send/2, spawn/1, spawn/3, spawn_link/1, 
 Kernel.TypespecError :all
 KeyError :all
 Keyword :all
-List :all
+List except to_atom/1, to_existing_atom/1
 List.Chars :all
 Macro only camelize/1, to_string/1, underscore/1
 Map :all

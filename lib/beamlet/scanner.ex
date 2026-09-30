@@ -14,7 +14,8 @@ defmodule Beamlet.Scanner do
   modules, and a `define` entry is exclusively top-level `defmodule`s.
   The targets of `alias`, `import`, `require` and `use`, and the
   data-position targets the compiler expands (`defdelegate to:`, the
-  compile hooks, `@derive`) stay literal under any policy. Every
+  compile hooks, `@derive`, `@compile`) stay literal under any
+  policy, and `@compile` may name no parse or core transform. Every
   violation is collected and reported together, each with its
   locator and the offending line quoted beneath it.
 
@@ -402,8 +403,8 @@ defmodule Beamlet.Scanner do
   # invokes, a data-position target the walk must check. @behaviour is
   # deliberately not here: it names a module but never runs its code.
   defp handle({:@, _at_meta, [{attr, meta, [target]}]}, acc)
-       when attr in [:before_compile, :after_compile, :on_definition] do
-    arity = %{before_compile: 1, after_compile: 2, on_definition: 6}[attr]
+       when attr in [:before_compile, :after_compile, :after_verify, :on_definition] do
+    arity = %{before_compile: 1, after_compile: 2, after_verify: 1, on_definition: 6}[attr]
 
     case target do
       {mod, fun} when is_atom(fun) ->
@@ -414,6 +415,33 @@ defmodule Beamlet.Scanner do
 
       _module_form ->
         {:ok, check_module_target(acc, meta, target, "@#{attr}")}
+    end
+  end
+
+  # @compile options reach the Erlang compiler, which calls the module
+  # a parse or core transform names. The value must be literal, since
+  # a computed one could build a transform key the check never sees.
+  defp handle({:@, _at_meta, [{:compile, meta, [value]}]}, acc) do
+    cond do
+      not literal_option?(value) ->
+        {:ok,
+         violation(
+           acc,
+           meta,
+           "@compile takes a literal value, such as @compile {:inline, name: 1}"
+         )}
+
+      transform?(value) ->
+        {:ok,
+         violation(
+           acc,
+           meta,
+           "@compile parse_transform and core_transform run code at compile time and are not " <>
+             "allowed; a macro does the same job in Elixir"
+         )}
+
+      true ->
+        {:ok, acc}
     end
   end
 
@@ -692,6 +720,21 @@ defmodule Beamlet.Scanner do
     do: {:ok, module}
 
   defp literal_module(_target, _aliases), do: :error
+
+  defp literal_option?(value) when is_atom(value) or is_number(value) or is_binary(value),
+    do: true
+
+  defp literal_option?(value) when is_list(value), do: Enum.all?(value, &literal_option?/1)
+  defp literal_option?({left, right}), do: literal_option?(left) and literal_option?(right)
+  defp literal_option?({:{}, _, elems}), do: Enum.all?(elems, &literal_option?/1)
+  defp literal_option?({:__aliases__, _, parts}), do: Enum.all?(parts, &is_atom/1)
+  defp literal_option?(_value), do: false
+
+  defp transform?({key, _}) when key in [:parse_transform, :core_transform], do: true
+  defp transform?(value) when is_list(value), do: Enum.any?(value, &transform?/1)
+  defp transform?({left, right}), do: transform?(left) or transform?(right)
+  defp transform?({:{}, _, elems}), do: Enum.any?(elems, &transform?/1)
+  defp transform?(_value), do: false
 
   # ── Error copy ────────────────────────────────────────────────────
 

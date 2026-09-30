@@ -609,6 +609,59 @@ defmodule Beamlet.ScannerTest do
              """) =~ "IO.write/2 is not permitted"
     end
 
+    test "@after_verify is checked like the other compile hooks" do
+      message =
+        scan_define_error("""
+        defmodule Scan.Fixture.Q2 do
+          @moduledoc "Q2."
+          @after_verify {System, :halt}
+          @after_verify File
+        end
+        """)
+
+      assert message =~ ~r"line 3: .*System\.halt/1 is not permitted"
+      assert message =~ "line 4: @after_verify File — File is not permitted"
+    end
+
+    test "@compile refuses parse and core transforms in any position" do
+      for value <- [
+            "{:parse_transform, Scan.Fixture.PT}",
+            "[:debug_info, parse_transform: :some_mod]",
+            "[{:core_transform, :some_mod}]"
+          ] do
+        assert scan_define_error("""
+               defmodule Scan.Fixture.W do
+                 @moduledoc "W."
+                 @compile #{value}
+               end
+               """) =~
+                 "line 3: @compile parse_transform and core_transform run code at compile time"
+      end
+    end
+
+    test "@compile takes a literal value" do
+      assert scan_define_error("""
+             defmodule Scan.Fixture.X do
+               @moduledoc "X."
+               @compile [{Enum.at([:parse_transform], 0), Scan.Fixture.PT}]
+             end
+             """) =~ "line 3: @compile takes a literal value"
+    end
+
+    test "ordinary @compile options pass" do
+      assert {:ok, _modules} =
+               scan_define("""
+               defmodule Scan.Fixture.Y do
+                 @moduledoc "Y."
+                 @compile {:inline, helper: 1}
+                 @compile [:debug_info, {:no_warn_undefined, [Scan.Fixture.Z, {Enum, :nope, 0}]}]
+
+                 @doc "Helps."
+                 def helper(x), do: x
+               end
+               """)
+    end
+
     test "a non-literal hook target is rejected" do
       assert scan_define_error("""
              defmodule Scan.Fixture.R do

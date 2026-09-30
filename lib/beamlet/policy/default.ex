@@ -12,9 +12,10 @@ defmodule Beamlet.Policy.Default do
   # ── Grants ────────────────────────────────────────────────────────
 
   # Partial grants carry their slice rationale: Function.capture
-  # builds funs from names (dynamic dispatch); IO is granted for
-  # output only (device-directed IO reaches arbitrary processes);
-  # Macro keeps its string helpers, which name tables and files from
+  # builds funs from names (dynamic dispatch); List and String lose
+  # their atom constructors, which turn data into module names; IO
+  # is granted for output only (device-directed IO reaches arbitrary
+  # processes); Macro keeps its string helpers, which name tables and files from
   # module names, and loses everything that builds or expands code;
   # Path is pure string manipulation, safe because Host.File re-checks
   # every path it receives, except wildcard, which touches the real
@@ -72,7 +73,7 @@ defmodule Beamlet.Policy.Default do
          exit: 1
        ]},
     Keyword => :all,
-    List => :all,
+    List => {:except, [to_atom: 1, to_existing_atom: 1]},
     List.Chars => :all,
     Macro => {:only, [underscore: 1, camelize: 1, to_string: 1]},
     Map => :all,
@@ -128,10 +129,36 @@ defmodule Beamlet.Policy.Default do
   # Erlang module is not granted (recorded under not-granted below).
   # :erlang keeps term hashing and checksums; term_to_binary and
   # binary_to_term are denied both ways (binary_to_term constructs
-  # atoms and funs, the String.to_atom posture).
+  # atoms and funs, the String.to_atom posture). :crypto loses its
+  # engine family, which loads a native shared object from a path;
+  # the engine key maps the rest accept need a handle only those
+  # functions make.
   @erlang %{
     :binary => :all,
-    :crypto => :all,
+    :crypto =>
+      {:except,
+       [
+         engine_add: 1,
+         engine_by_id: 1,
+         engine_ctrl_cmd_string: 3,
+         engine_ctrl_cmd_string: 4,
+         engine_get_all_methods: 0,
+         engine_get_id: 1,
+         engine_get_name: 1,
+         engine_list: 0,
+         engine_load: 3,
+         engine_load: 4,
+         engine_methods_convert_to_bitmask: 2,
+         engine_register: 2,
+         engine_remove: 1,
+         engine_unload: 1,
+         engine_unload: 2,
+         engine_unregister: 2,
+         ensure_engine_loaded: 2,
+         ensure_engine_loaded: 3,
+         ensure_engine_unloaded: 1,
+         ensure_engine_unloaded: 2
+       ]},
     :erlang =>
       {:only,
        [
