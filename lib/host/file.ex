@@ -20,7 +20,7 @@ defmodule Host.File do
         {:error, :enoent} -> %{}
       end
 
-  There is one filesystem for the whole beamlet: every user, every
+  There is one filesystem for the whole beamlet: every agent, every
   defined module and every process sees the same files, including
   code serving web routes, so organise shared work with directories.
   Files persist across evals and restarts. Nothing here runs as

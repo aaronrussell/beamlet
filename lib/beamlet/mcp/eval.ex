@@ -31,14 +31,14 @@ defmodule Beamlet.MCP.Eval do
     Worth knowing: each call is a fresh evaluation with empty
     bindings; the `print_*` functions print and return `:ok`, and
     several fit in one call; put `import Ecto.Query` at the top of
-    any code that queries; the beamlet is shared with other users and
-    agents, so read what exists before building; verify before
+    any code that queries; other agents and earlier sessions build
+    here too, so read what exists before building; verify before
     reporting done, with `Host.Router.call(verb, path)` on a route
     and a query on the rows you wrote.
 
     The result is whatever the code printed, then `=> ` and the
     inspected value of the last expression; the output cap is
-    #{kb(limits[:max_output])} and the timeout #{seconds(limits[:timeout])},
+    #{kb(limits[:max_output])} and the timeout #{Server.seconds(limits[:timeout])},
     after which you get what was printed up to then. End with `:ok`
     when only the printed output matters, and look at large data with
     `IO.inspect(data, limit: 20)` rather than returning it whole.
@@ -47,9 +47,6 @@ defmodule Beamlet.MCP.Eval do
 
   defp kb(bytes) when rem(bytes, 1024) == 0, do: "#{div(bytes, 1024)}KB"
   defp kb(bytes), do: "#{bytes} bytes"
-
-  defp seconds(ms) when rem(ms, 1000) == 0, do: "#{div(ms, 1000)} seconds"
-  defp seconds(ms), do: "#{ms}ms"
 
   @impl true
   def execute(%{code: code}, frame) do

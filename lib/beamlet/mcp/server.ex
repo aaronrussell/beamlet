@@ -62,9 +62,10 @@ defmodule Beamlet.MCP.Server do
     Several fit in one `eval`.
   - Ecto's query builders are macros: put `import Ecto.Query` at the
     top of any eval or module that queries.
-  - Your beamlet is shared with other users and agents. Read what
-    exists before building, and `Host.Code.print_outline(Module)`
-    then `print_source` before replacing or patching a module.
+  - Other agents, and earlier sessions, have built on your beamlet.
+    Read what exists before building, and
+    `Host.Code.print_outline(Module)` then `print_source` before
+    replacing or patching a module.
   - Verify before reporting done: call a mounted route with
     `Host.Router.call(verb, path)`, query the rows you wrote.
   """
@@ -106,6 +107,11 @@ defmodule Beamlet.MCP.Server do
       else:
         {:error, Error.protocol(:invalid_params, %{message: "Tool not found: #{name}"}), frame}
   end
+
+  @doc false
+  @spec seconds(pos_integer()) :: String.t()
+  def seconds(ms) when rem(ms, 1000) == 0, do: "#{div(ms, 1000)} seconds"
+  def seconds(ms), do: "#{ms}ms"
 
   # The plug has already refused a token whose policy is not declared.
   defp granted?(frame, name) do

@@ -29,7 +29,7 @@ defmodule Beamlet.Principal do
 
   A principal is a token acting through a tool. A web request has no
   principal: a served route acts as nobody, and a future web identity
-  is a user on the request, never a principal in the process.
+  is the owner on the request, never a principal in the process.
 
   Code an agent runs through `eval` takes no arguments, so it cannot
   be handed the principal, and the stdlib functions it calls must

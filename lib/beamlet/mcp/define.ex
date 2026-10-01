@@ -54,12 +54,9 @@ defmodule Beamlet.MCP.Define do
     changed. To land modules independently, make one call per module.
     A module that uses `Ecto.Migration` is filed as a numbered
     migration, pending until `Host.Migrator.migrate()` runs it. A
-    define stops after #{seconds(limits[:timeout])}.
+    define stops after #{Server.seconds(limits[:timeout])}.
     """
   end
-
-  defp seconds(ms) when rem(ms, 1000) == 0, do: "#{div(ms, 1000)} seconds"
-  defp seconds(ms), do: "#{ms}ms"
 
   @impl true
   def execute(%{modules: modules}, frame) do

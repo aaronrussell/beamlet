@@ -66,12 +66,9 @@ defmodule Beamlet.MCP.Patch do
     line range for exact text to quote. Define's rules hold for the
     result: public functions documented, your policy applied, a function
     another module still calls not dropped. A patch stops after
-    #{seconds(limits[:timeout])}.
+    #{Server.seconds(limits[:timeout])}.
     """
   end
-
-  defp seconds(ms) when rem(ms, 1000) == 0, do: "#{div(ms, 1000)} seconds"
-  defp seconds(ms), do: "#{ms}ms"
 
   @impl true
   def execute(%{patches: patches}, frame) do
