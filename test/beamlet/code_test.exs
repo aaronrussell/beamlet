@@ -121,6 +121,38 @@ defmodule Beamlet.CodeTest do
       assert message =~ "set replace: true on its entry"
     end
 
+    test "the already-exists error quotes a wrapped moduledoc's whole first paragraph", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Wrapped])
+      purge_on_exit([mod])
+
+      code = """
+      defmodule #{ns}.Wrapped do
+        @moduledoc "Keeps the shopping list in order, sorted by aisle\\nand then by name.\\n\\nThe second paragraph stays out."
+        def go, do: :v1
+      end
+      """
+
+      assert {:ok, _summary} = define(code, ctx.principal)
+      assert {:error, message} = define(code, ctx.principal)
+
+      assert message =~
+               "already exists — \"Keeps the shopping list in order, sorted by aisle and then " <>
+                 "by name.\""
+    end
+
+    test "source_file/1 finds a defined module's source", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Located])
+      purge_on_exit([mod])
+
+      code = "defmodule #{ns}.Located do\n  @moduledoc \"Here.\"\nend\n"
+      assert {:ok, _summary} = define(code, ctx.principal)
+
+      assert Code.source_file(mod) == {:ok, Code.manifest()[mod].source_file}
+      assert Code.source_file(Module.concat([ns, Missing])) == :error
+    end
+
     test "a module the beamlet already has is rejected with no flag", ctx do
       code = """
       defmodule Enum do

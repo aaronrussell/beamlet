@@ -37,6 +37,21 @@ defmodule Beamlet.Code.Docs do
   ]
   @framework_roles [:live_view, :controller, :live_component]
 
+  # The summary convention ExDoc uses: the first paragraph, collapsed
+  # to one line, since a source line wrapped mid-sentence reads cut
+  # off.
+  @spec summary(String.t() | nil) :: String.t() | nil
+  def summary(nil), do: nil
+
+  def summary(text) do
+    text
+    |> String.split("\n\n", parts: 2)
+    |> hd()
+    |> String.split("\n")
+    |> Enum.map_join(" ", &String.trim/1)
+    |> String.trim()
+  end
+
   @spec check(String.t()) :: :ok | {:error, String.t()}
   def check(code) do
     code

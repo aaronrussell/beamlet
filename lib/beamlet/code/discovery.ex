@@ -21,6 +21,7 @@ defmodule Beamlet.Code.Discovery do
   # points at. A refused module gets the scanner's copy, so print_docs
   # teaches what a refused call does.
 
+  alias Beamlet.Code.Docs
   alias Beamlet.Code.Source
   alias Beamlet.Policy
   alias Beamlet.Policy.Default
@@ -46,7 +47,7 @@ defmodule Beamlet.Code.Discovery do
       manifest
       |> Enum.reject(fn {_mod, paths} -> paths.migration end)
       |> Enum.sort_by(fn {mod, _paths} -> inspect(mod) end)
-      |> Enum.map(fn {mod, paths} -> entry_line(mod, moduledoc_first_line(paths.beam_file)) end)
+      |> Enum.map(fn {mod, paths} -> entry_line(mod, moduledoc_summary(paths.beam_file)) end)
 
     text =
       Enum.join(
@@ -163,7 +164,7 @@ defmodule Beamlet.Code.Discovery do
   end
 
   defp read_source(policy, module) do
-    case source_file(module) do
+    case Beamlet.Code.source_file(module) do
       {:ok, source_file} ->
         case File.read(source_file) do
           {:ok, contents} ->
@@ -181,21 +182,6 @@ defmodule Beamlet.Code.Discovery do
              "its documentation."}
         else
           {:error, Scanner.denied_module(policy, module)}
-        end
-    end
-  end
-
-  # A quarantined module has a source and no beam, so it is readable
-  # here and nowhere else.
-  defp source_file(module) do
-    case Beamlet.Code.manifest() do
-      %{^module => %{source_file: source_file}} ->
-        {:ok, source_file}
-
-      _not_defined ->
-        case Enum.find(Beamlet.Code.quarantined(), &(module in &1.modules)) do
-          %{file: file} -> {:ok, file}
-          nil -> :error
         end
     end
   end
@@ -354,7 +340,7 @@ defmodule Beamlet.Code.Discovery do
         end
 
       {:module, app, mod} ->
-        entry_line(mod, moduledoc_first_line(mod), " (#{inspect(app)})")
+        entry_line(mod, moduledoc_summary(mod), " (#{inspect(app)})")
     end)
   end
 
@@ -407,7 +393,7 @@ defmodule Beamlet.Code.Discovery do
 
   defp elixir_lib_root, do: :elixir |> :code.lib_dir() |> List.to_string() |> Path.dirname()
 
-  defp module_lines(mods), do: Enum.map(mods, &entry_line(&1, moduledoc_first_line(&1)))
+  defp module_lines(mods), do: Enum.map(mods, &entry_line(&1, moduledoc_summary(&1)))
 
   # Names only, wrapped: the framework modules are ones the model
   # knows, and their moduledoc openers say nothing a name does not.
@@ -441,9 +427,9 @@ defmodule Beamlet.Code.Discovery do
   defp section(title, [], placeholder), do: "#{title}\n  #{placeholder}"
   defp section(title, lines, _placeholder), do: "#{title}\n#{Enum.join(lines, "\n")}"
 
-  defp moduledoc_first_line(target) do
+  defp moduledoc_summary(target) do
     case Code.fetch_docs(target) do
-      {:docs_v1, _, _, _, module_doc, _, _} -> module_doc |> doc_text() |> summary()
+      {:docs_v1, _, _, _, module_doc, _, _} -> module_doc |> doc_text() |> Docs.summary()
       {:error, _reason} -> nil
     end
   end
@@ -484,7 +470,7 @@ defmodule Beamlet.Code.Discovery do
       allowed
       |> Enum.sort_by(fn {{_kind, name, a}, _anno, _sig, _doc, _meta} -> {name, a} end)
       |> Enum.map(fn {{_kind, name, a}, _anno, sig, doc, _meta} ->
-        "  " <> index_entry(format_signature(sig, name, a), doc |> doc_text() |> summary())
+        "  " <> index_entry(format_signature(sig, name, a), doc |> doc_text() |> Docs.summary())
       end)
 
     {lines, length(denied)}
@@ -525,20 +511,6 @@ defmodule Beamlet.Code.Discovery do
   end
 
   defp doc_text(_none_or_hidden), do: nil
-
-  # The summary convention ExDoc uses: the first paragraph, collapsed
-  # to one line, since a source line wrapped mid-sentence reads cut
-  # off.
-  defp summary(nil), do: nil
-
-  defp summary(text) do
-    text
-    |> String.split("\n\n", parts: 2)
-    |> hd()
-    |> String.split("\n")
-    |> Enum.map_join(" ", &String.trim/1)
-    |> String.trim()
-  end
 
   # ── Error copy ────────────────────────────────────────────────────
 

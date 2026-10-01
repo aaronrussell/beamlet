@@ -82,6 +82,7 @@ defmodule Beamlet.Code do
   require Logger
 
   alias Beamlet.Code.Audit
+  alias Beamlet.Code.Docs
   alias Beamlet.Code.Source
   alias Beamlet.Code.Tracer
   alias Beamlet.Config
@@ -204,6 +205,26 @@ defmodule Beamlet.Code do
     |> Map.new(fn {:defined, mod, source_file, beam_file, migration} ->
       {mod, %{source_file: source_file, beam_file: beam_file, migration: migration}}
     end)
+  end
+
+  @doc """
+  The file holding a module's source. A table read, like `defined/0`.
+
+  A quarantined module counts: it has a source and no beam, and its
+  file is the one `print_source` shows and patch edits.
+  """
+  @spec source_file(module()) :: {:ok, Path.t()} | :error
+  def source_file(mod) do
+    case :ets.match(__MODULE__, {:defined, mod, :"$1", :_, :_}) do
+      [[source_file] | _] ->
+        {:ok, source_file}
+
+      [] ->
+        case Enum.find(quarantined(), &(mod in &1.modules)) do
+          %{file: file} -> {:ok, file}
+          nil -> :error
+        end
+    end
   end
 
   @doc "The compile-time edges between defined modules: each module to those it depends on."
@@ -438,22 +459,16 @@ defmodule Beamlet.Code do
     refusals =
       for %{module: mod, hash: hash} <- entries, is_binary(hash), reduce: [] do
         refusals ->
-          file =
-            Map.get(state.modules, mod) ||
-              Enum.find_value(state.quarantined, fn entry ->
-                mod in entry.modules and entry.file
-              end)
-
-          case file && File.read(file) do
-            {:ok, bytes} ->
-              if :crypto.hash(:sha256, bytes) == hash,
-                do: refusals,
-                else: [
-                  "#{inspect(mod)} changed while you were patching it — read it again and " <>
-                    "patch the current source. Nothing was changed."
-                  | refusals
-                ]
-
+          with {:ok, file} <- source_file(state, mod),
+               {:ok, bytes} <- File.read(file) do
+            if :crypto.hash(:sha256, bytes) == hash,
+              do: refusals,
+              else: [
+                "#{inspect(mod)} changed while you were patching it — read it again and " <>
+                  "patch the current source. Nothing was changed."
+                | refusals
+              ]
+          else
             _missing ->
               [
                 "#{inspect(mod)} was removed while you were patching it — nothing was changed. " <>
@@ -606,9 +621,9 @@ defmodule Beamlet.Code do
 
   defp exists_error(state, mod) do
     quote_part =
-      case moduledoc_first_line(state, mod) do
+      case moduledoc_summary(state, mod) do
         nil -> ""
-        line -> " — \"#{line}\""
+        summary -> " — \"#{summary}\""
       end
 
     "#{inspect(mod)} already exists#{quote_part}. To change it, patch it; to rewrite it " <>
@@ -641,12 +656,12 @@ defmodule Beamlet.Code do
     end
   end
 
-  defp moduledoc_first_line(state, mod) do
+  defp moduledoc_summary(state, mod) do
     path = beam_path(state, mod)
 
     with true <- File.exists?(path),
          {:docs_v1, _, _, _, %{"en" => doc}, _, _} <- Code.fetch_docs(path) do
-      doc |> String.split("\n", parts: 2) |> hd() |> String.trim()
+      Docs.summary(doc)
     else
       _no_doc -> nil
     end
@@ -863,11 +878,23 @@ defmodule Beamlet.Code do
   defp replace_diff(state, mod, staged) do
     {^mod, staging_file} = List.keyfind(staged, mod, 0)
 
-    old_file =
-      Map.get(state.modules, mod) ||
-        Enum.find_value(state.quarantined, fn entry -> mod in entry.modules and entry.file end)
-
+    {:ok, old_file} = source_file(state, mod)
     Source.diff(File.read!(old_file), File.read!(staging_file))
+  end
+
+  # source_file/1 over the server's own state, which the table is
+  # published from.
+  defp source_file(state, mod) do
+    case Map.fetch(state.modules, mod) do
+      {:ok, source_file} ->
+        {:ok, source_file}
+
+      :error ->
+        case Enum.find(state.quarantined, &(mod in &1.modules)) do
+          %{file: file} -> {:ok, file}
+          nil -> :error
+        end
+    end
   end
 
   # Neither define nor patch applies a migration, and the moment of

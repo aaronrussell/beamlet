@@ -133,7 +133,7 @@ defmodule Beamlet.Patch do
       name when is_binary(name) and name != "" ->
         module = Module.concat([name])
 
-        case source_file(module) do
+        case Code.source_file(module) do
           {:ok, file} ->
             {:ok, module, file}
 
@@ -152,21 +152,6 @@ defmodule Beamlet.Patch do
 
       _missing ->
         {:error, "patch #{index} names no module — each patch names the module it edits"}
-    end
-  end
-
-  # A quarantined module has a source and no beam, and its file is
-  # what print_source shows, so that is the path its errors carry.
-  defp source_file(module) do
-    case Code.manifest() do
-      %{^module => %{source_file: source_file}} ->
-        {:ok, source_file}
-
-      _not_defined ->
-        case Enum.find(Code.quarantined(), &(module in &1.modules)) do
-          %{file: file} -> {:ok, file}
-          nil -> :error
-        end
     end
   end
 
