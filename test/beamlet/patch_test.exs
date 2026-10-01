@@ -659,6 +659,47 @@ defmodule Beamlet.PatchTest do
       assert stored(ctx, mod) =~ "def load(id), do: {:ok, id}"
     end
 
+    test "two broken modules that call each other are repaired in one call", ctx do
+      ns = unique_namespace()
+      a = Module.concat([ns, Ping])
+      b = Module.concat([ns, Pong])
+      purge_on_exit([a, b])
+
+      File.write!(Path.join(ctx.code_dir, "lib/ping.ex"), """
+      defmodule #{ns}.Ping do
+        @moduledoc "Calls Pong."
+
+        @doc "Pings."
+        def ping(0), do: undefined_ping()
+        def ping(n), do: #{ns}.Pong.pong(n - 1)
+      end
+      """)
+
+      quarantine(ctx, "lib/pong.ex", """
+      defmodule #{ns}.Pong do
+        @moduledoc "Calls Ping."
+
+        @doc "Pongs."
+        def pong(0), do: undefined_pong()
+        def pong(n), do: #{ns}.Ping.ping(n - 1)
+      end
+      """)
+
+      assert [%{modules: [^a]}, %{modules: [^b]}] = Code.quarantined()
+
+      assert {:ok, _summary} =
+               patch(
+                 [
+                   %{module: a, find: "undefined_ping()", replace: ":ping"},
+                   %{module: b, find: "undefined_pong()", replace: ":pong"}
+                 ],
+                 ctx.principal
+               )
+
+      assert Code.quarantined() == []
+      assert apply(a, :ping, [3]) == :pong
+    end
+
     test "a torn module refuses select and is repaired across two finds", ctx do
       ns = unique_namespace()
       mod = Module.concat([ns, Torn])

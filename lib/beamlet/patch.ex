@@ -86,7 +86,7 @@ defmodule Beamlet.Patch do
     with {:ok, parsed} <- parse_patches(patches),
          {:ok, order, sources} <- read_sources(parsed),
          {:ok, sources} <- apply_patches(parsed, sources),
-         {:ok, entries} <- finish(order, sources, parsed, policy) do
+         {:ok, entries} <- finish(order, sources, parsed, Policy.grant(policy, order)) do
       run_opts = [verb: :patch, context: @context] ++ Keyword.take(opts, [:timeout])
       Code.define(entries, principal, run_opts)
     end
