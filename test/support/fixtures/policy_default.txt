@@ -74,6 +74,7 @@ FunctionClauseError :all
 Host.Code :all
 Host.File :all
 Host.HTTP :all
+Host.HTTP.BlockedError :all
 Host.KV :all
 Host.Migrator :all
 Host.PubSub :all

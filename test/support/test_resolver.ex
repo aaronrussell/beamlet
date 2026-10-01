@@ -2,8 +2,9 @@ defmodule Beamlet.TestResolver do
   @moduledoc """
   The name resolver the suite hands `ReqSSRF` in place of DNS: every
   host is public except `localhost`, which is loopback as it is
-  everywhere, and a name under `internal.test`, which resolves to a
-  private address so a test can see the guard refuse it.
+  everywhere, a name under `internal.test`, which resolves to a
+  private address so a test can see the guard refuse it, and a name
+  under `invalid`, which does not resolve.
   """
 
   @public {93, 184, 216, 34}
@@ -16,9 +17,13 @@ defmodule Beamlet.TestResolver do
   def resolve(~c"localhost", :inet, _timeout), do: {:ok, [@loopback]}
 
   def resolve(host, :inet, _timeout) do
-    if List.to_string(host) |> String.ends_with?("internal.test"),
-      do: {:ok, [@private]},
-      else: {:ok, [@public]}
+    host = List.to_string(host)
+
+    cond do
+      String.ends_with?(host, "internal.test") -> {:ok, [@private]}
+      String.ends_with?(host, ".invalid") -> {:error, :nxdomain}
+      true -> {:ok, [@public]}
+    end
   end
 
   def resolve(_host, :inet6, _timeout), do: {:error, :nxdomain}

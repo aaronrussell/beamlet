@@ -36,5 +36,8 @@ config :beamlet, Beamlet.OAuth.Clients,
     ssrf_check: [resolver: &Beamlet.TestResolver.resolve/3]
   ]
 
-# Agent HTTP goes to a Req.Test stub, merged in after Host.HTTP's check.
-config :beamlet, Host.HTTP, req_options: [plug: {Req.Test, Host.HTTP}]
+# Agent HTTP goes to a Req.Test stub, merged in after Host.HTTP's check,
+# and its outbound guard resolves names through Beamlet.TestResolver.
+config :beamlet, Host.HTTP,
+  req_options: [plug: {Req.Test, Host.HTTP}],
+  resolver: &Beamlet.TestResolver.resolve/3

@@ -35,6 +35,7 @@ defmodule Beamlet.MixProject do
       {:anubis_mcp, "~> 2.0"},
       {:ecto_sql, "~> 3.14"},
       {:ecto_sqlite3, "~> 0.24"},
+      {:inet_cidr, "~> 1.0"},
       {:jason, "~> 1.4"},
       {:lazy_html, "~> 0.1", only: :test},
       {:pbkdf2_elixir, "~> 2.3"},

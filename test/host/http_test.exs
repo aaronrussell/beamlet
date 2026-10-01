@@ -80,36 +80,116 @@ defmodule Host.HTTPTest do
 
       assert_raise Req.TransportError, fn -> Host.HTTP.get!(@url, retry: false) end
     end
-  end
 
-  describe "the functions Req hands the request to" do
-    test "an into function streams the body and sees no steps" do
+    test "an into function streams the body" do
       test = self()
 
       response =
         Host.HTTP.get!(@url,
-          into: fn {:data, chunk}, {request, response} ->
-            send(test, {:chunk, chunk, steps(request)})
-            {:cont, {request, response}}
+          into: fn {:data, chunk}, acc ->
+            send(test, {:chunk, chunk})
+            {:cont, acc}
           end
         )
 
-      assert_received {:chunk, chunk, {[], [], []}}
+      assert_received {:chunk, chunk}
       assert chunk =~ ~s("method":"GET")
       assert response.status == 200
     end
+  end
 
-    test "a retry function sees no steps" do
-      test = self()
-      Req.Test.stub(Host.HTTP, &Plug.Conn.send_resp(&1, 503, "down"))
+  describe "the outbound guard" do
+    setup do
+      on_exit(fn -> Application.delete_env(:beamlet, :http) end)
+    end
 
-      retry = fn request, _outcome ->
-        send(test, {:retry, steps(request)})
-        false
+    test "loopback, private and reserved hosts are refused before anything is sent" do
+      for url <- [
+            "http://localhost:4000/todos",
+            "http://nas.internal.test/",
+            "http://127.0.0.1/",
+            "http://10.0.0.5/",
+            "http://192.168.1.1/admin",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[::1]/",
+            "http://[::ffff:127.0.0.1]/",
+            "http://2130706433/"
+          ] do
+        assert {:error, %Host.HTTP.BlockedError{reason: :reserved_address}} = blocked(url)
       end
+    end
 
-      assert Host.HTTP.get!(@url, retry: retry).status == 503
-      assert_received {:retry, {[], [], []}}
+    test "the bang variant raises the error" do
+      unreached()
+
+      assert_raise Host.HTTP.BlockedError, fn -> Host.HTTP.get!("http://localhost/") end
+    end
+
+    test "the error says what was refused and why, without credentials" do
+      assert {:error, error} = blocked("http://admin:secret@10.0.0.5/status")
+
+      assert Exception.message(error) ==
+               "Host.HTTP does not reach http://10.0.0.5/status: its host is loopback, " <>
+                 "on a private network, link-local or another reserved address, not one " <>
+                 "on the public internet"
+
+      refute inspect(error) =~ "secret"
+    end
+
+    test "a host that does not resolve is refused in ReqSSRF's words" do
+      assert {:error, %Host.HTTP.BlockedError{reason: :unresolvable_host} = error} =
+               blocked("http://nowhere.invalid/")
+
+      assert Exception.message(error) =~ "the host does not resolve"
+    end
+
+    test "a redirect to a private host is refused at the redirect, once" do
+      test = self()
+
+      Req.Test.stub(Host.HTTP, fn conn ->
+        send(test, :requested)
+
+        conn
+        |> Plug.Conn.put_resp_header("location", "http://10.0.0.5/admin")
+        |> Plug.Conn.send_resp(302, "")
+      end)
+
+      assert {:error, %Host.HTTP.BlockedError{url: url, reason: :reserved_address}} =
+               Host.HTTP.get(@url)
+
+      assert URI.to_string(url) == "http://10.0.0.5/admin"
+      assert_received :requested
+      refute_received :requested
+    end
+
+    test "allowed names and addresses pass" do
+      Application.put_env(:beamlet, :http, allow: ["NAS.internal.test", "192.168.1.0/24", "::1"])
+
+      for url <- ["http://nas.internal.test/", "http://192.168.1.20:8123/", "http://[::1]/"] do
+        assert {:ok, %Req.Response{status: 200}} = Host.HTTP.get(url)
+      end
+    end
+
+    test "a name that resolves into an allowed block is still refused" do
+      Application.put_env(:beamlet, :http, allow: ["10.0.0.0/8"])
+
+      assert {:ok, %Req.Response{status: 200}} = Host.HTTP.get("http://10.0.0.5/")
+
+      assert {:error, %Host.HTTP.BlockedError{reason: :reserved_address}} =
+               blocked("http://nas.internal.test/")
+    end
+
+    test "a redirect from an allowed host to another private one is refused" do
+      Application.put_env(:beamlet, :http, allow: ["nas.internal.test"])
+
+      Req.Test.stub(Host.HTTP, fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("location", "http://router.internal.test/")
+        |> Plug.Conn.send_resp(302, "")
+      end)
+
+      assert {:error, %Host.HTTP.BlockedError{reason: :reserved_address}} =
+               Host.HTTP.get("http://nas.internal.test/")
     end
   end
 
@@ -131,8 +211,13 @@ defmodule Host.HTTPTest do
       assert refused(fn -> Host.HTTP.get(@url, unix_socket: "/var/run/docker.sock") end) =~
                "does not accept :unix_socket"
 
-      assert refused(fn -> Host.HTTP.get(@url, connect_options: [timeout: 1]) end) =~
+      proxy = [proxy: {:http, "10.0.0.5", 3128, []}]
+
+      assert refused(fn -> Host.HTTP.get(@url, connect_options: proxy) end) =~
                "does not accept :connect_options"
+
+      assert refused(fn -> Host.HTTP.get(@url, finch: Beamlet.Finch) end) =~
+               "does not accept :finch"
 
       assert refused(fn -> Host.HTTP.get(@url, finch_request: fn r, _, _, _ -> r end) end) =~
                "does not accept :finch_request"
@@ -150,34 +235,9 @@ defmodule Host.HTTPTest do
       assert refused(fn -> Host.HTTP.get(@url, auth: :netrc) end) =~ "auth :netrc"
     end
 
-    test "{mod, fun, args} values are refused" do
-      mfa = {System, :get_env, ["HOME"]}
-
-      for key <- [:base_url, :auth, :aws_sigv4] do
-        assert refused(fn -> Host.HTTP.get(@url, [{key, mfa}]) end) =~
-                 ":#{key} as {mod, fun, args}"
-      end
-    end
-
-    test "a module decoder is refused" do
-      assert refused(fn -> Host.HTTP.get(@url, decoders: [json: Jason]) end) =~
-               "decoder {:json, Jason}"
-    end
-
-    test "into must be a function" do
-      assert refused(fn -> Host.HTTP.get(@url, into: :self) end) =~ ":into :self"
-      assert refused(fn -> Host.HTTP.get(@url, into: []) end) =~ ":into []"
-    end
-
-    test "bodies streamed from files are refused" do
-      stream = File.stream!("mix.exs")
-
-      assert refused(fn -> Host.HTTP.post(@url, body: stream) end) =~
-               ":body streamed from a file"
-
-      assert refused(fn ->
-               Host.HTTP.post(@url, form_multipart: [file: {stream, filename: "mix.exs"}])
-             end) =~ ":form_multipart streamed from a file"
+    test "into :self is refused, pointing at a function" do
+      assert refused(fn -> Host.HTTP.get(@url, into: :self) end) =~
+               "does not accept :into :self: stream with a function"
     end
 
     test "plugins never run" do
@@ -188,13 +248,9 @@ defmodule Host.HTTPTest do
       refute_received :plugin_attached
     end
 
-    test "renamed options name the current one" do
-      assert refused(fn -> Host.HTTP.get(@url, follow_redirects: false) end) =~
-               "it is now :redirect"
-    end
-
-    test "a value Req does not take for a checked option is refused" do
-      assert refused(fn -> Host.HTTP.get(@url, retry: :always) end) =~ ":retry :always"
+    test "an option Req does not know is refused, the guard's switch among them" do
+      assert refused(fn -> Host.HTTP.get(@url, ssrf_check: false) end) =~
+               "unknown option :ssrf_check"
     end
 
     test "the request must be a URL or options" do
@@ -211,6 +267,16 @@ defmodule Host.HTTPTest do
     test "Host.HTTP makes the request", %{principal: principal} do
       assert {:ok, ~s(=> "GET")} =
                Eval.run(~s|Host.HTTP.get!("#{@url}").body["method"]|, principal)
+    end
+
+    test "a refused host comes back as the error", %{principal: principal} do
+      code = ~S"""
+      case Host.HTTP.get("http://localhost:4000/") do
+        {:error, %Host.HTTP.BlockedError{reason: reason}} -> reason
+      end
+      """
+
+      assert {:ok, "=> :reserved_address"} = Eval.run(code, principal)
     end
 
     test "Req is refused, pointing at Host.HTTP", %{principal: principal} do
@@ -239,10 +305,17 @@ defmodule Host.HTTPTest do
     end
   end
 
+  defp blocked(url) do
+    unreached()
+    Host.HTTP.get(url)
+  end
+
+  defp unreached do
+    Req.Test.stub(Host.HTTP, fn _conn -> flunk("a blocked request reached the network") end)
+  end
+
   defp refused(fun) do
     Req.Test.stub(Host.HTTP, fn _conn -> flunk("a refused request reached the network") end)
     assert_raise(ArgumentError, fun).message
   end
-
-  defp steps(request), do: {request.request_steps, request.response_steps, request.error_steps}
 end

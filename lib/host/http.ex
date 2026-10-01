@@ -27,12 +27,18 @@ defmodule Host.HTTP do
         end
       )
 
-  Options that would reach past the network are refused with an
-  `ArgumentError` naming the option: `plug`, `adapter`, `unix_socket`
-  and the connection settings, the disk cache, `.netrc` credentials,
-  `{mod, fun, args}` values, module decoders, and bodies streamed
-  from files. `Req`'s own functions are not available to your code;
-  these are how requests leave your beamlet.
+  Requests reach the public internet. One to a host that is
+  loopback, on a private network, link-local or another reserved
+  address, through a redirect included, comes back as
+  `{:error, %Host.HTTP.BlockedError{}}`. To call a route your beamlet
+  serves, use `Host.Router.call/4`, which runs it in your process.
+
+  Options that would send a request anywhere but the network, or keep
+  it on disk, are refused with an `ArgumentError` naming the option:
+  `plug`, `adapter`, `unix_socket`, `connect_options`, `finch` and
+  `finch_request`, the disk cache, and `.netrc` credentials. `Req`'s
+  own functions are not available to your code; these are how
+  requests leave your beamlet.
   """
 
   @typedoc "A URL, or a keyword list of options that includes `:url`."
@@ -127,13 +133,14 @@ defmodule Host.HTTP do
   # already turned them into what its steps and adapter will act on
   # (plug: becomes the adapter, a URL's userinfo becomes auth). Starting
   # from a bare Req.new() means plugins: is refused by merge before any
-  # plugin runs. The seam is merged after the check: it is ours.
+  # plugin runs, and Req refuses any option it does not know. The guard
+  # and the seam are added after the check: they are ours.
   defp build(request, options) do
     Req.new()
     |> Req.merge(request_options(request) ++ options)
-    |> validate!()
+    |> refuse_bypass!()
+    |> Req.Request.append_request_steps(outbound_guard: &guard/1)
     |> Req.merge(req_options())
-    |> wrap_funs()
   end
 
   defp request_options(url) when is_binary(url) or is_struct(url, URI), do: [url: url]
@@ -144,93 +151,20 @@ defmodule Host.HTTP do
           "Host.HTTP takes a URL or a keyword list of options, got: #{inspect(other)}"
   end
 
-  # ── The check ─────────────────────────────────────────────────────
+  # ── The options that bypass the guard ────────────────────────────
 
-  # Fails closed: an option Req adds in a later version is refused
-  # until it earns a ruling here.
-  @any_value [
-    :checksum,
-    :compress_body,
-    :compressed,
-    :decode_body,
-    :decode_json,
-    :form,
-    :http_errors,
-    :inet6,
-    :json,
-    :max_redirects,
-    :max_retries,
-    :params,
-    :path_params,
-    :path_params_style,
-    :range,
-    :raw,
-    :receive_timeout,
-    :redirect,
-    :redirect_log_level,
-    :redirect_trusted,
-    :request_timeout,
-    :retry_log_level,
-    :user_agent
-  ]
+  # Each sends the request somewhere the guard never checks, or keeps
+  # it on disk. Every other option is Req's to validate.
+  @bypass [:connect_options, :finch, :finch_request, :plug, :unix_socket]
 
-  @shaped [:auth, :aws_sigv4, :base_url, :decoders, :form_multipart, :retry, :retry_delay]
-
-  @connection [
-    :connect_options,
-    :finch,
-    :finch_private,
-    :finch_request,
-    :plug,
-    :pool_max_idle_time,
-    :pool_timeout,
-    :unix_socket
-  ]
-
-  @renamed %{follow_redirects: :redirect, location_trusted: :redirect_trusted}
-
-  @builtin_decoders [:json, :json_api, :zip, :tar, :tgz, :gz, :zst, :csv]
-
-  defp validate!(%Req.Request{} = req) do
+  defp refuse_bypass!(%Req.Request{} = req) do
     Enum.each(req.options, &check_option!/1)
     if req.adapter != Req.Finch, do: refuse!(":adapter", connection_copy())
     check_into!(req.into)
-    check_body!(":body", req.body)
     req
   end
 
-  defp check_option!({key, _value}) when key in @any_value, do: :ok
-
-  defp check_option!({:base_url, url})
-       when is_binary(url) or is_struct(url, URI) or is_function(url, 0),
-       do: :ok
-
-  defp check_option!({:auth, auth}) when is_binary(auth), do: :ok
-
-  defp check_option!({:auth, {kind, credential}})
-       when kind in [:basic, :bearer, :digest] and is_binary(credential),
-       do: :ok
-
-  defp check_option!({:auth, :netrc}), do: refuse_netrc!(:netrc)
-  defp check_option!({:auth, {:netrc, _path} = netrc}), do: refuse_netrc!(netrc)
-
-  defp check_option!({:aws_sigv4, aws}) when is_list(aws) or is_map(aws), do: :ok
-  defp check_option!({:decoders, false}), do: :ok
-
-  defp check_option!({:decoders, decoders}) when is_list(decoders),
-    do: Enum.each(decoders, &check_decoder!/1)
-
-  defp check_option!({:form_multipart, parts}) when is_list(parts) or is_map(parts),
-    do: Enum.each(parts, &check_part!/1)
-
-  defp check_option!({:retry, retry})
-       when retry in [false, :safe_transient, :transient] or is_function(retry, 2),
-       do: :ok
-
-  defp check_option!({:retry_delay, delay}) when is_integer(delay) or is_function(delay, 1),
-    do: :ok
-
-  defp check_option!({key, _value}) when key in @connection,
+  defp check_option!({key, _value}) when key in @bypass,
     do: refuse!(":#{key}", connection_copy())
 
   defp check_option!({key, _value}) when key in [:cache, :cache_dir] do
@@ -240,29 +174,9 @@ defmodule Host.HTTP do
     )
   end
 
-  defp check_option!({key, _value}) when is_map_key(@renamed, key),
-    do: refuse!(":#{key}", "it is now :#{@renamed[key]}")
-
-  defp check_option!({:redact_auth, _value}),
-    do: refuse!(":redact_auth", "it has no effect; leave it out")
-
-  defp check_option!({key, {mod, fun, args}})
-       when is_atom(mod) and is_atom(fun) and is_list(args) do
-    refuse!(
-      ":#{key} as {mod, fun, args}",
-      "pass the value itself, or a function that returns it"
-    )
-  end
-
-  defp check_option!({key, value}) when key in @shaped do
-    refuse!(
-      ":#{key} #{inspect(value)}",
-      "Req's documentation for :#{key} lists the values it takes"
-    )
-  end
-
-  defp check_option!({key, _value}),
-    do: refuse!(":#{key}", "it is not one of the Req options Host.HTTP passes on")
+  defp check_option!({:auth, :netrc}), do: refuse_netrc!(:netrc)
+  defp check_option!({:auth, {:netrc, _path} = netrc}), do: refuse_netrc!(netrc)
+  defp check_option!(_option), do: :ok
 
   @spec refuse_netrc!(:netrc | {:netrc, term()}) :: no_return()
   defp refuse_netrc!(netrc) do
@@ -273,43 +187,14 @@ defmodule Host.HTTP do
     )
   end
 
-  defp check_decoder!(format) when format in @builtin_decoders, do: :ok
-
-  defp check_decoder!({format, codec})
-       when is_atom(format) and (codec in @builtin_decoders or is_function(codec, 1)),
-       do: :ok
-
-  defp check_decoder!(decoder) do
+  defp check_into!(:self) do
     refuse!(
-      "decoder #{inspect(decoder)}",
-      "a decoder is one of Req's built-in formats or a function, e.g. " <>
-        "decoders: [ics: fn body -> {:ok, parse(body)} end]"
-    )
-  end
-
-  defp check_part!({_name, {value, opts}}) when is_list(opts),
-    do: check_body!(":form_multipart", value)
-
-  defp check_part!({_name, value}), do: check_body!(":form_multipart", value)
-
-  defp check_into!(nil), do: :ok
-  defp check_into!(fun) when is_function(fun, 2), do: :ok
-
-  defp check_into!(into) do
-    refuse!(
-      ":into #{inspect(into)}",
+      ":into :self",
       "stream with a function: into: fn {:data, chunk}, acc -> {:cont, acc} end"
     )
   end
 
-  defp check_body!(what, %module{}) when module in [File.Stream, IO.Stream] do
-    refuse!(
-      "#{what} streamed from a file",
-      "read the file first and send its contents, e.g. body: Host.File.read!(path)"
-    )
-  end
-
-  defp check_body!(_what, _body), do: :ok
+  defp check_into!(_into), do: :ok
 
   defp connection_copy,
     do: "requests go over the network through your beamlet's own connection pool"
@@ -319,38 +204,66 @@ defmodule Host.HTTP do
     raise ArgumentError, "Host.HTTP does not accept #{what}: #{why}"
   end
 
-  # ── Funs Req hands the request to ─────────────────────────────────
+  # ── The outbound guard ────────────────────────────────────────────
 
-  # Req passes the live request to an into function and a retry
-  # function. Its step lists hold Req's own step funs, which retry,
-  # redirect, read files or call {mod, fun, args} when called by hand,
-  # so the agent's function sees the request without them, and an into
-  # function's returned request is dropped for ours.
-  defp wrap_funs(req), do: req |> wrap_into() |> wrap_retry()
-
-  defp wrap_into(%Req.Request{into: into} = req) when is_function(into, 2) do
-    wrapped = fn chunk, {live, response} ->
-      {command, {_request, returned}} = into.(chunk, {strip(live), response})
-      {command, {live, returned}}
+  # A request step, so it sees the URL after base_url and params, and
+  # Req runs it again for every redirect. A halt here skips the error
+  # steps, so a refused request is never retried.
+  defp guard(%Req.Request{url: url} = req) do
+    if allowed?(url.host) do
+      req
+    else
+      case ReqSSRF.check(url, check_options()) do
+        :ok -> req
+        {:error, reason} -> Req.Request.halt(req, blocked(url, reason))
+      end
     end
-
-    %{req | into: wrapped}
   end
 
-  defp wrap_into(req), do: req
-
-  defp wrap_retry(%Req.Request{options: %{retry: retry}} = req) when is_function(retry, 2) do
-    Req.Request.put_option(req, :retry, fn live, outcome -> retry.(strip(live), outcome) end)
+  # URI keeps the userinfo in authority too, so the URL is rebuilt
+  # rather than edited.
+  defp blocked(url, reason) do
+    url = URI.new!(URI.to_string(%{url | userinfo: nil}))
+    %Host.HTTP.BlockedError{url: url, reason: reason}
   end
 
-  defp wrap_retry(req), do: req
+  defp allowed?(host) when is_binary(host) do
+    allow = Beamlet.Config.http()[:allow]
 
-  defp strip(req), do: %{req | request_steps: [], response_steps: [], error_steps: []}
-
-  # The test seam: config/test.exs points requests at a Req.Test stub.
-  defp req_options do
-    :beamlet
-    |> Application.get_env(__MODULE__, [])
-    |> Keyword.get(:req_options, [])
+    case :inet.parse_address(String.to_charlist(host)) do
+      {:ok, address} -> Enum.any?(allow, &address_in?(address, &1))
+      {:error, _} -> Enum.any?(allow, &(String.downcase(&1) == String.downcase(host)))
+    end
   end
+
+  defp allowed?(_host), do: false
+
+  defp address_in?(address, entry) do
+    case :inet.parse_address(String.to_charlist(entry)) do
+      {:ok, ^address} ->
+        true
+
+      {:ok, _other} ->
+        false
+
+      {:error, _} ->
+        case InetCidr.parse_cidr(entry) do
+          {:ok, cidr} -> InetCidr.contains?(cidr, address)
+          {:error, _} -> false
+        end
+    end
+  end
+
+  # The test seams: config/test.exs points requests at a Req.Test stub
+  # and name resolution at a resolver that never touches DNS.
+  defp check_options do
+    case Keyword.fetch(seam(), :resolver) do
+      {:ok, resolver} -> [resolver: resolver]
+      :error -> []
+    end
+  end
+
+  defp req_options, do: Keyword.get(seam(), :req_options, [])
+
+  defp seam, do: Application.get_env(:beamlet, __MODULE__, [])
 end

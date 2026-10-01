@@ -13,6 +13,7 @@ defmodule Beamlet.ConfigTest do
       Application.delete_env(:beamlet, :eval)
       Application.delete_env(:beamlet, :define)
       Application.delete_env(:beamlet, :mcp)
+      Application.delete_env(:beamlet, :http)
     end)
 
     %{configured: previous}
@@ -105,6 +106,42 @@ defmodule Beamlet.ConfigTest do
     test "passes a request timeout one millisecond past the larger tool timeout" do
       Application.put_env(:beamlet, :eval, timeout: 90_000)
       Application.put_env(:beamlet, :mcp, request_timeout: 90_001)
+
+      assert :ok = Config.validate!()
+    end
+
+    test "raises on an unknown http key" do
+      Application.put_env(:beamlet, :http, allow_private: true)
+
+      assert_raise ArgumentError, ~r/:http takes allow, got: \[allow_private: true\]/, fn ->
+        Config.validate!()
+      end
+    end
+
+    test "raises when allow is not a list" do
+      Application.put_env(:beamlet, :http, allow: "192.168.1.0/24")
+
+      assert_raise ArgumentError, ~r/allow must be a list of host names/, fn ->
+        Config.validate!()
+      end
+    end
+
+    test "raises on an allow entry that is not a host name, address or CIDR block" do
+      for entry <- [:localhost, "", "10.0.0.0/33", "http://nas.local", "nas local"] do
+        Application.put_env(:beamlet, :http, allow: [entry])
+
+        assert_raise ArgumentError,
+                     ~r/allow takes host names .*got: #{Regex.escape(inspect(entry))}/,
+                     fn ->
+                       Config.validate!()
+                     end
+      end
+    end
+
+    test "passes host names, addresses and CIDR blocks in allow" do
+      Application.put_env(:beamlet, :http,
+        allow: ["homeassistant.local", "nas", "192.168.1.20", "::1", "10.0.0.0/8", "fd00::/8"]
+      )
 
       assert :ok = Config.validate!()
     end
@@ -223,6 +260,13 @@ defmodule Beamlet.ConfigTest do
 
       Application.put_env(:beamlet, :mcp, request_timeout: 100)
       assert Config.mcp() == [request_timeout: 100]
+    end
+
+    test "http/0 allows nothing when unset, the configured hosts otherwise" do
+      assert Config.http() == [allow: []]
+
+      Application.put_env(:beamlet, :http, allow: ["nas.local"])
+      assert Config.http() == [allow: ["nas.local"]]
     end
 
     test "code_dir/0 is the code directory under the data dir", %{configured: configured} do

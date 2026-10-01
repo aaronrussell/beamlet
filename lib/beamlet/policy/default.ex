@@ -234,12 +234,11 @@ defmodule Beamlet.Policy.Default do
                        do: mod
 
   # What Host.HTTP returns and raises. Req itself is not granted:
-  # its options are data that make Req's own code call any module,
-  # plug, socket or file (base_url, auth and aws_sigv4 take
-  # {mod, fun, args}; plug, unix_socket, cache_dir, netrc), and every
-  # request Req builds carries its step funs, which agent code could
-  # call by hand. Host.HTTP takes Req's arguments and checks them;
-  # the response struct and the exceptions are inert data.
+  # Host.HTTP is where the outbound guard and the refusal of options
+  # that bypass it (plug, unix_socket, connect_options, the disk
+  # cache, netrc) live, and a request made through Req directly would
+  # pass neither. The response struct and the exceptions are inert
+  # data.
   @http %{Req.Response => :all}
 
   @http_exceptions for mod <- Application.spec(:req, :modules) || [],
@@ -262,6 +261,7 @@ defmodule Beamlet.Policy.Default do
     Host.Code => :all,
     Host.File => :all,
     Host.HTTP => :all,
+    Host.HTTP.BlockedError => :all,
     Host.KV => :all,
     Host.Migrator => :all,
     Host.PubSub => :all,
@@ -557,8 +557,9 @@ defmodule Beamlet.Policy.Default do
   ## Granted: HTTP
 
   What `Host.HTTP` returns and raises. Req itself is not granted:
-  `Host.HTTP` takes its arguments and checks the options Req would
-  act on.
+  `Host.HTTP` is where the outbound guard and the refusal of options
+  that bypass it live, and a request made through Req directly would
+  pass neither.
 
   #{@join_names.(Map.keys(@http))}
 

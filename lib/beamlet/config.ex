@@ -16,22 +16,26 @@ defmodule Beamlet.Config do
   (`Beamlet.Code`) and the files agent code keeps under `files/`
   (`Host.File`). Policies are declared here too (`Beamlet.Policy`),
   the limits on the two tools (`Beamlet.Eval`, `Beamlet.Define`), the
-  MCP request timeout, and the web surface: the host's endpoint, which
-  serves the routes agents mount (`Beamlet.Router`), and the prefix
-  they are served under.
+  MCP request timeout, the hosts agent HTTP may reach on private
+  networks (`Host.HTTP`), and the web surface: the host's endpoint,
+  which serves the routes agents mount (`Beamlet.Router`), and the
+  prefix they are served under.
 
       config :beamlet,
         data_dir: "/var/lib/beamlet",
         web: [endpoint: MyAppWeb.Endpoint],
         eval: [timeout: 60_000],
         define: [timeout: 60_000],
-        mcp: [request_timeout: 90_000]
+        mcp: [request_timeout: 90_000],
+        http: [allow: ["homeassistant.local", "192.168.1.0/24"]]
   """
 
   @eval_defaults [timeout: 30_000, max_heap_bytes: 268_435_456, max_output: 16_384]
   @define_defaults [timeout: 30_000]
   @mcp_defaults [request_timeout: 65_000]
+  @http_defaults [allow: []]
   @web_defaults [endpoint: nil, prefix: ""]
+  @host_name_format ~r/\A[A-Za-z0-9_\-.]+\z/
   @prefix_format ~r{\A/[A-Za-z0-9_\-/]*[A-Za-z0-9_\-]\z}
 
   @doc """
@@ -43,7 +47,9 @@ defmodule Beamlet.Config do
   list of name to document, each document checked by
   `Beamlet.Policies` when it builds them; the eval, define and mcp
   limits must be known keys with positive integers, and the MCP
-  request timeout longer than both tool timeouts; the web group's
+  request timeout longer than both tool timeouts; the http group's
+  `allow` must be a list of host names, IP addresses and CIDR blocks;
+  the web group's
   endpoint must be a module and its prefix empty or a path with a
   leading slash and no trailing one. Whether an endpoint is set is
   checked by the full boot, not here, since the system half runs
@@ -57,6 +63,7 @@ defmodule Beamlet.Config do
     validate_limits!(:define, @define_defaults, Application.get_env(:beamlet, :define, []))
     validate_limits!(:mcp, @mcp_defaults, Application.get_env(:beamlet, :mcp, []))
     validate_request_timeout!()
+    validate_http!(Application.get_env(:beamlet, :http, []))
     validate_web!(Application.get_env(:beamlet, :web, []))
     :ok
   end
@@ -111,6 +118,17 @@ defmodule Beamlet.Config do
   """
   @spec mcp() :: keyword()
   def mcp, do: limits(:mcp, @mcp_defaults)
+
+  @doc """
+  The agent HTTP settings, merged over the defaults: `allow`, empty
+  by default, the hosts `Host.HTTP` reaches although they are on a
+  private or reserved network. A name entry matches a URL's host
+  exactly, ignoring case; an IP address or CIDR block matches a host
+  written as an address. A name that resolves into an allowed block
+  is still refused.
+  """
+  @spec http() :: keyword()
+  def http, do: limits(:http, @http_defaults)
 
   @doc """
   The web surface, merged over the defaults: `endpoint`, the host's
@@ -180,6 +198,34 @@ defmodule Beamlet.Config do
               "\"Server unavailable\" instead of its error"
     end
   end
+
+  defp validate_http!(http) do
+    unless Keyword.keyword?(http) and Keyword.keys(http) -- Keyword.keys(@http_defaults) == [] do
+      raise ArgumentError, "config :beamlet, :http takes allow, got: #{inspect(http)}"
+    end
+
+    allow = Keyword.get(http, :allow, [])
+
+    unless is_list(allow) do
+      raise ArgumentError,
+            "config :beamlet, :http: allow must be a list of host names, IP addresses " <>
+              "and CIDR blocks, got: #{inspect(allow)}"
+    end
+
+    for entry <- allow, not allow_entry?(entry) do
+      raise ArgumentError,
+            "config :beamlet, :http: allow takes host names such as \"homeassistant.local\", " <>
+              "IP addresses and CIDR blocks such as \"192.168.1.0/24\", got: #{inspect(entry)}"
+    end
+  end
+
+  defp allow_entry?(entry) when is_binary(entry) do
+    match?({:ok, _}, :inet.parse_address(String.to_charlist(entry))) or
+      match?({:ok, _}, InetCidr.parse_cidr(entry)) or
+      Regex.match?(@host_name_format, entry)
+  end
+
+  defp allow_entry?(_entry), do: false
 
   defp validate_web!(web) do
     unless Keyword.keyword?(web) and Keyword.keys(web) -- Keyword.keys(@web_defaults) == [] do
