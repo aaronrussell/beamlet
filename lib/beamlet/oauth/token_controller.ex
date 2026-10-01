@@ -9,10 +9,10 @@ defmodule Beamlet.OAuth.TokenController do
   `Beamlet.OAuth.Codes`: the client id, redirect URI and, when sent,
   the resource must be the ones the code was issued for, and the
   `code_verifier` must hash to the challenge the client committed
-  to. Then `Beamlet.Users.create_token/2` mints an `oauth` token
-  under the consented policy. `grant_type=refresh_token` rotates
-  that token in place (`Beamlet.Users.rotate_token/2`): the old
-  secrets die, the row and its id stay.
+  to. Then `Beamlet.Tokens.create/1` mints an `oauth` token under
+  the consented policy. `grant_type=refresh_token` rotates that token
+  in place (`Beamlet.Tokens.rotate/2`): the old secrets die, the row
+  and its id stay.
 
   No client authentication: every client is public, identified by
   the client id it sends, which must match what the code or token
@@ -27,7 +27,7 @@ defmodule Beamlet.OAuth.TokenController do
   alias Beamlet.OAuth
   alias Beamlet.OAuth.Codes
   alias Beamlet.Token
-  alias Beamlet.Users
+  alias Beamlet.Tokens
 
   plug :no_store
 
@@ -50,8 +50,7 @@ defmodule Beamlet.OAuth.TokenController do
          {:ok, entry} <- take(code),
          :ok <- issued_for(entry, client_id, redirect_uri, params["resource"]),
          :ok <- verify(entry.code_challenge, verifier),
-         {:ok, user} <- find_user(entry.user_id),
-         {:ok, token} <- mint(user, entry) do
+         {:ok, token} <- mint(entry) do
       json(conn, reply(token, entry.scope))
     else
       {:error, code, description} -> error(conn, code, description)
@@ -70,7 +69,7 @@ defmodule Beamlet.OAuth.TokenController do
   end
 
   defp required(params, names) do
-    values = Enum.map(names, &present(params[&1]))
+    values = Enum.map(names, &OAuth.present(params[&1]))
 
     case Enum.zip(names, values) |> Enum.filter(fn {_name, value} -> value == nil end) do
       [] ->
@@ -96,7 +95,7 @@ defmodule Beamlet.OAuth.TokenController do
       entry.redirect_uri != redirect_uri ->
         {:error, "invalid_grant", "redirect_uri does not match the authorization request"}
 
-      present(resource) != nil and resource != entry.resource ->
+      OAuth.present(resource) != nil and resource != entry.resource ->
         {:error, "invalid_grant", "resource does not match the authorization request"}
 
       true ->
@@ -112,18 +111,11 @@ defmodule Beamlet.OAuth.TokenController do
       else: {:error, "invalid_grant", "code_verifier does not match the code_challenge"}
   end
 
-  defp find_user(user_id) do
-    case Users.find(user_id) do
-      {:ok, user} -> {:ok, user}
-      {:error, :not_found} -> {:error, "invalid_grant", "the user no longer exists"}
-    end
-  end
-
-  defp mint(user, entry) do
+  defp mint(entry) do
     attrs =
       Map.merge(%{kind: :oauth, client: entry.client_id, policy: entry.policy}, OAuth.expiries())
 
-    case Users.create_token(user, attrs) do
+    case Tokens.create(attrs) do
       {:ok, token} ->
         {:ok, token}
 
@@ -133,7 +125,7 @@ defmodule Beamlet.OAuth.TokenController do
   end
 
   defp authenticate(secret) do
-    case Users.authenticate_refresh(secret) do
+    case Tokens.authenticate_refresh(secret) do
       {:ok, token} ->
         {:ok, token}
 
@@ -152,7 +144,7 @@ defmodule Beamlet.OAuth.TokenController do
   end
 
   defp rotate(token) do
-    case Users.rotate_token(token, OAuth.expiries()) do
+    case Tokens.rotate(token, OAuth.expiries()) do
       {:ok, token} ->
         {:ok, token}
 
@@ -180,9 +172,6 @@ defmodule Beamlet.OAuth.TokenController do
     |> put_status(400)
     |> json(%{error: code, error_description: description})
   end
-
-  defp present(value) when is_binary(value) and value != "", do: value
-  defp present(_other), do: nil
 
   # A token reply is a secret; nothing on the way may keep a copy.
   defp no_store(conn, _opts), do: put_resp_header(conn, "cache-control", "no-store")

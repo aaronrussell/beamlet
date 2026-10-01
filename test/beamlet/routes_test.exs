@@ -413,12 +413,13 @@ defmodule Beamlet.RoutesTest do
     end
 
     test "a browser signed in to the app brings no app session to an agent route", ctx do
-      {:ok, _user} = Beamlet.Users.update_password(ctx.user, "correct horse")
       add_echo!(ctx, :get, "session", "/peek")
       assert :ok = Routes.regenerate()
 
-      conn = post(ctx.conn, "/beamlet/login", user: %{name: "alice", password: "correct horse"})
-      assert conn |> get("/beamlet") |> html_response(200) =~ "Signed in as alice."
+      conn =
+        post(ctx.conn, "/beamlet/login", user: %{email: ctx.user.email, password: ctx.password})
+
+      assert conn |> get("/beamlet") |> html_response(200) =~ "Signed in as owner@example.com."
 
       assert conn |> get("/peek") |> json_response(200) == %{}
     end

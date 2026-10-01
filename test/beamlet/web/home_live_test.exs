@@ -4,8 +4,6 @@ defmodule Beamlet.Web.HomeLiveTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
-  alias Beamlet.Users
-
   setup do
     %{conn: build_conn()}
   end
@@ -14,16 +12,16 @@ defmodule Beamlet.Web.HomeLiveTest do
     assert {:error, {:redirect, %{to: "/beamlet/login"}}} = live(conn, "/beamlet")
   end
 
-  test "signed in shows the user and a sign-out form", %{conn: conn, user: user} do
-    {:ok, view, html} = conn |> sign_in(user) |> live("/beamlet")
+  test "signed in shows the owner's email and a sign-out form", %{conn: conn} do
+    {:ok, view, html} = conn |> sign_in() |> live("/beamlet")
 
-    assert html =~ "Signed in as alice."
+    assert html =~ "Signed in as owner@example.com."
     assert has_element?(view, ~s(form#logout-form[action="/beamlet/logout"][method="post"]))
     assert has_element?(view, "form#logout-form input[name=_csrf_token]")
   end
 
-  test "shows the MCP URL and how each kind of client connects", %{conn: conn, user: user} do
-    conn = sign_in(conn, user)
+  test "shows the MCP URL and how each kind of client connects", %{conn: conn} do
+    conn = sign_in(conn)
     {:ok, view, html} = live(conn, "/beamlet")
 
     assert has_element?(view, "#mcp-url", "http://localhost:4000/beamlet/mcp")
@@ -45,23 +43,23 @@ defmodule Beamlet.Web.HomeLiveTest do
     end
 
     {:ok, view, html} = live(conn, "/beamlet?client=code")
-    assert has_element?(view, "pre", "beamlet tokens.create NAME --user alice")
+    assert has_element?(view, "pre", "beamlet tokens.create NAME")
     assert html =~ ~s(server_label: &quot;beamlet&quot;)
 
     {:ok, view, _html} = live(conn, "/beamlet?client=nonsense")
     assert has_element?(view, "h2", "ChatGPT")
   end
 
-  test "renders in the app layout, with the built stylesheet", %{conn: conn, user: user} do
-    html = conn |> sign_in(user) |> get("/beamlet") |> html_response(200)
+  test "renders in the app layout, with the built stylesheet", %{conn: conn} do
+    html = conn |> sign_in() |> get("/beamlet") |> html_response(200)
 
     assert html =~ ~s(<link rel="stylesheet" href="/beamlet/assets/app.css")
     refute html =~ "cdn.jsdelivr.net"
   end
 
-  test "a user deleted since signing in is signed out", %{conn: conn, user: user} do
-    conn = sign_in(conn, user)
-    {:ok, _user} = Users.delete(user)
+  test "a new password since signing in signs the browser out", %{conn: conn, user: user} do
+    conn = sign_in(conn)
+    {:ok, _user} = Beamlet.Owner.update(user, password: "battery staple")
 
     assert {:error, {:redirect, %{to: "/beamlet/login"}}} = live(conn, "/beamlet")
   end

@@ -1,7 +1,8 @@
 defmodule Beamlet.Repo do
   @moduledoc """
   The system database: what Beamlet itself keeps about a beamlet,
-  users and tokens, apart from anything agents build.
+  the owner, their sessions and the tokens, apart from anything
+  agents build.
 
   Lives at `db/beamlet.db` under the data dir and is migrated at boot
   from this package's priv dir, so an embedding host never runs a

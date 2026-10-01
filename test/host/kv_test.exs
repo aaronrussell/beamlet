@@ -140,7 +140,7 @@ defmodule Host.KVTest do
     end
 
     test "external term format bytes for a fun do not decode" do
-      module = "Elixir.Beamlet.Users"
+      module = "Elixir.Beamlet.Tokens"
       bytes = <<131, 113, 119, byte_size(module), module::binary, 119, 4, "list", 97, 0>>
       insert_raw("kv-test:fun", bytes)
 

@@ -76,7 +76,7 @@ defmodule Beamlet.Config do
   @spec db_dir() :: Path.t()
   def db_dir, do: Path.join(data_dir(), "db")
 
-  @doc "The system database file (`Beamlet.Repo`): users and tokens."
+  @doc "The system database file (`Beamlet.Repo`): the owner, sessions and tokens."
   @spec system_db_file() :: Path.t()
   def system_db_file, do: Path.join(db_dir(), "beamlet.db")
 

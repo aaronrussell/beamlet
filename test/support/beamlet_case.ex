@@ -11,13 +11,14 @@ defmodule Beamlet.Case do
   with no defined modules, a fresh history and no files, and the
   last test's dirs stay inspectable after the run.
 
-  Every test also gets a user, `alice`, and one of her tokens as
-  `user` and `token`, created through `Beamlet.Users` so a test
-  authenticates the way production does. The token still carries its
-  `secret`; `principal/1` turns it into the principal a request
-  would carry, and `act_as/1` makes it the test process's ambient
-  principal, as eval's runtime does for evaluated code, for tests
-  that call `Host.*` directly.
+  Every test also gets the owner and one token, as `user` and `token`,
+  created through `Beamlet.Owner` and `Beamlet.Tokens` so a test
+  authenticates the way production does; the owner's password is
+  `password`. The token still carries its `secret`; `principal/1`
+  turns it into the principal a request would carry, and `act_as/1`
+  makes it the test process's ambient principal, as eval's runtime
+  does for evaluated code, for tests that call `Host.*` directly.
+  `sign_in/1` signs the owner in on a conn.
 
   The test endpoint (`Beamlet.TestEndpoint`) starts after the beamlet,
   so every test can request the routes it mounts through
@@ -37,9 +38,10 @@ defmodule Beamlet.Case do
 
   use ExUnit.CaseTemplate
 
+  alias Beamlet.Owner
   alias Beamlet.Principal
   alias Beamlet.Token
-  alias Beamlet.Users
+  alias Beamlet.Tokens
   alias Ecto.Adapters.SQL.Sandbox
 
   using do
@@ -73,16 +75,17 @@ defmodule Beamlet.Case do
       on_exit(fn -> Sandbox.stop_owner(owner) end)
     end
 
-    {:ok, user} = Users.create(name: "alice")
-    {:ok, token} = Users.create_token(user, name: "test")
+    password = "correct horse"
+    {:ok, user} = Owner.create(email: "owner@example.com", password: password)
+    {:ok, token} = Tokens.create(name: "test")
 
-    %{data_dir: Beamlet.Config.data_dir(), user: user, token: token}
+    %{data_dir: Beamlet.Config.data_dir(), user: user, password: password, token: token}
   end
 
   @doc "The principal a request with this token carries, built the way the plug builds it."
   @spec principal(Token.t()) :: Principal.t()
   def principal(%Token{secret: secret}) do
-    {:ok, authenticated} = Users.authenticate(secret)
+    {:ok, authenticated} = Tokens.authenticate(secret)
     Principal.from_token(authenticated)
   end
 
@@ -90,11 +93,15 @@ defmodule Beamlet.Case do
   @spec act_as(Token.t()) :: :ok
   def act_as(%Token{} = token), do: token |> principal() |> Principal.put_current()
 
-  @doc "Signs the user in on the conn's test session, as `Beamlet.Web.Auth.log_in/2` would."
-  @spec sign_in(Plug.Conn.t(), Beamlet.User.t()) :: Plug.Conn.t()
-  def sign_in(conn, %Beamlet.User{} = user) do
-    {:ok, session} = Users.create_session(user)
-    Plug.Test.init_test_session(conn, session_secret: session.secret)
+  @doc "Signs the owner in on the conn's test session, as `Beamlet.Web.Auth.log_in/2` would."
+  @spec sign_in(Plug.Conn.t()) :: Plug.Conn.t()
+  def sign_in(conn) do
+    {:ok, session} = Owner.create_session()
+
+    Plug.Test.init_test_session(conn,
+      session_secret: session.secret,
+      live_socket_id: "beamlet_app_session:#{session.id}"
+    )
   end
 
   @doc """

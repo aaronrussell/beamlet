@@ -2,10 +2,10 @@ defmodule Beamlet.PrincipalTest do
   use Beamlet.Case
 
   alias Beamlet.Principal
-  alias Beamlet.Users
+  alias Beamlet.Tokens
 
   test "builds the flat principal from an authenticated token", %{token: token} do
-    {:ok, authenticated} = Users.authenticate(token.secret)
+    {:ok, authenticated} = Tokens.authenticate(token.secret)
 
     assert Principal.from_token(authenticated) == %Principal{
              token_id: token.id,
@@ -15,19 +15,19 @@ defmodule Beamlet.PrincipalTest do
   end
 
   @tag policies: [restricted: []]
-  test "carries the token's policy", %{user: user} do
-    {:ok, token} = Users.create_token(user, name: "phone", policy: "restricted")
-    {:ok, authenticated} = Users.authenticate(token.secret)
+  test "carries the token's policy" do
+    {:ok, token} = Tokens.create(name: "phone", policy: "restricted")
+    {:ok, authenticated} = Tokens.authenticate(token.secret)
 
     assert %Principal{token_label: "phone", policy: "restricted"} =
              Principal.from_token(authenticated)
   end
 
-  test "an oauth token is carried by its client's host", %{user: user} do
+  test "an oauth token is carried by its client's host" do
     {:ok, token} =
-      Users.create_token(user, oauth_attrs("https://claude.ai/.well-known/client.json"))
+      Tokens.create(oauth_attrs("https://claude.ai/.well-known/client.json"))
 
-    {:ok, authenticated} = Users.authenticate(token.secret)
+    {:ok, authenticated} = Tokens.authenticate(token.secret)
 
     assert %Principal{token_label: "claude.ai"} = principal = Principal.from_token(authenticated)
     assert {:ok, ^principal} = Principal.from_trailers(Principal.to_trailers(principal))
@@ -96,7 +96,7 @@ defmodule Beamlet.PrincipalTest do
   test "put_current/1 makes it the current process's principal", %{token: token} do
     assert Principal.current() == nil
 
-    {:ok, authenticated} = Users.authenticate(token.secret)
+    {:ok, authenticated} = Tokens.authenticate(token.secret)
     principal = Principal.from_token(authenticated)
 
     assert :ok = Principal.put_current(principal)

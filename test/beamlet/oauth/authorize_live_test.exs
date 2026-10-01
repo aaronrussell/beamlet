@@ -24,7 +24,7 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
   @challenge "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
   @iss "http://localhost:4000"
 
-  setup %{user: user} do
+  setup do
     Req.Test.stub(Clients, fn conn -> Req.Test.json(conn, @document) end)
 
     params = %{
@@ -37,7 +37,7 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
       resource: "http://localhost:4000/beamlet/mcp"
     }
 
-    %{conn: sign_in(build_conn(), user), params: params}
+    %{conn: sign_in(build_conn()), params: params}
   end
 
   defp path(params), do: "/beamlet/authorize?" <> URI.encode_query(params)
@@ -91,7 +91,7 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
       assert html =~ "define, eval, patch"
       assert has_element?(view, ~s(#consent-form button[name=decision][value=allow]))
       assert has_element?(view, ~s(#consent-form button[name=decision][value=deny]))
-      assert has_element?(view, "#signed-in", "alice")
+      assert has_element?(view, "#signed-in", "owner@example.com")
       refute has_element?(view, "#loopback-warning")
     end
 
@@ -167,8 +167,7 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
   describe "deciding" do
     test "allow stores a code and sends the browser back with code, state and iss", %{
       conn: conn,
-      params: params,
-      user: user
+      params: params
     } do
       {:ok, view, _html} = live(conn, path(params))
 
@@ -181,7 +180,6 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
       assert Codes.take(code) ==
                {:ok,
                 %{
-                  user_id: user.id,
                   policy: "default",
                   client_id: @client_id,
                   redirect_uri: @redirect_uri,

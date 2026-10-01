@@ -14,7 +14,7 @@ defmodule Beamlet.MCP.Plug do
 
   The scheme is matched in any case, as HTTP has it.
 
-  The plug turns that secret into its token and user, puts the
+  The plug turns that secret into its token, puts the
   `Beamlet.Principal` in the conn's assigns under `:principal`, and
   hands the request to the MCP transport, which carries the assigns
   into the frame every server callback receives. Identity is per
@@ -46,7 +46,7 @@ defmodule Beamlet.MCP.Plug do
   alias Beamlet.Policies
   alias Beamlet.Principal
   alias Beamlet.Token
-  alias Beamlet.Users
+  alias Beamlet.Tokens
 
   @body "A beamlet token is required: Authorization: Bearer <token>"
 
@@ -56,7 +56,7 @@ defmodule Beamlet.MCP.Plug do
   @impl true
   def call(conn, transport_opts) do
     with {:ok, secret} <- bearer(conn),
-         {:ok, token} <- Users.authenticate(secret),
+         {:ok, token} <- Tokens.authenticate(secret),
          :ok <- declared(token) do
       conn
       |> assign(:principal, Principal.from_token(token))

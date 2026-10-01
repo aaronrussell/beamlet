@@ -74,7 +74,7 @@ defmodule Beamlet.Web.HomeLive do
       </nav>
 
       <section id="guide" class="mt-6 max-w-[680px]">
-        <.guide client={@client} url={@url} user={@current_user} />
+        <.guide client={@client} url={@url} />
       </section>
     </Layouts.shell>
     """
@@ -137,7 +137,7 @@ defmodule Beamlet.Web.HomeLive do
     ~H"""
     <h2 class="text-xl">Claude Code</h2>
     <p class="mt-3">
-      You can connect your beamlet to Claude Code using OAuth or with a token from the beamlet operator.
+      You can connect your beamlet to Claude Code using OAuth or with a token you create from the CLI.
     </p>
     <h3 class="mt-8 text-md">OAuth</h3>
     <.steps>
@@ -155,8 +155,8 @@ defmodule Beamlet.Web.HomeLive do
     <h3 class="mt-8 text-md">With a token</h3>
     <.steps>
       <:step>
-        The beamlet operator can generate an authentication token from the CLI.
-        <.code class="my-2">beamlet tokens.create NAME --user {@user.name}</.code>
+        Create an authentication token from the CLI.
+        <.code class="my-2">beamlet tokens.create NAME</.code>
         Keep the token in an environment variable, <code>BEAMLET_TOKEN</code>, rather than in a file you might commit.
       </:step>
       <:step>
@@ -175,8 +175,8 @@ defmodule Beamlet.Web.HomeLive do
     </p>
     <.steps>
       <:step>
-        The beamlet operator can generate an authentication token from the CLI.
-        <.code class="my-2">beamlet tokens.create NAME --user {@user.name}</.code>
+        Create an authentication token from the CLI.
+        <.code class="my-2">beamlet tokens.create NAME</.code>
         Keep the token in an environment variable, <code>BEAMLET_TOKEN</code>, rather than in a file you might commit.
       </:step>
       <:step>
@@ -194,8 +194,8 @@ defmodule Beamlet.Web.HomeLive do
       If you're working with LLM APIs, you can integrate Beamlet by manually generating an authentication token.
     </p>
     <p class="mt-2">
-      The beamlet operator can generate an authentication token from the CLI.
-      <.code class="my-2">beamlet tokens.create NAME --user {@user.name}</.code>
+      Create an authentication token from the CLI.
+      <.code class="my-2">beamlet tokens.create NAME</.code>
       Keep the token in an environment variable, <code>BEAMLET_TOKEN</code>, rather than in a file you might commit.
     </p>
 

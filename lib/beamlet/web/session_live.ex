@@ -36,7 +36,14 @@ defmodule Beamlet.Web.SessionLive do
       </.flash>
 
       <.form for={@form} action="/beamlet/login" id="login-form" class="mt-5 flex flex-col gap-4">
-        <.input field={@form[:name]} label="Name" mono autocomplete="username" autofocus required />
+        <.input
+          field={@form[:email]}
+          label="Email"
+          type="email"
+          autocomplete="username"
+          autofocus
+          required
+        />
         <.input
           field={@form[:password]}
           label="Password"

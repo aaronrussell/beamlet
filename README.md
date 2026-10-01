@@ -23,10 +23,10 @@ The standalone server in `server/` ships as a Docker image built from the repo r
     docker build -t beamlet .
     docker run -d --name beamlet -p 4000:4000 -v beamlet_data:/data beamlet
 
-Then create a user and a token with the CLI inside the container:
+Then set up the owner, which asks for your email and a password to sign in with, and create a token with the CLI inside the container:
 
-    docker exec beamlet bin/beamlet users.create alice
-    docker exec beamlet bin/beamlet tokens.create alice laptop
+    docker exec -it beamlet bin/beamlet setup
+    docker exec beamlet bin/beamlet tokens.create laptop
 
 The container runs as user `beamlet` (uid 1000). A named volume, as above, is owned correctly from the start; a bind mount of a host directory must be writable by that uid.
 
@@ -52,7 +52,7 @@ TLS is left to whatever sits in front of the container.
 
 It does not touch the `[env]` block, so if the app is not called `beamlet`, set `BEAMLET_URL` in `fly.toml` to the new hostname first. LiveView rejects sockets from any other origin.
 
-Then create a user and a token over SSH:
+Then set up the owner and create a token over SSH:
 
-    fly ssh console -C "bin/beamlet users.create alice"
-    fly ssh console -C "bin/beamlet tokens.create alice laptop"
+    fly ssh console --pty -C "bin/beamlet setup"
+    fly ssh console -C "bin/beamlet tokens.create laptop"

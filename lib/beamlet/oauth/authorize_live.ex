@@ -101,7 +101,7 @@ defmodule Beamlet.OAuth.AuthorizeLive do
         </div>
       </form>
 
-      <p id="signed-in" class="mt-6 text-sm text-muted">Signed in as {@current_user.name}.</p>
+      <p id="signed-in" class="mt-6 text-sm text-muted">Signed in as {@current_user.email}.</p>
     </Layouts.split>
     """
   end
@@ -139,12 +139,9 @@ defmodule Beamlet.OAuth.AuthorizeLive do
   end
 
   defp decide(socket, request, %{"decision" => "allow", "policy" => policy}) do
-    user = socket.assigns.current_user
-
     if policy in Policies.names() do
       code =
         Codes.store(%{
-          user_id: user.id,
           policy: policy,
           client_id: request.client_id,
           redirect_uri: request.redirect_uri,
@@ -209,7 +206,7 @@ defmodule Beamlet.OAuth.AuthorizeLive do
 
   defp validate(params) do
     request =
-      Map.new(@fields, fn field -> {field, present(params[Atom.to_string(field)])} end)
+      Map.new(@fields, fn field -> {field, OAuth.present(params[Atom.to_string(field)])} end)
 
     with {:ok, document} <- fetch_client(request.client_id),
          :ok <- check_redirect(document, request.redirect_uri) do
@@ -248,7 +245,4 @@ defmodule Beamlet.OAuth.AuthorizeLive do
         {:ok, request}
     end
   end
-
-  defp present(value) when is_binary(value) and value != "", do: value
-  defp present(_other), do: nil
 end

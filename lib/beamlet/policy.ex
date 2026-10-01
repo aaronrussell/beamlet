@@ -43,8 +43,8 @@ defmodule Beamlet.Policy do
   function under `only:` or `except:` must exist at that arity, so a
   typo fails the boot rather than granting nothing. A module named
   twice in one key is an error. Agent-defined modules are granted by
-  existence and never need an `allow`. Policy names follow the user
-  and token rule, lowercase letters, digits, underscores and hyphens;
+  existence and never need an `allow`. Policy names follow the token
+  name rule, lowercase letters, digits, underscores and hyphens;
   `default` is reserved.
 
   Tools and grants are independent: a policy with `tools: [:eval]`

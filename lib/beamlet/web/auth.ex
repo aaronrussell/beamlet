@@ -2,22 +2,22 @@ defmodule Beamlet.Web.Auth do
   @moduledoc """
   The web sign-in: who the browser is, kept in the app's own session.
 
-  A signed-in user is a web identity, a `Beamlet.User` on a request
-  with no token and no policy, since a browser authors no code.
+  The one person who signs in is the owner (`Beamlet.Owner`), and a
+  signed-in browser is their `Beamlet.User` on a request with no token
+  and no policy, since a browser authors no code.
 
   The app keeps a cookie of its own, apart from the endpoint's session
   that agent pages use: `session_options/0`, scoped to `/beamlet` and
   unreadable by page scripts. `Beamlet.Router` plugs it into its
   browser pipeline, and the app's LiveView socket at
-  `/beamlet/app/live` decodes it. The session holds one value, the
-  secret of a `Beamlet.Session` row in the system database, and every
-  request turns it back into the user through
-  `Beamlet.Users.authenticate_session/1`. Nothing agent code can
-  write signs anyone in: an agent page's session is a different
-  cookie, and a cookie forged with the endpoint's `secret_key_base`
-  still needs a secret that matches a row. A renamed user stays
-  signed in; a deleted one, or one whose password was reset, is
-  signed out.
+  `/beamlet/app/live` decodes it. The session holds the secret of a
+  `Beamlet.Session` row in the system database, and every request
+  turns it back into the user through
+  `Beamlet.Owner.authenticate_session/1`. Nothing agent code can write
+  signs anyone in: an agent page's session is a different cookie, and
+  a cookie forged with the endpoint's `secret_key_base` still needs a
+  secret that matches a row. A new email keeps the owner signed in; a
+  new password signs every browser out.
 
   Two plugs for `Beamlet.Router`'s browser pipeline:
   `fetch_current_user/2` assigns `:current_user`, nil when nobody is
@@ -35,15 +35,22 @@ defmodule Beamlet.Web.Auth do
 
   `log_in/2` and `log_out/1` are what the session controller calls:
   the first creates a session, the second deletes it, and both renew
-  the cookie so a sign-in never keeps one handed out before it.
+  the cookie so a sign-in never keeps one handed out before it. A
+  sign-out also disconnects the app's LiveViews on that session, so
+  a page open in another tab goes to the login rather than acting on
+  a session that is gone. A new password set from the command line
+  disconnects nothing, since the command runs in a VM of its own: an
+  open page keeps its socket until it reconnects, and is sent to the
+  login then.
   """
 
   import Plug.Conn
   import Phoenix.Controller, only: [current_path: 1, put_flash: 3, redirect: 2]
 
+  alias Beamlet.Config
+  alias Beamlet.Owner
   alias Beamlet.Session
   alias Beamlet.User
-  alias Beamlet.Users
 
   @login_path "/beamlet/login"
   @flash "Sign in to continue."
@@ -90,22 +97,32 @@ defmodule Beamlet.Web.Auth do
     |> halt()
   end
 
-  @doc "Signs the user in: creates a session, renews the cookie and stores the session's secret."
+  @doc """
+  Signs the user in: creates a session, renews the cookie and stores
+  the session's secret, and the id the app's LiveView sockets on it
+  take.
+  """
   @spec log_in(Plug.Conn.t(), User.t()) :: Plug.Conn.t()
-  def log_in(conn, %User{} = user) do
-    {:ok, %Session{secret: secret}} = Users.create_session(user)
+  def log_in(conn, %User{}) do
+    {:ok, %Session{id: id, secret: secret}} = Owner.create_session()
 
     conn
     |> configure_session(renew: true)
     |> put_session(:session_secret, secret)
+    |> put_session(:live_socket_id, "beamlet_app_session:#{id}")
   end
 
-  @doc "Signs out: deletes the session, clears the cookie and renews it."
+  @doc """
+  Signs out: disconnects the app's LiveViews on the session, deletes
+  it, clears the cookie and renews it.
+  """
   @spec log_out(Plug.Conn.t()) :: Plug.Conn.t()
   def log_out(conn) do
-    with {:ok, session} <- Users.authenticate_session(get_session(conn, :session_secret)) do
-      Users.delete_session(session)
+    if live_socket_id = get_session(conn, :live_socket_id) do
+      Config.web()[:endpoint].broadcast(live_socket_id, "disconnect", %{})
     end
+
+    Owner.delete_session(get_session(conn, :session_secret))
 
     conn
     |> clear_session()
@@ -139,8 +156,8 @@ defmodule Beamlet.Web.Auth do
   end
 
   defp user_from(secret) do
-    case Users.authenticate_session(secret) do
-      {:ok, %Session{user: user}} -> user
+    case Owner.authenticate_session(secret) do
+      {:ok, user} -> user
       {:error, :unknown_session} -> nil
     end
   end

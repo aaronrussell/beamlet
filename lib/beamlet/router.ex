@@ -82,6 +82,9 @@ defmodule Beamlet.Router do
       subscribe through `Host.PubSub`.
     * `render_errors` on the endpoint naming an error view;
       `Beamlet.Web.ErrorView` is a plain one, or the host's own.
+    * `config :phoenix, :filter_parameters, ["password", "code",
+      "code_verifier", "refresh_token"]`, so the request log keeps
+      neither the sign-in's password nor the token endpoint's secrets.
   """
 
   use Phoenix.Router, helpers: false

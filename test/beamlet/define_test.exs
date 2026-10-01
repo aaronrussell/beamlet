@@ -6,7 +6,7 @@ defmodule Beamlet.DefineTest do
   alias Beamlet.Code.Format
   alias Beamlet.Define
   alias Beamlet.Eval
-  alias Beamlet.Users
+  alias Beamlet.Tokens
 
   setup %{token: token} do
     %{principal: principal(token)}
@@ -404,8 +404,7 @@ defmodule Beamlet.DefineTest do
 
   @tag policies: [macros: [rules: [allow_defmacro: true]]]
   test "a defmacro is refused under the default and lands under allow_defmacro", %{
-    principal: principal,
-    user: user
+    principal: principal
   } do
     ns = unique_namespace()
     mod = Module.concat([ns, Doubler])
@@ -424,7 +423,7 @@ defmodule Beamlet.DefineTest do
 
     assert run_error(code, principal) =~ "defmacro is not permitted by your policy"
 
-    {:ok, token} = Users.create_token(user, name: "phone", policy: "macros")
+    {:ok, token} = Tokens.create(name: "phone", policy: "macros")
     assert {:ok, "Defined #{ns}.Doubler (new)"} == define(code, principal(token))
     assert macro_exported?(mod, :double, 1)
   end
@@ -470,10 +469,7 @@ defmodule Beamlet.DefineTest do
     assert message =~ "#{ns}.Undocumented is missing @moduledoc"
   end
 
-  test "a defined module is callable from eval and from another define", %{
-    principal: principal,
-    user: user
-  } do
+  test "a defined module is callable from eval and from another define", %{principal: principal} do
     ns = unique_namespace()
     math = Module.concat([ns, Math])
     twice = Module.concat([ns, Twice])
@@ -495,7 +491,7 @@ defmodule Beamlet.DefineTest do
     assert {:ok, "=> 42"} = Eval.run("#{ns}.Math.double(21)", principal)
 
     # Granted by existence, to every token.
-    {:ok, token} = Users.create_token(user, name: "phone")
+    {:ok, token} = Tokens.create(name: "phone")
 
     assert {:ok, _summary} =
              define(

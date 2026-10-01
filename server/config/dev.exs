@@ -1,7 +1,7 @@
 import Config
 
 # The library's own dev data dir, so `mix beamlet` run from either
-# project manages the same users and tokens.
+# project manages the same owner and tokens.
 config :beamlet, data_dir: Path.expand("../../data", __DIR__)
 
 # The operator config file in that data dir, which the release reads

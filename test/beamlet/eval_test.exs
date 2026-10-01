@@ -2,7 +2,7 @@ defmodule Beamlet.EvalTest do
   use Beamlet.Case
 
   alias Beamlet.Eval
-  alias Beamlet.Users
+  alias Beamlet.Tokens
 
   setup %{token: token} do
     %{principal: principal(token)}
@@ -149,8 +149,8 @@ defmodule Beamlet.EvalTest do
     end
 
     @tag policies: [relaxed: [rules: [allow_dynamic_dispatch: true]]]
-    test "a variable call target evaluates under a policy that allows it", %{user: user} do
-      {:ok, token} = Users.create_token(user, name: "phone", policy: "relaxed")
+    test "a variable call target evaluates under a policy that allows it" do
+      {:ok, token} = Tokens.create(name: "phone", policy: "relaxed")
 
       assert {:ok, "=> 1"} = Eval.run("mod = Enum\nmod.count([1])", principal(token))
     end
@@ -175,8 +175,8 @@ defmodule Beamlet.EvalTest do
 
   describe "the principal" do
     @tag policies: [probe: [allow: [Beamlet.Principal]]]
-    test "is what the evaluated code runs as", %{user: user} do
-      {:ok, token} = Users.create_token(user, name: "phone", policy: "probe")
+    test "is what the evaluated code runs as" do
+      {:ok, token} = Tokens.create(name: "phone", policy: "probe")
 
       assert {:ok, ~s|=> "phone"|} =
                Eval.run("Beamlet.Principal.current().token_label", principal(token))

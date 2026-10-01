@@ -1,39 +1,41 @@
 defmodule Beamlet.CLI do
   @moduledoc """
-  The command line for managing users, tokens and policies on your
-  beamlet.
+  The command line for setting up the owner and managing tokens and
+  policies on your beamlet.
 
-      beamlet users                                 list users
-      beamlet users.create USER [--no-password]     create a user
-      beamlet users.update USER [--name NEW_NAME] [--password]
-      beamlet users.delete USER                     delete a user and their tokens
-      beamlet tokens [--user USER]                  list tokens, all or one user's
-      beamlet tokens.create NAME --user USER [--policy POLICY]
+      beamlet setup                                 set the owner's email and password
+      beamlet tokens                                list tokens
+      beamlet tokens.create NAME [--policy POLICY]  create a CLI token
       beamlet tokens.update ID [--name NEW_NAME] [--policy POLICY]
-      beamlet tokens.delete ID
+      beamlet tokens.delete ID                      delete a token
       beamlet policies                              list policies
       beamlet policies.show POLICY                  show what a policy permits
       beamlet reset                                 wipe everything agents built
 
-  Users are addressed by name and tokens by the id the listing
-  prints. The tokens created here are `cli` tokens, named by the
-  operator; `oauth` tokens arrive when a person connects a chat client
-  and consents, so they are listed and deleted here but never created
-  or edited (`Beamlet.Token`). A token runs under `default` unless
-  `--policy` names one of the policies declared in config
-  (`Beamlet.Policy`).
+  `setup` is the same command on every run. It asks for the owner's
+  email, offering the current one, then a password twice; a blank
+  password keeps the current one, and is refused on the first run,
+  when there is none to keep. It never asks for the old password:
+  whoever can run this command already has the shell, which outranks
+  it, and asking would leave a forgotten password unrecoverable. The
+  password is prompted for, never taken as an argument, so it stays
+  out of the shell history, and piped input answers one line per
+  prompt. A new password signs every browser out.
 
-  A password is prompted for, never taken as an argument, so it stays
-  out of the shell history: `users.create` asks for one unless
-  `--no-password` says the user will not sign in on the web, which is
-  all a user whose only credentials are tokens needs;
-  `users.update --password` sets or resets one. Piped input is read
-  as the answer, one line per prompt. The commands are the public
-  functions of `Beamlet.Users` and `Beamlet.Policies` with plain text
-  output, and `main/1` is the whole surface: it takes the arguments
-  as a list, prints, and returns `:ok` or `:error`. In development
-  `mix beamlet` hands it the arguments; a release ships a
-  `bin/beamlet` script that does the same.
+  Tokens are addressed by the id the listing prints. The tokens
+  created here are `cli` tokens, named on the command line; `oauth`
+  tokens arrive when the owner connects a chat client and consents,
+  so they are listed and deleted here but never created or edited
+  (`Beamlet.Token`). A token runs under `default` unless `--policy`
+  names one of the policies declared in config (`Beamlet.Policy`).
+  Each command takes its own switches and refuses any other.
+
+  The commands are the public functions of `Beamlet.Owner`,
+  `Beamlet.Tokens` and `Beamlet.Policies` with plain text output, and
+  `main/1` is the whole surface: it takes the arguments as a list,
+  prints, and returns `:ok` or `:error`. In development `mix beamlet`
+  hands it the arguments; a release ships a `bin/beamlet` script that
+  does the same.
 
   The commands need the policies and the system database, nothing an
   agent reaches. When no beamlet is running in the VM, `main/1` starts
@@ -46,47 +48,41 @@ defmodule Beamlet.CLI do
   agents build, the agent database with the route table and key/value
   store in it, the code dir with its git history and the files dir,
   so the next boot starts from nothing. A reset that fails partway can
-  be run again. Users, tokens, the operator
-  config file and the rest of the data dir are kept. It asks nothing
-  and checks for no running beamlet: a beamlet that is running keeps
-  what it has loaded until it restarts, so restart it right after.
+  be run again. The owner, tokens, the operator config file and the
+  rest of the data dir are kept. It asks nothing and checks for no
+  running beamlet: a beamlet that is running keeps what it has loaded
+  until it restarts, so restart it right after.
   """
 
   alias Beamlet.Config
+  alias Beamlet.Owner
   alias Beamlet.Policies
   alias Beamlet.Policy
   alias Beamlet.Token
-  alias Beamlet.Users
+  alias Beamlet.Tokens
+  alias Beamlet.User
 
   @commands [
-    {"users", "", "list users"},
-    {"users.create", "USER [--no-password]", "create a user, prompting for a password"},
-    {"users.update", "USER [--name NEW_NAME] [--password]",
-     "rename a user or reset their password"},
-    {"users.delete", "USER", "delete a user and their tokens"},
-    {"tokens", "[--user USER]", "list tokens, all or one user's"},
-    {"tokens.create", "NAME --user USER [--policy POLICY]",
-     "create a CLI token, printing its secret once"},
+    {"setup", "", "set the owner's email and password", []},
+    {"tokens", "", "list tokens", []},
+    {"tokens.create", "NAME [--policy POLICY]", "create a CLI token, printing its secret once",
+     [policy: :keep]},
     {"tokens.update", "ID [--name NEW_NAME] [--policy POLICY]",
-     "rename a CLI token or change its policy"},
-    {"tokens.delete", "ID", "delete a token"},
-    {"policies", "", "list policies"},
-    {"policies.show", "POLICY", "show what a policy permits"},
-    {"reset", "", "wipe everything agents built: agent database, code, files"}
+     "rename a CLI token or change its policy", [name: :string, policy: :keep]},
+    {"tokens.delete", "ID", "delete a token", []},
+    {"policies", "", "list policies", []},
+    {"policies.show", "POLICY", "show what a policy permits", []},
+    {"reset", "", "wipe everything agents built: agent database, code, files", []}
   ]
-
-  @shapes Enum.map(@commands, fn {command, args, description} ->
-            {String.trim("#{command} #{args}"), description}
-          end)
 
   @usage """
   Usage: beamlet COMMAND [ARGS]
 
-  Manage users, tokens and policies on your beamlet. Names are
-  lowercase letters, digits, underscores and hyphens; tokens are
-  addressed by the id `beamlet tokens` prints.
+  Set up the owner and manage tokens and policies on your beamlet.
+  Token names are lowercase letters, digits, underscores and hyphens;
+  tokens are addressed by the id `beamlet tokens` prints.
 
-  #{Enum.map_join(@shapes, "\n", fn {shape, description} -> "  #{shape}\n      #{description}" end)}
+  #{Enum.map_join(@commands, "\n", fn {command, args, description, _switches} -> "  #{String.trim("#{command} #{args}")}\n      #{description}" end)}
   """
 
   @doc """
@@ -98,57 +94,61 @@ defmodule Beamlet.CLI do
   """
   @spec main([String.t()]) :: :ok | :error
   def main(argv) when is_list(argv) do
-    parsed =
-      OptionParser.parse(argv,
-        strict: [
-          name: :string,
-          password: :boolean,
-          policy: :keep,
-          user: :string,
-          help: :boolean
-        ],
-        aliases: [h: :help]
-      )
+    case argv do
+      [] ->
+        puts(@usage)
 
-    case parsed do
-      {_opts, _args, [{switch, _value} | _rest]} ->
-        fail("Unknown option #{switch}.\n\n" <> @usage)
+      [help | _rest] when help in ["--help", "-h"] ->
+        puts(@usage)
 
-      {opts, args, []} ->
-        if Keyword.get(opts, :help, false) or args == [] do
-          puts(@usage)
-        else
-          [command | args] = args
-          run(command, args, opts)
+      ["-" <> _ = switch | _rest] ->
+        fail("Unknown option #{switch}: the command comes first.\n\n" <> @usage)
+
+      [command | args] ->
+        dispatch(command, args)
+    end
+  end
+
+  defp dispatch(command, argv) do
+    case List.keyfind(@commands, command, 0) do
+      {^command, _args, _description, switches} ->
+        case OptionParser.parse(argv, strict: [help: :boolean] ++ switches, aliases: [h: :help]) do
+          {_opts, _args, [{switch, _value} | _rest]} ->
+            fail(invalid_switch(command, switches, switch))
+
+          {opts, args, []} ->
+            if Keyword.get(opts, :help, false),
+              do: puts(@usage),
+              else: run(command, args, opts)
         end
+
+      nil ->
+        fail("Unknown command #{command}.\n\n" <> @usage)
     end
   end
 
-  defp run("users", [], _opts), do: with_beamlet(&list_users/0)
+  # Under strict parsing a declared switch with no value and an
+  # undeclared one both arrive as invalid with a nil value, so the
+  # command's own list is what tells them apart.
+  defp invalid_switch(command, switches, switch) do
+    declared = Enum.map(switches, fn {name, _type} -> "--#{name}" end)
 
-  defp run("users.create", [name], opts) do
-    with_beamlet(fn -> create_user(name, Keyword.get(opts, :password, true)) end)
+    if switch in declared,
+      do: "beamlet #{command}: #{switch} needs a value.",
+      else: "beamlet #{command} does not take #{switch}; it takes: #{shape(command)}"
   end
 
-  defp run("users.update", [name], opts) do
-    case Keyword.take(opts, [:name, :password]) do
-      [] -> fail("beamlet users.update needs --name NEW_NAME or --password.")
-      changes -> with_beamlet(fn -> update_user(name, changes) end)
-    end
+  defp shape(command) do
+    {^command, args, _description, _switches} = List.keyfind(@commands, command, 0)
+    String.trim("#{command} #{args}")
   end
 
-  defp run("users.delete", [name], _opts), do: with_beamlet(fn -> delete_user(name) end)
-
-  defp run("tokens", [], opts) do
-    with_beamlet(fn -> list_tokens(Keyword.get(opts, :user)) end)
-  end
+  defp run("setup", [], _opts), do: with_beamlet(&setup/0)
+  defp run("tokens", [], _opts), do: with_beamlet(&list_tokens/0)
 
   defp run("tokens.create", [name], opts) do
-    with {:ok, user} <- Keyword.fetch(opts, :user),
-         {:ok, attrs} <- one_policy("tokens.create", opts) do
-      with_beamlet(fn -> create_token(user, name, attrs) end)
-    else
-      :error -> fail("beamlet tokens.create needs --user USER.")
+    case one_policy("tokens.create", opts) do
+      {:ok, attrs} -> with_beamlet(fn -> create_token(name, attrs) end)
       {:error, message} -> fail(message)
     end
   end
@@ -167,20 +167,10 @@ defmodule Beamlet.CLI do
   end
 
   defp run("tokens.delete", [id], _opts), do: with_beamlet(fn -> delete_token(id) end)
-
   defp run("policies", [], _opts), do: with_beamlet(&list_policies/0)
   defp run("policies.show", [name], _opts), do: with_beamlet(fn -> show_policy(name) end)
   defp run("reset", [], _opts), do: reset()
-
-  defp run(command, _args, _opts) do
-    case List.keyfind(@commands, command, 0) do
-      {^command, args, _description} ->
-        fail("beamlet #{command} takes: " <> String.trim("#{command} #{args}"))
-
-      nil ->
-        fail("Unknown command #{command}.\n\n" <> @usage)
-    end
-  end
+  defp run(command, _args, _opts), do: fail("beamlet #{command} takes: " <> shape(command))
 
   # --policy is kept rather than overwritten, so a repeated one is
   # refused instead of the last silently winning.
@@ -192,84 +182,102 @@ defmodule Beamlet.CLI do
     end
   end
 
-  defp list_users do
-    case Users.list() do
-      [] ->
-        puts("No users yet. Create one with: beamlet users.create NAME")
-
-      users ->
-        table(
-          ["ID", "NAME", "LOGIN", "CREATED"],
-          Enum.map(users, &[&1.id, &1.name, login(&1), &1.inserted_at])
-        )
+  defp setup do
+    case Owner.find() do
+      {:ok, user} -> update_owner(user)
+      {:error, :not_found} -> create_owner()
     end
   end
 
-  # The user is created before the password is asked for, so a bad
-  # name fails before anyone types anything; a password that then
-  # fails leaves the user in place and says how to set one.
-  defp create_user(name, password?) do
-    case Users.create(name: name) do
-      {:ok, user} ->
-        puts("Created user #{user.name}.")
-        password_at_creation(user, password?)
-
-      {:error, changeset} ->
-        fail(changeset)
-    end
-  end
-
-  defp password_at_creation(user, password?) do
-    cond do
-      not password? -> no_password(user)
-      set_password(user) == :ok -> :ok
-      true -> fail("#{user.name} has no password; set one with: " <> update_hint(user))
-    end
-  end
-
-  defp no_password(user) do
-    puts("No password: #{user.name} cannot sign in on the web until " <> update_hint(user))
-  end
-
-  defp update_hint(user), do: "beamlet users.update #{user.name} --password"
-
-  defp update_user(name, changes) do
-    with_user(name, fn user ->
-      with {:ok, user} <- update_attrs(user, Keyword.take(changes, [:name])) do
-        if Keyword.get(changes, :password, false), do: set_password(user), else: :ok
-      end
-    end)
-  end
-
-  defp update_attrs(user, []), do: {:ok, user}
-
-  defp update_attrs(user, attrs) do
-    case Users.update(user, attrs) do
-      {:ok, updated} ->
-        if updated.name != user.name, do: puts("Renamed user #{user.name} to #{updated.name}.")
-        {:ok, updated}
-
-      {:error, changeset} ->
-        fail(changeset)
-    end
-  end
-
-  defp set_password(user) do
-    case read_password("Password: ") do
-      {:ok, ""} -> fail("No password given.")
-      {:error, message} -> fail(message)
-      {:ok, password} -> confirm_and_set(user, password)
-    end
-  end
-
-  defp confirm_and_set(user, password) do
-    with {:ok, ^password} <- read_password("Again: "),
-         {:ok, _user} <- Users.update_password(user, password) do
-      puts("Set password for #{user.name}.")
+  # The email is checked before the password is asked for, so a bad
+  # one fails before anyone types a password.
+  defp create_owner do
+    with {:ok, email} <- read_email(nil),
+         :ok <- check_email(%User{}, email),
+         {:ok, password} <- read_new_password(:required),
+         {:ok, user} <- Owner.create(email: email, password: password) do
+      puts("Set up the owner, #{user.email}.")
     else
-      {:ok, _other} -> fail("Passwords do not match.")
-      {:error, message} when is_binary(message) -> fail(message)
-      {:error, changeset} -> fail(changeset)
+      {:error, reason} -> fail(reason)
+    end
+  end
+
+  defp update_owner(user) do
+    with {:ok, email} <- read_email(user.email),
+         :ok <- check_email(user, email),
+         {:ok, password} <- read_new_password(:optional),
+         attrs = if(password, do: [email: email, password: password], else: [email: email]),
+         {:ok, updated} <- Owner.update(user, attrs) do
+      report_update(user, updated, password != nil)
+    else
+      {:error, reason} -> fail(reason)
+    end
+  end
+
+  defp report_update(user, updated, password?) do
+    changes =
+      if(updated.email != user.email, do: ["email #{updated.email}"], else: []) ++
+        if password?, do: ["password"], else: []
+
+    cond do
+      changes == [] ->
+        puts("Nothing changed.")
+
+      password? ->
+        puts("Updated the owner: #{Enum.join(changes, ", ")}.")
+        puts("Every browser signed in to the app is signed out.")
+
+      true ->
+        puts("Updated the owner: #{Enum.join(changes, ", ")}.")
+    end
+  end
+
+  defp read_email(current) do
+    prompt = if current, do: "Email [#{current}]: ", else: "Email: "
+
+    case IO.gets(prompt) do
+      line when is_binary(line) ->
+        case {String.trim(line), current} do
+          {"", nil} -> {:error, "No email given."}
+          {"", current} -> {:ok, current}
+          {email, _current} -> {:ok, email}
+        end
+
+      _eof_or_error ->
+        {:error, "No email given."}
+    end
+  end
+
+  defp check_email(user, email) do
+    changeset = User.changeset(user, %{email: email})
+
+    case Keyword.take(changeset.errors, [:email]) do
+      [] -> :ok
+      errors -> {:error, %{changeset | errors: errors}}
+    end
+  end
+
+  defp read_new_password(:required) do
+    case read_password("Password: ") do
+      {:ok, ""} -> {:error, "No password given."}
+      {:ok, password} -> confirm_password(password)
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  defp read_new_password(:optional) do
+    case read_password("Password (blank keeps the current one): ") do
+      {:ok, ""} -> {:ok, nil}
+      {:ok, password} -> confirm_password(password)
+      {:error, message} -> {:error, message}
+    end
+  end
+
+  defp confirm_password(password) do
+    case read_password("Again: ") do
+      {:ok, ^password} -> {:ok, password}
+      {:ok, _other} -> {:error, "Passwords do not match."}
+      {:error, message} -> {:error, message}
     end
   end
 
@@ -298,79 +306,39 @@ defmodule Beamlet.CLI do
   defp password_line(line) when is_list(line), do: password_line(List.to_string(line))
   defp password_line(_eof_or_error), do: {:error, "No password given."}
 
-  defp delete_user(name) do
-    with_user(name, fn user ->
-      count = user |> Users.list_tokens() |> length()
+  defp list_tokens do
+    case Tokens.list() do
+      [] ->
+        puts("No tokens yet. Create one with: beamlet tokens.create NAME")
 
-      case Users.delete(user) do
-        {:ok, _user} -> puts("Deleted user #{user.name} and #{plural(count, "token")}.")
-        {:error, changeset} -> fail(changeset)
-      end
-    end)
-  end
-
-  defp list_tokens(nil) do
-    case Users.list_tokens() do
-      [] -> puts("No tokens yet. Create one with: beamlet tokens.create NAME --user USER")
-      tokens -> token_table(tokens)
+      tokens ->
+        table(
+          ["ID", "KIND", "LABEL", "POLICY", "EXPIRES", "CREATED"],
+          Enum.map(
+            tokens,
+            &[&1.id, &1.kind, Token.label(&1), &1.policy, &1.expires_at || "-", &1.inserted_at]
+          )
+        )
     end
   end
 
-  defp list_tokens(user_name) do
-    with_user(user_name, fn user ->
-      case Users.list_tokens(user) do
-        [] ->
-          puts(
-            "#{user.name} has no tokens. Create one with: " <>
-              "beamlet tokens.create NAME --user #{user.name}"
-          )
+  defp create_token(name, attrs) do
+    case Tokens.create([name: name] ++ attrs) do
+      {:ok, token} ->
+        puts("Created token #{token.name} (policy #{token.policy}).")
+        puts("Secret (shown once): #{token.secret}")
 
-        tokens ->
-          token_table(tokens)
-      end
-    end)
-  end
-
-  defp token_table(tokens) do
-    table(
-      ["ID", "KIND", "USER", "LABEL", "POLICY", "EXPIRES", "CREATED"],
-      Enum.map(
-        tokens,
-        &[
-          &1.id,
-          &1.kind,
-          &1.user.name,
-          Token.label(&1),
-          &1.policy,
-          &1.expires_at || "-",
-          &1.inserted_at
-        ]
-      )
-    )
-  end
-
-  defp create_token(user_name, name, attrs) do
-    with_user(user_name, fn user ->
-      case Users.create_token(user, [name: name] ++ attrs) do
-        {:ok, token} ->
-          puts("Created token #{token.name} for #{user.name} (policy #{token.policy}).")
-          puts("Secret (shown once): #{token.secret}")
-
-        {:error, changeset} ->
-          fail(changeset)
-      end
-    end)
+      {:error, changeset} ->
+        fail(changeset)
+    end
   end
 
   defp update_token(id, attrs) do
     with_token(id, fn token ->
-      case Users.update_token(token, attrs) do
+      case Tokens.update(token, attrs) do
         {:ok, _updated} ->
           changes = Enum.map_join(attrs, ", ", fn {field, value} -> "#{field} #{value}" end)
-
-          puts(
-            "Updated token #{Token.label(token)} (#{token.id}) for #{token.user.name}: #{changes}."
-          )
+          puts("Updated token #{Token.label(token)} (#{token.id}): #{changes}.")
 
         {:error, :oauth_token} ->
           fail(
@@ -387,12 +355,9 @@ defmodule Beamlet.CLI do
 
   defp delete_token(id) do
     with_token(id, fn token ->
-      case Users.delete_token(token) do
-        {:ok, _token} ->
-          puts("Deleted token #{Token.label(token)} (#{token.id}) for #{token.user.name}.")
-
-        {:error, changeset} ->
-          fail(changeset)
+      case Tokens.delete(token) do
+        {:ok, _token} -> puts("Deleted token #{Token.label(token)} (#{token.id}).")
+        {:error, changeset} -> fail(changeset)
       end
     end)
   end
@@ -422,7 +387,7 @@ defmodule Beamlet.CLI do
     remove_dir(Config.code_dir(), "code dir and its history")
     remove_dir(Config.files_dir(), "files dir")
 
-    puts("Users, tokens and config.exs are kept. If a beamlet is running, restart it now.")
+    puts("The owner, tokens and config.exs are kept. If a beamlet is running, restart it now.")
   rescue
     error in ArgumentError ->
       fail(Exception.message(error))
@@ -455,16 +420,9 @@ defmodule Beamlet.CLI do
     end
   end
 
-  defp with_user(name, fun) do
-    case Users.find_by(name: name) do
-      {:ok, user} -> fun.(user)
-      {:error, :not_found} -> fail("No user named #{name}. Run `beamlet users` to list them.")
-    end
-  end
-
   defp with_token(id, fun) do
     with {number, ""} <- Integer.parse(id),
-         {:ok, token} <- Users.find_token(number) do
+         {:ok, token} <- Tokens.find(number) do
       fun.(token)
     else
       {:error, :not_found} -> fail("No token with id #{id}. Run `beamlet tokens` to list them.")
@@ -520,12 +478,6 @@ defmodule Beamlet.CLI do
     end)
     |> puts()
   end
-
-  defp login(%{password_hash: nil}), do: "no"
-  defp login(_user), do: "yes"
-
-  defp plural(1, noun), do: "1 #{noun}"
-  defp plural(count, noun), do: "#{count} #{noun}s"
 
   defp puts(message) do
     IO.puts(message)

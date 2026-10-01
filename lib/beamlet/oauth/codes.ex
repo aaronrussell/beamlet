@@ -3,12 +3,12 @@ defmodule Beamlet.OAuth.Codes do
   The pending authorization codes: what the consent page stored and
   the token endpoint has not yet redeemed.
 
-  A code stands for one consent: this user, this policy, this client,
-  this redirect URI, the PKCE challenge the client committed to, and
-  the resource and scope it asked for. It lives ten minutes, is
-  redeemed once, since `take/1` deletes it, and is worthless without
-  the PKCE secret. Codes live in memory: a restart mid-flow means the
-  client hears `invalid_grant` and the person clicks connect again.
+  A code stands for one consent: this policy, this client, this
+  redirect URI, the PKCE challenge the client committed to, and the
+  resource and scope it asked for. It lives ten minutes, is redeemed
+  once, since `take/1` deletes it, and is worthless without the PKCE
+  secret. Codes live in memory: a restart mid-flow means the client
+  hears `invalid_grant` and the person clicks connect again.
   """
 
   use GenServer
@@ -18,7 +18,6 @@ defmodule Beamlet.OAuth.Codes do
 
   @typedoc "What a code stands for."
   @type entry :: %{
-          user_id: pos_integer(),
           policy: String.t(),
           client_id: String.t(),
           redirect_uri: String.t(),
@@ -51,7 +50,7 @@ defmodule Beamlet.OAuth.Codes do
 
   @impl true
   def handle_call({:store, entry}, _from, state) do
-    code = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+    code = Beamlet.Secret.generate()
     expires_at = System.monotonic_time(:millisecond) + state.ttl_ms
     codes = Map.put(state.codes, code, Map.put(entry, :expires_at, expires_at))
     {:reply, code, %{state | codes: codes}}

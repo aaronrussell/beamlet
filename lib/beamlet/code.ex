@@ -67,7 +67,7 @@ defmodule Beamlet.Code do
   function something still calls.
 
   Git holds the history. Beamlet commits after every define, patch
-  and remove, with the user as the author (`alice <alice@beamlet>`) and
+  and remove, with the token as the author (`laptop <laptop@beamlet>`) and
   the principal as trailers (`Beamlet.Principal.to_trailers/1`), and
   sweeps hand edits into a commit of their own at boot. Git is a
   requirement: a beamlet whose PATH has no git does not start.

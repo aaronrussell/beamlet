@@ -56,6 +56,15 @@ defmodule Beamlet.OAuth do
     }
   end
 
+  @doc """
+  A request parameter as the endpoints read it: the value when it is a
+  non-empty string, nil otherwise, so a missing, empty or malformed
+  parameter is one case.
+  """
+  @spec present(term()) :: String.t() | nil
+  def present(value) when is_binary(value) and value != "", do: value
+  def present(_other), do: nil
+
   @doc "The beamlet's origin, which is also its OAuth issuer."
   @spec issuer() :: String.t()
   def issuer, do: Config.web()[:endpoint].url()

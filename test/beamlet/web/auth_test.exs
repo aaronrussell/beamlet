@@ -4,8 +4,9 @@ defmodule Beamlet.Web.AuthTest do
   import Plug.Conn
   import Plug.Test
 
+  alias Beamlet.Owner
+  alias Beamlet.Repo
   alias Beamlet.User
-  alias Beamlet.Users
   alias Beamlet.Web.Auth
 
   defp session_conn(method, path, session) do
@@ -26,31 +27,31 @@ defmodule Beamlet.Web.AuthTest do
   end
 
   describe "fetch_current_user/2" do
-    test "assigns the user whose session the secret names", %{user: user} do
-      {:ok, session} = Users.create_session(user)
+    test "assigns the owner when the secret names a session" do
+      {:ok, session} = Owner.create_session()
 
       conn =
         :get
         |> session_conn("/x", session_secret: session.secret)
         |> Auth.fetch_current_user([])
 
-      assert %User{name: "alice"} = conn.assigns.current_user
+      assert %User{email: "owner@example.com"} = conn.assigns.current_user
     end
 
-    test "assigns nil with no session, and once the session or the user is gone", %{user: user} do
+    test "assigns nil with no session, and once the session or the owner is gone", %{user: user} do
       conn = :get |> session_conn("/x", %{}) |> Auth.fetch_current_user([])
       assert conn.assigns.current_user == nil
 
-      {:ok, session} = Users.create_session(user)
-      {:ok, _session} = Users.delete_session(session)
+      {:ok, session} = Owner.create_session()
+      :ok = Owner.delete_session(session.secret)
 
       conn =
         :get |> session_conn("/x", session_secret: session.secret) |> Auth.fetch_current_user([])
 
       assert conn.assigns.current_user == nil
 
-      {:ok, session} = Users.create_session(user)
-      {:ok, _user} = Users.delete(user)
+      {:ok, session} = Owner.create_session()
+      Repo.delete!(user)
 
       conn =
         :get |> session_conn("/x", session_secret: session.secret) |> Auth.fetch_current_user([])
@@ -103,23 +104,35 @@ defmodule Beamlet.Web.AuthTest do
     test "create a session and keep its secret, then delete it and forget it", %{user: user} do
       conn = :get |> session_conn("/x", %{}) |> Auth.log_in(user)
       secret = get_session(conn, :session_secret)
-      assert {:ok, %{user: %User{name: "alice"}}} = Users.authenticate_session(secret)
+      assert {:ok, ^user} = Owner.authenticate_session(secret)
 
       conn = Auth.log_out(conn)
       assert get_session(conn, :session_secret) == nil
-      assert Users.authenticate_session(secret) == {:error, :unknown_session}
+      assert get_session(conn, :live_socket_id) == nil
+      assert Owner.authenticate_session(secret) == {:error, :unknown_session}
+    end
+
+    test "signing out disconnects the app's LiveViews on that session", %{user: user} do
+      conn = :get |> session_conn("/x", %{}) |> Auth.log_in(user)
+      live_socket_id = get_session(conn, :live_socket_id)
+      assert live_socket_id =~ ~r/^beamlet_app_session:\d+$/
+
+      @endpoint.subscribe(live_socket_id)
+      Auth.log_out(conn)
+
+      assert_receive %Phoenix.Socket.Broadcast{topic: ^live_socket_id, event: "disconnect"}
     end
   end
 
   describe "on_mount/4" do
-    test "continues with the user assigned", %{user: user} do
+    test "continues with the owner assigned", %{user: user} do
       socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, flash: %{}}}
-      {:ok, session} = Users.create_session(user)
+      {:ok, session} = Owner.create_session()
 
       assert {:cont, socket} =
                Auth.on_mount(:require_auth, %{}, %{"session_secret" => session.secret}, socket)
 
-      assert %User{name: "alice"} = socket.assigns.current_user
+      assert socket.assigns.current_user == user
     end
 
     test "halts with a redirect to the login page when nobody is signed in", %{user: user} do
@@ -128,8 +141,8 @@ defmodule Beamlet.Web.AuthTest do
       assert {:halt, halted} = Auth.on_mount(:require_auth, %{}, %{}, socket)
       assert {:redirect, %{to: "/beamlet/login"}} = halted.redirected
 
-      {:ok, session} = Users.create_session(user)
-      {:ok, _user} = Users.delete(user)
+      {:ok, session} = Owner.create_session()
+      Repo.delete!(user)
 
       assert {:halt, halted} =
                Auth.on_mount(:require_auth, %{}, %{"session_secret" => session.secret}, socket)

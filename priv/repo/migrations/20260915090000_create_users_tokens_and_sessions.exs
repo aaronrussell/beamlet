@@ -1,17 +1,15 @@
-defmodule Beamlet.Repo.Migrations.CreateUsersAndTokens do
+defmodule Beamlet.Repo.Migrations.CreateUsersTokensAndSessions do
   use Ecto.Migration
 
   def change do
-    create table(:users) do
-      add :name, :string, null: false
-      add :password_hash, :string
+    create table(:users, primary_key: false) do
+      add :id, :integer, primary_key: true, check: %{name: "one_user", expr: "id = 1"}
+      add :email, :string, null: false
+      add :password_hash, :string, null: false
       timestamps()
     end
 
-    create unique_index(:users, [:name])
-
     create table(:tokens) do
-      add :user_id, references(:users, on_delete: :delete_all), null: false
       add :kind, :string, null: false
       add :name, :string
       add :client, :string
@@ -25,6 +23,13 @@ defmodule Beamlet.Repo.Migrations.CreateUsersAndTokens do
 
     create unique_index(:tokens, [:secret_hash])
     create unique_index(:tokens, [:refresh_hash])
-    create unique_index(:tokens, [:user_id, :name])
+    create unique_index(:tokens, [:name])
+
+    create table(:sessions) do
+      add :secret_hash, :binary, null: false
+      timestamps()
+    end
+
+    create unique_index(:sessions, [:secret_hash])
   end
 end

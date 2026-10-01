@@ -59,8 +59,8 @@ defmodule Host.CodeTest do
     end
 
     @tag policies: [relaxed: [rules: [allow_defmacro: true]]]
-    test "print_policy renders the policy the token names, not the default", %{user: user} do
-      {:ok, token} = Beamlet.Users.create_token(user, name: "phone", policy: "relaxed")
+    test "print_policy renders the policy the token names, not the default" do
+      {:ok, token} = Beamlet.Tokens.create(name: "phone", policy: "relaxed")
 
       assert {:ok, result} = Eval.run("Host.Code.print_policy()", principal(token))
 

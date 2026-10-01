@@ -21,18 +21,20 @@ defmodule Beamlet.CLIColdTest do
     Application.put_env(:beamlet, :policies, restricted: [tools: [:eval]])
     assert Process.whereis(Beamlet) == nil
 
-    assert {:ok, output} = with_io(fn -> CLI.main(["users.create", "cold", "--no-password"]) end)
-    assert output =~ "Created user cold."
+    # No sandbox here, so the token is committed: a unique name keeps a
+    # run that failed before its delete from failing the next.
+    name = "cold#{System.unique_integer([:positive])}"
+
+    assert {:ok, output} =
+             with_io(fn -> CLI.main(["tokens.create", name, "--policy", "restricted"]) end)
+
+    assert output =~ "Created token #{name} (policy restricted)."
+    assert output =~ "Secret (shown once): "
     assert Process.whereis(Beamlet) == nil
     assert Process.whereis(Beamlet.Repo) == nil
 
-    assert {:ok, output} =
-             with_io(fn ->
-               CLI.main(["tokens.create", "laptop", "--user", "cold", "--policy", "restricted"])
-             end)
-
-    assert output =~ "Created token laptop for cold (policy restricted)."
-    assert output =~ "Secret (shown once): "
+    assert {:ok, output} = with_io(fn -> CLI.main(["tokens"]) end)
+    [id] = Regex.run(~r/^(\d+)\s+cli\s+#{name}\s+restricted/m, output, capture: :all_but_first)
 
     assert {:ok, output} = with_io(fn -> CLI.main(["policies"]) end)
     assert String.split(output, "\n", trim: true) == ["default", "restricted"]
@@ -42,8 +44,8 @@ defmodule Beamlet.CLIColdTest do
     assert output =~
              "Policy: restricted\nTools: eval (not granted: define, patch)\n"
 
-    assert {:ok, output} = with_io(fn -> CLI.main(["users.delete", "cold"]) end)
-    assert output =~ "Deleted user cold and 1 token."
+    assert {:ok, output} = with_io(fn -> CLI.main(["tokens.delete", id]) end)
+    assert output =~ "Deleted token #{name} (#{id})."
     assert Process.whereis(Beamlet) == nil
 
     assert File.exists?(Path.join(Beamlet.Config.db_dir(), "beamlet.db"))
@@ -52,7 +54,7 @@ defmodule Beamlet.CLIColdTest do
   test "a bad policy declaration fails the command with the boot's error" do
     Application.put_env(:beamlet, :policies, explorer: [tool: [:eval]])
 
-    assert {:error, output} = with_io(:stderr, fn -> CLI.main(["users"]) end)
+    assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens"]) end)
     assert output =~ "policy explorer: unknown key :tool"
     assert Process.whereis(Beamlet) == nil
     assert Process.whereis(Beamlet.Repo) == nil
@@ -67,7 +69,7 @@ defmodule Beamlet.CLIColdTest do
 
     Application.put_env(:beamlet, :data_dir, missing)
 
-    assert {:error, output} = with_io(:stderr, fn -> CLI.main(["users"]) end)
+    assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens"]) end)
 
     assert output ==
              "config :beamlet, :data_dir does not exist: #{missing} " <>

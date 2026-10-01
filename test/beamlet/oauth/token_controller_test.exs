@@ -9,19 +9,19 @@ defmodule Beamlet.OAuth.TokenControllerTest do
   alias Beamlet.OAuth
   alias Beamlet.OAuth.Clients
   alias Beamlet.Token
-  alias Beamlet.Users
+  alias Beamlet.Tokens
 
   @client_id "https://chat.example/client.json"
   @redirect_uri "https://chat.example/callback"
   @document %{"client_id" => @client_id, "redirect_uris" => [@redirect_uri]}
   @resource "http://localhost:4000/beamlet/mcp"
 
-  setup %{user: user} do
+  setup do
     Req.Test.stub(Clients, fn conn -> Req.Test.json(conn, @document) end)
-    %{conn: sign_in(build_conn(), user)}
+    %{conn: sign_in(build_conn())}
   end
 
-  # The browser half of the flow: consent as the signed-in user and
+  # The browser half of the flow: consent as the signed-in owner and
   # read the code off the redirect. Returns the code and the verifier
   # whose hash the code was issued against.
   # The consent half: the person allows on the consent page, and the
@@ -95,7 +95,7 @@ defmodule Beamlet.OAuth.TokenControllerTest do
   end
 
   describe "grant_type=authorization_code" do
-    test "redeems a code for a token that works at the MCP endpoint", %{conn: conn, user: user} do
+    test "redeems a code for a token that works at the MCP endpoint", %{conn: conn} do
       {code, verifier} = authorize(conn)
       conn = exchange(code, verifier)
 
@@ -112,13 +112,13 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       {client, _result} = MCPClient.initialize(%Token{secret: access})
       assert Enum.map(MCPClient.list_tools(client), & &1["name"]) == ["define", "eval", "patch"]
 
-      assert [%Token{kind: :cli}, %Token{kind: :oauth} = token] = Users.list_tokens(user)
+      assert [%Token{kind: :cli}, %Token{kind: :oauth} = token] = Tokens.list()
       assert token.client == @client_id
       assert token.policy == "default"
       assert Token.label(token) == "chat.example"
       assert DateTime.diff(token.expires_at, DateTime.utc_now()) in 86_390..86_400
       assert DateTime.diff(token.refresh_expires_at, DateTime.utc_now()) in 2_591_990..2_592_000
-      assert {:ok, %Token{id: id}} = Users.authenticate_refresh(refresh)
+      assert {:ok, %Token{id: id}} = Tokens.authenticate_refresh(refresh)
       assert id == token.id
     end
 
@@ -176,12 +176,6 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       assert assert_error(conn, "invalid_request") ==
                "client_id, redirect_uri, code_verifier required"
     end
-
-    test "a user deleted after consenting is invalid_grant", %{conn: conn, user: user} do
-      {code, verifier} = authorize(conn)
-      {:ok, _} = Users.delete(user)
-      assert code |> exchange(verifier) |> assert_error("invalid_grant") =~ "no longer exists"
-    end
   end
 
   describe "grant_type=refresh_token" do
@@ -191,7 +185,7 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       %{"access_token" => access, "refresh_token" => refresh} =
         code |> exchange(verifier) |> json_response(200)
 
-      {:ok, %Token{id: id}} = Users.authenticate(access)
+      {:ok, %Token{id: id}} = Tokens.authenticate(access)
       %{access: access, refresh: refresh, id: id}
     end
 
@@ -213,9 +207,9 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       assert get_resp_header(conn, "cache-control") == ["no-store"]
       assert new_access != access and new_refresh != refresh
 
-      assert {:ok, %Token{id: ^id}} = Users.authenticate(new_access)
-      assert {:ok, %Token{id: ^id}} = Users.authenticate_refresh(new_refresh)
-      assert {:error, :unknown_token} = Users.authenticate(access)
+      assert {:ok, %Token{id: ^id}} = Tokens.authenticate(new_access)
+      assert {:ok, %Token{id: ^id}} = Tokens.authenticate_refresh(new_refresh)
+      assert {:error, :unknown_token} = Tokens.authenticate(access)
       assert refresh |> refresh() |> assert_error("invalid_grant") =~ "unknown or already used"
     end
 
@@ -224,11 +218,11 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       assert assert_error(conn, "invalid_grant") =~ "another client"
     end
 
-    test "an expired refresh token is invalid_grant", %{user: user} do
+    test "an expired refresh token is invalid_grant" do
       now = DateTime.utc_now(:second)
 
       {:ok, token} =
-        Users.create_token(user,
+        Tokens.create(
           kind: :oauth,
           client: @client_id,
           expires_at: DateTime.add(now, 3600, :second),

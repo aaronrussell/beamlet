@@ -11,7 +11,8 @@ Beamlet is a programmable Elixir code server for AI agents. Agents define module
 ```
 lib/host/            Host.*          the stdlib agent code calls
 lib/beamlet/         Beamlet.*       everything else: tools, policy, code
-                                     server, databases, users, web pieces
+                                     server, databases, owner and tokens,
+                                     web pieces
 lib/beamlet/mcp/     Beamlet.MCP.*   the Anubis MCP server and tool components
 lib/mix/tasks/       mix beamlet     the dev entry to `Beamlet.CLI`
 server/              beamlet_server  separate mix project: the standalone
@@ -46,16 +47,16 @@ Run the affected tests while working and `mix precommit` before claiming done.
 
 - **The library is a child spec, not an application.** A host starts `Beamlet` in its own supervision tree with options. No `mod:` in the package.
 - **`server/` contains nothing a second embedder would want.** Endpoint, application module, config, release, Dockerfile. If something is tempting to put there, it belongs in the library.
-- **Two databases, both Beamlet's.** The agent database (`Host.Repo`) for what agents build, including the route table; the system database for users and tokens. Agent-built work wipes and backs up as a unit.
-- **Principal and authentication are separate.** The principal (user, token, policy, client) is what everything keys on and is built per request, never stored. Turning a token into a principal is edge work at `Beamlet.MCP.Plug`; only Beamlet's own tokens are valid. Policy attaches to the token. Provenance is one struct with two encodings: JSON on a route row, git trailers on a commit.
-- **Plain Phoenix and Ecto.** Agents author vanilla Phoenix at runtime, so no DSL layer in the way. Canonical Ecto: a root-level context, plural, owns a resource and its sub-resources and is the only `Repo` caller for their tables; the schemas with their changesets sit beside it at the root, singular (`Beamlet.Users` owns `Beamlet.User` and `Beamlet.Token`). Plain `create`, `update`, `delete`, `list`, `find` and `find_by` take conventional arguments; a function that takes the parent resource is named for the sub-resource (`create_token(user, attrs)`).
+- **Two databases, both Beamlet's.** The agent database (`Host.Repo`) for what agents build, including the route table; the system database for the owner, their sessions and the tokens. Agent-built work wipes and backs up as a unit.
+- **Principal and authentication are separate.** The principal (token and policy) is what everything keys on and is built per request, never stored. Turning a token into a principal is edge work at `Beamlet.MCP.Plug`; only Beamlet's own tokens are valid. Policy attaches to the token. Provenance is one struct with two encodings: JSON on a route row, git trailers on a commit.
+- **Plain Phoenix and Ecto.** Agents author vanilla Phoenix at runtime, so no DSL layer in the way. Canonical Ecto: a root-level context, plural, owns a resource and its sub-resources and is the only `Repo` caller for their tables; the schemas with their changesets sit beside it at the root, singular (`Beamlet.Tokens` owns `Beamlet.Token`). Plain `create`, `update`, `delete`, `list`, `find` and `find_by` take conventional arguments; a function that takes the parent resource is named for the sub-resource.
 - **No features beyond the task.** No speculative abstractions, no "while I'm in here" refactors.
 - **No migration paths for dev data, pre-release.** Wipe it.
 - **Never commit unless explicitly asked to.** Finish the work, run the checks, stop.
 
 ## Conventions
 
-- Terminology: **Beamlet** is the project, **a beamlet** is a running instance, **my beamlet** is where your code lives. Every other noun stays ordinary: modules, routes, tools, applications, users, tokens. **Tool use**, not "tool call".
+- Terminology: **Beamlet** is the project, **a beamlet** is a running instance, **my beamlet** is where your code lives. Every other noun stays ordinary: modules, routes, tools, applications, users, tokens. A beamlet belongs to one person, **the owner**, its only user. **Tool use**, not "tool call".
 - **The app** is Beamlet's own inner app: the sign-in, the consent page, the home page and the admin pages to come. Its pieces take the name (`/beamlet/app/live`, the `app` layout, `app.css`, the `_beamlet_app_key` cookie); "beamlet" in a name means what the agent side uses. Nothing of the app's is shared with agent pages.
 - Path naming: `*_dir` for directories, `*_file` for files, `*_path` for generic or URL paths.
 - Public functions return `{:ok, result} | {:error, reason}`. Match existing error shapes.

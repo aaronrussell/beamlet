@@ -9,7 +9,7 @@ defmodule Beamlet.MCP.ServerTest do
   alias Beamlet.MCP.Patch
   alias Beamlet.MCP.Server
   alias Beamlet.MCPClient
-  alias Beamlet.Users
+  alias Beamlet.Tokens
 
   test "initialize returns the server info and instructions", %{token: token} do
     {_client, result} = MCPClient.initialize(token)
@@ -161,8 +161,8 @@ defmodule Beamlet.MCP.ServerTest do
   describe "cancel" do
     @tag policies: [probe: [allow: [Kernel]]]
     @tag :capture_log
-    test "stops the evaluation when the client cancels the request", %{user: user} do
-      {:ok, token} = Users.create_token(user, name: "phone", policy: "probe")
+    test "stops the evaluation when the client cancels the request" do
+      {:ok, token} = Tokens.create(name: "phone", policy: "probe")
       {client, _result} = MCPClient.initialize(token)
       Process.register(self(), :eval_probe)
 
@@ -193,16 +193,16 @@ defmodule Beamlet.MCP.ServerTest do
 
   describe "under a policy" do
     @tag policies: [restricted: [tools: [:eval]]]
-    test "lists only the tools the policy grants", %{user: user} do
-      {:ok, token} = Users.create_token(user, name: "phone", policy: "restricted")
+    test "lists only the tools the policy grants" do
+      {:ok, token} = Tokens.create(name: "phone", policy: "restricted")
       {client, _result} = MCPClient.initialize(token)
 
       assert Enum.map(MCPClient.list_tools(client), & &1["name"]) == ["eval"]
     end
 
     @tag policies: [writer: [tools: [:define]]]
-    test "define is two tools in one, define and patch", %{user: user} do
-      {:ok, token} = Users.create_token(user, name: "phone", policy: "writer")
+    test "define is two tools in one, define and patch" do
+      {:ok, token} = Tokens.create(name: "phone", policy: "writer")
       {client, _result} = MCPClient.initialize(token)
 
       assert Enum.map(MCPClient.list_tools(client), & &1["name"]) == ["define", "patch"]
@@ -210,8 +210,8 @@ defmodule Beamlet.MCP.ServerTest do
 
     @tag policies: [restricted: [tools: [:eval]]]
     @tag :capture_log
-    test "a call to a tool the policy withholds is an unknown tool", %{user: user} do
-      {:ok, token} = Users.create_token(user, name: "phone", policy: "restricted")
+    test "a call to a tool the policy withholds is an unknown tool" do
+      {:ok, token} = Tokens.create(name: "phone", policy: "restricted")
       {client, _result} = MCPClient.initialize(token)
 
       conn = MCPClient.rpc(client, "tools/call", %{name: "define", arguments: %{modules: []}})
@@ -230,10 +230,8 @@ defmodule Beamlet.MCP.ServerTest do
     end
 
     @tag policies: [nothing: [tools: []]]
-    test "each tool refuses a token its policy withholds it from, however it is reached", %{
-      user: user
-    } do
-      {:ok, token} = Users.create_token(user, name: "phone", policy: "nothing")
+    test "each tool refuses a token its policy withholds it from, however it is reached" do
+      {:ok, token} = Tokens.create(name: "phone", policy: "nothing")
       frame = Frame.new(%{principal: principal(token)})
 
       for {component, name, params} <- [
@@ -249,8 +247,8 @@ defmodule Beamlet.MCP.ServerTest do
     end
 
     @tag policies: [nothing: [tools: []]]
-    test "a policy with no tools lists none", %{user: user} do
-      {:ok, token} = Users.create_token(user, name: "phone", policy: "nothing")
+    test "a policy with no tools lists none" do
+      {:ok, token} = Tokens.create(name: "phone", policy: "nothing")
       {client, _result} = MCPClient.initialize(token)
 
       assert MCPClient.list_tools(client) == []

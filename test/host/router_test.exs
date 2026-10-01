@@ -434,7 +434,7 @@ defmodule Host.RouterTest do
       assert [_route] = Routes.list(path: "/app/rt/notes")
     end
 
-    test "a conflict names the mounted route and its user", ctx do
+    test "a conflict names the mounted route and its token", ctx do
       mod = define_live!(ctx)
       controller = define_controller!(ctx)
       quietly(fn -> Host.Router.live("/rt/taken", mod) end)
@@ -630,7 +630,7 @@ defmodule Host.RouterTest do
       assert output =~ "Host.Router.live"
     end
 
-    test "prints the base once, then verb, path, target, and user", ctx do
+    test "prints the base once, then verb, path, target, and token", ctx do
       live_mod = define_live!(ctx)
       controller = define_controller!(ctx)
       quietly(fn -> Host.Router.live("/rt/page", live_mod) end)

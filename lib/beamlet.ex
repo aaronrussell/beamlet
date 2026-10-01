@@ -40,7 +40,8 @@ defmodule Beamlet do
   `only: :system` starts the system half alone: the policies and the
   system database, migrated. Nothing an agent reaches, no agent
   database and no MCP server. The operator CLI (`Beamlet.CLI`) uses it
-  to manage users and tokens in a VM with no beamlet running:
+  to set up the owner and manage tokens in a VM with no beamlet
+  running:
 
       {:ok, pid} = Beamlet.start_link(only: :system)
   """

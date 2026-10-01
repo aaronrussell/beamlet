@@ -4,28 +4,27 @@ defmodule Beamlet.Web.SessionController do
   `POST /beamlet/login` and `POST /beamlet/logout`.
 
   The form itself is `Beamlet.Web.SessionLive`; it posts here because
-  a session cookie is written on an HTTP response. The name and
-  password are checked through `Beamlet.Users.authenticate_password/2`;
-  a sign-in lands where `Beamlet.Web.Auth.require_auth/2` stored, or
-  on the home page, and a failure goes back to the form with a flash.
-  A user with no password cannot sign in until the operator sets one
-  with `beamlet users.update --password`.
+  a session cookie is written on an HTTP response. The email and
+  password are checked through `Beamlet.Owner.authenticate/2`; a
+  sign-in lands where `Beamlet.Web.Auth.require_auth/2` stored, or on
+  the home page, and a failure goes back to the form with a flash.
+  Nobody can sign in until `beamlet setup` has created the owner.
   """
 
   use Phoenix.Controller, formats: []
 
   import Plug.Conn
 
-  alias Beamlet.Users
+  alias Beamlet.Owner
   alias Beamlet.Web.Auth
 
   @home_path "/beamlet"
   @login_path "/beamlet/login"
 
-  @doc "Signs in from the form's name and password, or sends the form back with a flash."
+  @doc "Signs in from the form's email and password, or sends the form back with a flash."
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def create(conn, %{"user" => %{"name" => name, "password" => password}}) do
-    case Users.authenticate_password(name, password) do
+  def create(conn, %{"user" => %{"email" => email, "password" => password}}) do
+    case Owner.authenticate(email, password) do
       {:ok, user} ->
         {return_to, conn} = pop_return_path(conn)
 
@@ -51,7 +50,7 @@ defmodule Beamlet.Web.SessionController do
 
   defp refuse(conn) do
     conn
-    |> put_flash(:error, "Wrong name or password.")
+    |> put_flash(:error, "Wrong email or password.")
     |> redirect(to: @login_path)
   end
 

@@ -4,7 +4,6 @@ defmodule Beamlet.OAuth.CodesTest do
   alias Beamlet.OAuth.Codes
 
   @entry %{
-    user_id: 1,
     policy: "default",
     client_id: "https://chat.example/client.json",
     redirect_uri: "https://chat.example/callback",

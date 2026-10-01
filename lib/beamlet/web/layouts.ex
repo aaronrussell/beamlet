@@ -23,7 +23,7 @@ defmodule Beamlet.Web.Layouts do
   elsewhere, the sign-in and the consent page: a panel with the
   wordmark and a tagline beside the form. `shell/1` is the layout the
   signed-in pages render inside: the top bar naming the beamlet and
-  the person, with the sign-out.
+  the owner's email, with the sign-out.
   """
 
   use Phoenix.Component
@@ -73,7 +73,7 @@ defmodule Beamlet.Web.Layouts do
 
   @doc """
   The layout for the app's signed-in pages: the top bar with
-  the wordmark, the beamlet's host, the signed-in name and the
+  the wordmark, the beamlet's host, the signed-in email and the
   sign-out, then the page.
   """
   attr :current_user, Beamlet.User, required: true
@@ -88,7 +88,7 @@ defmodule Beamlet.Web.Layouts do
       </span>
       <span class="flex-1"></span>
       <span id="signed-in" class="font-mono text-xs text-muted">
-        Signed in as {@current_user.name}.
+        Signed in as {@current_user.email}.
       </span>
       <.form for={%{}} as={:none} action="/beamlet/logout" method="post" id="logout-form">
         <.button type="submit" variant="ghost" size="sm">Sign out</.button>

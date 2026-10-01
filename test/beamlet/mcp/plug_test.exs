@@ -6,7 +6,7 @@ defmodule Beamlet.MCP.PlugTest do
 
   alias Beamlet.MCPClient
   alias Beamlet.Principal
-  alias Beamlet.Users
+  alias Beamlet.Tokens
 
   @plug_opts Beamlet.MCP.Plug.init([])
   @challenge ~s(Bearer realm="beamlet", ) <>
@@ -34,15 +34,15 @@ defmodule Beamlet.MCP.PlugTest do
   end
 
   test "a deleted token's secret is a 401", %{token: token} do
-    {:ok, _} = Users.delete_token(token)
+    {:ok, _} = Tokens.delete(token)
     assert unauthorized?(request("Bearer " <> token.secret))
   end
 
-  test "an expired oauth token's secret is a 401", %{user: user} do
+  test "an expired oauth token's secret is a 401" do
     now = DateTime.utc_now()
 
     {:ok, expired} =
-      Users.create_token(user,
+      Tokens.create(
         kind: :oauth,
         client: "https://claude.ai/client.json",
         expires_at: DateTime.add(now, -1, :second),
@@ -50,7 +50,7 @@ defmodule Beamlet.MCP.PlugTest do
       )
 
     {:ok, live} =
-      Users.create_token(user,
+      Tokens.create(
         kind: :oauth,
         client: "https://claude.ai/client.json",
         expires_at: DateTime.add(now, 3600, :second),
@@ -93,7 +93,7 @@ defmodule Beamlet.MCP.PlugTest do
     conn = MCPClient.rpc(%MCPClient{secret: token.secret}, "initialize", initialize_params())
 
     assert conn.status == 200
-    {:ok, authenticated} = Users.authenticate(token.secret)
+    {:ok, authenticated} = Tokens.authenticate(token.secret)
     assert conn.assigns.principal == Principal.from_token(authenticated)
   end
 
