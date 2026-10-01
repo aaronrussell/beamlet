@@ -36,6 +36,7 @@ jobs:
           key: beamlet-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('mix.lock') }}
           restore-keys: beamlet-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-
       - run: mix deps.get
+      - run: mix hex.audit
       # precommit formats, unlocks and rebuilds the stylesheet rather
       # than checking, so a change it makes is the failure.
       - run: mix precommit
@@ -61,5 +62,6 @@ jobs:
           key: server-${{ runner.os }}-${{ hashFiles('server/mix.lock', 'mix.lock') }}
           restore-keys: server-${{ runner.os }}-
       - run: mix deps.get
+      - run: mix hex.audit
       - run: mix precommit
       - run: git diff --exit-code
