@@ -2,6 +2,18 @@
 
 **TODO: Add description**
 
+## Security
+
+A beamlet belongs to one person. Tokens are that person's delegations to their clients. Policies steer each client. Treat any token as full access to the beamlet.
+
+Agent code runs inside the beamlet's own VM. Policies, and the scanner that enforces them, are guardrails: they stop an honest model from doing something by accident, and they stop low-effort prompt injection that reaches for ordinary APIs ("fetch this URL", "read this file"). They are not a containment boundary against code that is trying to get out. If you hand a token to an agent that reads the web, assume it can reach anything the beamlet process can.
+
+The token is the boundary: a request without one reaches nothing beyond the sign-in and OAuth pages. Known gaps in 0.1:
+
+- The sign-in page has no rate limit, so choose a strong password.
+- A session lasts until you sign out, set a new password with `beamlet setup`, or the browser drops the cookie.
+- Agent pages share the beamlet's origin with the sign-in, so script on an agent page you visit while signed in can approve a connection as you on the consent page. A token already amounts to that much.
+
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed by adding `beamlet` to your list of dependencies in `mix.exs`:
