@@ -51,7 +51,7 @@ defmodule Beamlet.Config do
   `allow` must be a list of host names, IP addresses and CIDR blocks;
   the web group's
   endpoint must be a module and its prefix empty or a path with a
-  leading slash and no trailing one. Whether an endpoint is set is
+  leading slash and no trailing one, outside `/beamlet`. Whether an endpoint is set is
   checked by the full boot, not here, since the system half runs
   without one.
   """
@@ -234,7 +234,7 @@ defmodule Beamlet.Config do
     end
 
     case Keyword.get(web, :endpoint) do
-      endpoint when is_atom(endpoint) ->
+      endpoint when is_atom(endpoint) and not is_boolean(endpoint) ->
         :ok
 
       other ->
@@ -248,6 +248,12 @@ defmodule Beamlet.Config do
       raise ArgumentError,
             "config :beamlet, :web: prefix must be \"\" or a path such as \"/app\", " <>
               "with no trailing slash, got: #{inspect(prefix)}"
+    end
+
+    if prefix == "/beamlet" or String.starts_with?(prefix, "/beamlet/") do
+      raise ArgumentError,
+            "config :beamlet, :web: prefix cannot be under /beamlet, which is reserved for " <>
+              "the beamlet's own pages, got: #{inspect(prefix)}"
     end
   end
 

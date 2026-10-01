@@ -162,6 +162,27 @@ defmodule Beamlet.ConfigTest do
       end
     end
 
+    test "raises when the endpoint is a boolean" do
+      Application.put_env(:beamlet, :web, endpoint: true)
+
+      assert_raise ArgumentError, ~r/endpoint must be a module, got: true/, fn ->
+        Config.validate!()
+      end
+    end
+
+    test "raises on a prefix under /beamlet" do
+      for prefix <- ["/beamlet", "/beamlet/app"] do
+        Application.put_env(:beamlet, :web, prefix: prefix)
+
+        assert_raise ArgumentError, ~r/prefix cannot be under \/beamlet/, fn ->
+          Config.validate!()
+        end
+      end
+
+      Application.put_env(:beamlet, :web, prefix: "/beamlets")
+      assert Config.validate!() == :ok
+    end
+
     test "raises on a prefix without a leading slash or with a trailing one" do
       for prefix <- ["app", "/app/", "/", :app] do
         Application.put_env(:beamlet, :web, prefix: prefix)
