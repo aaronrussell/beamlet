@@ -53,6 +53,38 @@ defmodule Beamlet.CLIResetTest do
     assert output =~ "No agent database at #{agent_db}"
   end
 
+  test "a file it cannot remove stops the reset, saying what is left" do
+    agent_db = Config.agent_db_file()
+    File.mkdir_p!(Config.db_dir())
+    File.write!(agent_db, "")
+    File.mkdir_p!(Config.code_dir())
+    locked = Path.join(Config.files_dir(), "locked")
+    File.mkdir_p!(locked)
+    File.write!(Path.join(locked, "stuck.txt"), "")
+    File.chmod!(locked, 0o500)
+    on_exit(fn -> File.chmod(locked, 0o700) end)
+
+    {result, stdout} =
+      with_io(fn ->
+        assert {:error, stderr} = with_io(:stderr, fn -> CLI.main(["reset"]) end)
+        stderr
+      end)
+
+    assert stdout =~ "Removed the agent database: #{agent_db}"
+    assert stdout =~ "Removed the code dir and its history"
+    refute stdout =~ "restart it now"
+    assert result =~ "could not remove"
+    assert result =~ "The reset stopped partway"
+    assert result =~ "run `beamlet reset` again"
+    refute File.exists?(agent_db)
+    refute File.exists?(Config.code_dir())
+
+    File.chmod!(locked, 0o700)
+    assert {:ok, output} = with_io(fn -> CLI.main(["reset"]) end)
+    assert output =~ "Removed the files dir"
+    refute File.exists?(Config.files_dir())
+  end
+
   test "a bad config fails the command with the boot's own error" do
     Application.put_env(:beamlet, :eval, timeout: 0)
     on_exit(fn -> Application.delete_env(:beamlet, :eval) end)

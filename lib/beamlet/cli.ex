@@ -53,9 +53,10 @@ defmodule Beamlet.CLI do
   same VM is used as it is.
 
   `reset` is the exception: it starts nothing and deletes the unit
-  agents build, the code dir with its git history, the files dir and
-  the agent database with the route table and key/value store in it,
-  so the next boot starts from nothing. Users, tokens, the operator
+  agents build, the agent database with the route table and key/value
+  store in it, the code dir with its git history and the files dir,
+  so the next boot starts from nothing. A reset that fails partway can
+  be run again. Users, tokens, the operator
   config file and the rest of the data dir are kept. It asks nothing
   and checks for no running beamlet: a beamlet that is running keeps
   what it has loaded until it restarts, so restart it right after.
@@ -82,7 +83,7 @@ defmodule Beamlet.CLI do
     {"tokens.delete", "ID", "delete a token"},
     {"policies", "", "list policies"},
     {"policies.show", "POLICY", "show what a policy permits"},
-    {"reset", "", "wipe everything agents built: code, files, agent database"}
+    {"reset", "", "wipe everything agents built: agent database, code, files"}
   ]
 
   @shapes Enum.map(@commands, fn {command, args, description} ->
@@ -484,15 +485,26 @@ defmodule Beamlet.CLI do
   # running beamlet does no lasting harm, since it keeps what it has
   # loaded until it restarts and boots fresh after. The config is
   # still checked, so a bad declaration fails here as it would at boot.
+  # The database goes first: code without it boots fresh, while a
+  # database without its code keeps migrations and routes for modules
+  # that are gone.
   defp reset do
     Config.validate!()
+    remove_agent_db(Config.agent_db_file())
     remove_dir(Config.code_dir(), "code dir and its history")
     remove_dir(Config.files_dir(), "files dir")
-    remove_agent_db(Config.agent_db_file())
 
     puts("Users, tokens and config.exs are kept. If a beamlet is running, restart it now.")
   rescue
-    error in ArgumentError -> fail(Exception.message(error))
+    error in ArgumentError ->
+      fail(Exception.message(error))
+
+    error in File.Error ->
+      fail("""
+      #{Exception.message(error)}
+      The reset stopped partway: what is listed as removed is gone, the rest is not. \
+      Fix the cause and run `beamlet reset` again.\
+      """)
   end
 
   defp remove_dir(dir, label) do
