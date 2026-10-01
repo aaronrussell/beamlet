@@ -178,7 +178,7 @@ defmodule Beamlet.Define do
 
     violations =
       Enum.flat_map(parsed, fn entry ->
-        case Entry.check(entry.source, policy, entry.path) do
+        case Entry.check(entry.source, entry.module, policy, entry.path) do
           :ok -> []
           {:error, message} -> [message]
         end

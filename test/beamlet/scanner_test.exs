@@ -1,6 +1,7 @@
 defmodule Beamlet.ScannerTest do
   use ExUnit.Case, async: true
 
+  alias Beamlet.Code.Entry
   alias Beamlet.Policy
   alias Beamlet.Scanner
   alias Beamlet.TestPolicies
@@ -17,7 +18,11 @@ defmodule Beamlet.ScannerTest do
     message
   end
 
-  defp scan_define(code, policy \\ @default), do: Scanner.scan_define(code, policy)
+  defp scan_define(code, policy \\ @default) do
+    {:ok, ast} = Entry.parse(code)
+    {:ok, module, _body} = Entry.module(ast)
+    Scanner.scan_define(code, module, policy)
+  end
 
   defp scan_define_error(code, policy \\ @default) do
     assert {:error, message} = scan_define(code, policy)
@@ -40,7 +45,9 @@ defmodule Beamlet.ScannerTest do
       """
 
       assert {:error, message} =
-               Scanner.scan_define(code, @default, file: "lib/scan/fixture/located.ex")
+               Scanner.scan_define(code, Scan.Fixture.Located, @default,
+                 file: "lib/scan/fixture/located.ex"
+               )
 
       assert message ==
                "lib/scan/fixture/located.ex:3: File.read!/1 — File is not permitted by your " <>
@@ -290,9 +297,9 @@ defmodule Beamlet.ScannerTest do
     end
   end
 
-  describe "scan_define/2 structure" do
-    test "a documented module returns its name" do
-      assert {:ok, [Scan.Fixture.One]} =
+  describe "scan_define/4 structure" do
+    test "a documented module passes" do
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.One do
                  @moduledoc "A fixture."
@@ -303,19 +310,15 @@ defmodule Beamlet.ScannerTest do
                """)
     end
 
-    test "a multi-module buffer returns every name and allows cross-references" do
-      assert {:ok, [Scan.Fixture.A, Scan.Fixture.B]} =
+    test "a module may call itself by name" do
+      assert :ok =
                scan_define("""
-               defmodule Scan.Fixture.A do
-                 @moduledoc "A."
+               defmodule Scan.Fixture.Self do
+                 @moduledoc "Self."
                  @doc "One."
                  def one, do: 1
-               end
-
-               defmodule Scan.Fixture.B do
-                 @moduledoc "B."
                  @doc "Two."
-                 def two, do: Scan.Fixture.A.one() + 1
+                 def two, do: Scan.Fixture.Self.one() + 1
                end
                """)
     end
@@ -349,40 +352,40 @@ defmodule Beamlet.ScannerTest do
       assert message =~ "nested module definitions are not permitted"
     end
 
-    test "protocols are rejected" do
-      assert scan_define_error("defprotocol Scan.Fixture.P do\nend") =~
-               "defprotocol and defimpl are not supported — define a plain module"
-
-      assert scan_define_error("defimpl String.Chars, for: Tuple do\nend") =~
-               "defprotocol and defimpl are not supported"
-    end
-
-    test "a duplicate module name is rejected" do
+    test "a protocol beside the module is rejected" do
       message =
         scan_define_error("""
-        defmodule Scan.Fixture.D do
-          @moduledoc "D."
+        defmodule Scan.Fixture.P do
+          @moduledoc "P."
         end
 
-        defmodule Scan.Fixture.D do
-          @moduledoc "D again."
+        defimpl String.Chars, for: Scan.Fixture.P do
+          def to_string(_p), do: "p"
         end
         """)
 
-      assert message =~ "Scan.Fixture.D is defined more than once in this buffer"
+      assert message =~
+               "line 5: defprotocol and defimpl are not supported — define a plain module"
     end
 
-    test "a non-literal module name is rejected" do
-      assert scan_define_error("defmodule unquote(name) do\nend") =~
-               "module name must be a literal, like Shopping.List"
-    end
+    test "a protocol inside the module is rejected" do
+      message =
+        scan_define_error("""
+        defmodule Scan.Fixture.Q do
+          @moduledoc "Q."
 
-    test "a defmodule without a body is rejected" do
-      assert scan_define_error("defmodule Scan.Fixture.E") =~ "missing its do ... end body"
+          defprotocol Shape do
+            def area(shape)
+          end
+        end
+        """)
+
+      assert message =~
+               "line 4: defprotocol and defimpl are not supported — define a plain module"
     end
   end
 
-  describe "scan_define/2 policy" do
+  describe "scan_define/4 policy" do
     test "a policy violation inside a body is reported with its line" do
       message =
         scan_define_error("""
@@ -407,7 +410,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "the LiveView authoring shape passes the scan" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.PageLive do
                  @moduledoc "A page."
@@ -427,7 +430,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "the Host.Web authoring shape passes the scan" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.WebLive do
                  @moduledoc "A page."
@@ -479,7 +482,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "a buffer-local function may shadow a denied Kernel import" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.H do
                  @moduledoc "H."
@@ -494,7 +497,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "locals with default arguments are known at every arity" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.I do
                  @moduledoc "I."
@@ -509,7 +512,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "module attributes and specs do not false-positive" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.J do
                  @moduledoc "J."
@@ -524,7 +527,7 @@ defmodule Beamlet.ScannerTest do
     end
   end
 
-  describe "scan_define/2 data-position targets" do
+  describe "scan_define/4 data-position targets" do
     test "defdelegate to a denied module is rejected at the delegated name/arity" do
       message =
         scan_define_error(
@@ -566,7 +569,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "defdelegate to a granted module passes" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.N do
                  @moduledoc "N."
@@ -649,7 +652,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "ordinary @compile options pass" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.Y do
                  @moduledoc "Y."
@@ -687,7 +690,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "@behaviour is deliberately unchecked: it names a module but executes nothing" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.U do
                  @moduledoc "U."
@@ -697,7 +700,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "__MODULE__ is an allowed module everywhere a target is expected" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.V do
                  @moduledoc "V."
@@ -717,7 +720,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "defguard declarations and uses pass the scan" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.W do
                  @moduledoc "W."
@@ -766,7 +769,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "allow_defmacro admits macro definitions" do
-      assert {:ok, [Scan.Fixture.M]} =
+      assert :ok =
                scan_define(@macro_module, policy(rules: [allow_defmacro: true]))
     end
 
@@ -783,12 +786,12 @@ defmodule Beamlet.ScannerTest do
 
       assert scan_define_error(code) =~ "defmacro is not permitted by your policy"
 
-      assert {:ok, [Scan.Fixture.MQ]} =
+      assert :ok =
                scan_define(code, policy(rules: [allow_defmacro: true]))
     end
 
     test "defguard stays outside the rule" do
-      assert {:ok, _modules} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.G do
                  @moduledoc "G."
@@ -848,7 +851,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "a schema module passes the define scan" do
-      assert {:ok, [Scan.Fixture.Item]} =
+      assert :ok =
                scan_define("""
                defmodule Scan.Fixture.Item do
                  @moduledoc "Item."
@@ -887,7 +890,7 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "a variable call target passes in define" do
-      assert {:ok, [Scan.Fixture.D]} =
+      assert :ok =
                scan_define(
                  """
                  defmodule Scan.Fixture.D do

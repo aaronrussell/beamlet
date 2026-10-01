@@ -447,7 +447,7 @@ defmodule Beamlet.Patch do
   end
 
   defp check(source, state, label, policy) do
-    case Entry.check(source, policy, state.path, context: @context) do
+    case Entry.check(source, state.module, policy, state.path, context: @context) do
       :ok -> :ok
       {:error, message} -> {:error, "#{label}: #{message}"}
     end

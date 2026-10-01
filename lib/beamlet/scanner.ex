@@ -7,11 +7,11 @@ defmodule Beamlet.Scanner do
   errors, what the policy does not admit. Grants decide names: every
   module and function the code reaches for must be granted, aliases
   are expanded first so `alias File, as: Storage` launders nothing,
-  and the modules a `define` call declares may reference each other
-  freely. Rules decide shape: call targets must be literal modules
-  unless the policy allows dynamic dispatch, a module may not define
-  macros unless the policy allows them, `eval` code may not define
-  modules, and a `define` entry is exclusively top-level `defmodule`s.
+  and a module may name itself. Rules decide shape: call targets must
+  be literal modules unless the policy allows dynamic dispatch, a
+  module may not define macros unless the policy allows them, `eval`
+  code may not define modules, and a `define` entry is its one
+  `defmodule` and nothing beside it.
   The targets of `alias`, `import`, `require` and `use`, and the
   data-position targets the compiler expands (`defdelegate to:`, the
   compile hooks, `@compile`) stay literal under any policy, and
@@ -61,41 +61,38 @@ defmodule Beamlet.Scanner do
   end
 
   @doc """
-  Scans the source of one or more modules under the policy. Returns
-  the modules it defines, or every violation found, one per line with
-  the offending line quoted beneath it.
+  Scans the source of `module` under the policy. Returns `:ok`, or
+  every violation found, one per line with the offending line quoted
+  beneath it.
 
-  The source is exclusively top-level `defmodule`s: expressions,
-  protocols and nested module definitions are refused. Its own
-  modules are granted to each other, and its own functions are known
-  as locals.
+  The source is the one top-level `defmodule` that
+  `Beamlet.Code.Entry.module/1` found, and anything beside it is
+  refused: expressions, protocols, and module definitions nested in
+  its body. The module is granted to itself, and its own functions
+  are known as locals.
 
   `opts[:file]` is the locator prefix, the module's path relative to
   the code dir, so a violation reads `lib/shopping/list.ex:4:
   message`; without it the prefix is `line 4:`.
   """
-  @spec scan_define(String.t(), Policy.t(), keyword()) :: {:ok, [module()]} | {:error, String.t()}
-  def scan_define(code, %Policy{} = policy, opts \\ []) do
+  @spec scan_define(String.t(), module(), Policy.t(), keyword()) :: :ok | {:error, String.t()}
+  def scan_define(code, module, %Policy{} = policy, opts \\ []) when is_atom(module) do
     file = Keyword.get(opts, :file)
     context = Keyword.get(opts, :context, 0)
 
     with {:ok, ast} <- parse(code, file, context) do
-      {modules, locals, structure_violations} = structure(ast, policy)
-      policy = Policy.grant(policy, modules)
+      {locals, structure_violations} = structure(ast, module, policy)
+      policy = Policy.grant(policy, [module])
 
-      violations = walk(ast, policy, :define, locals) ++ structure_violations
-
-      case render(violations, code, file, context) do
-        :ok -> {:ok, modules}
-        error -> error
-      end
+      (walk(ast, policy, :define, locals) ++ structure_violations)
+      |> render(code, file, context)
     end
   end
 
   @doc """
   Renders a violation at `line` of `code` as the scanner renders its
   own: the locator, the message, and the offending line quoted
-  beneath. `file` is the locator prefix as in `scan_define/3`.
+  beneath. `file` is the locator prefix as in `scan_define/4`.
 
   `opts[:context]` is how many lines to quote either side of the
   offending one, for text the reader cannot otherwise see; the block
@@ -205,55 +202,32 @@ defmodule Beamlet.Scanner do
 
   # ── Define structure pass ─────────────────────────────────────────
 
-  # Validates the top-level shape of a define buffer, only literal
-  # defmodules, and collects the module names and every function
-  # name/arity the buffer defines: function heads look like local
-  # calls to the walk, and a buffer-local name may shadow a denied
-  # Kernel import.
-  defp structure(ast, policy) do
+  # Refuses every top-level form beside the entry's one defmodule,
+  # and collects every function name/arity its body defines: function
+  # heads look like local calls to the walk, and a function the module
+  # defines may shadow a denied Kernel import.
+  defp structure(ast, module, policy) do
     forms =
       case ast do
         {:__block__, _meta, forms} -> forms
         form -> [form]
       end
 
-    acc = %{modules: [], locals: MapSet.new(), policy: policy, violations: []}
-    acc = Enum.reduce(forms, acc, &top_level/2)
-    {Enum.reverse(acc.modules), acc.locals, acc.violations}
+    acc = %{locals: MapSet.new(), policy: policy, violations: []}
+    acc = Enum.reduce(forms, acc, &top_level(&1, module, &2))
+    {acc.locals, acc.violations}
   end
 
-  defp top_level({:defmodule, meta, [{:__aliases__, _, _parts} = target | rest]}, acc) do
-    case literal_module(target, %{}) do
-      {:ok, module} ->
-        acc =
-          if module in acc.modules,
-            do:
-              violation(acc, meta, "#{inspect(module)} is defined more than once in this buffer"),
-            else: %{acc | modules: [module | acc.modules]}
-
-        case rest do
-          [[{:do, body} | _]] ->
-            scan_body(body, module, acc)
-
-          _no_body ->
-            violation(acc, meta, "defmodule #{inspect(module)} is missing its do ... end body")
-        end
-
-      :error ->
-        violation(acc, meta, "module name must be a literal, like Shopping.List")
-    end
+  defp top_level({:defmodule, _meta, [_name, [{:do, body} | _]]}, module, acc) do
+    scan_body(body, module, acc)
   end
 
-  defp top_level({:defmodule, meta, _args}, acc) do
-    violation(acc, meta, "module name must be a literal, like Shopping.List")
-  end
-
-  defp top_level({form, meta, _args}, acc) when form in [:defprotocol, :defimpl] do
+  defp top_level({form, meta, _args}, _module, acc) when form in [:defprotocol, :defimpl] do
     violation(acc, meta, @protocol_error)
   end
 
-  defp top_level({_form, meta, _args}, acc), do: violation(acc, meta, @expression_error)
-  defp top_level(_literal, acc), do: violation(acc, [], @expression_error)
+  defp top_level({_form, meta, _args}, _module, acc), do: violation(acc, meta, @expression_error)
+  defp top_level(_literal, _module, acc), do: violation(acc, [], @expression_error)
 
   defp scan_body(body, module, acc) do
     {_body, acc} =
@@ -684,9 +658,9 @@ defmodule Beamlet.Scanner do
       (function_exported?(module, fun, arity) or macro_exported?(module, fun, arity))
   end
 
-  # __MODULE__ can only ever denote the module being defined, a buffer
-  # module granted by construction, so it resolves to the sentinel the
-  # default grants as :all.
+  # __MODULE__ can only ever denote the module being defined, granted
+  # by construction, so it resolves to the sentinel the default grants
+  # as :all.
   defp literal_module({:__MODULE__, _, ctx}, _aliases) when is_atom(ctx), do: {:ok, :__MODULE__}
 
   defp literal_module({:__aliases__, _, [first | rest] = parts}, aliases) do

@@ -83,11 +83,11 @@ defmodule Beamlet.Code.Entry do
     end
   end
 
-  @spec check(String.t(), Policy.t(), Path.t(), keyword()) :: :ok | {:error, String.t()}
-  def check(source, %Policy{} = policy, path, opts \\ []) do
+  @spec check(String.t(), module(), Policy.t(), Path.t(), keyword()) :: :ok | {:error, String.t()}
+  def check(source, module, %Policy{} = policy, path, opts \\ []) do
     scan_opts = [file: path, context: Keyword.get(opts, :context, 0)]
 
-    with {:ok, _modules} <- Scanner.scan_define(source, policy, scan_opts) do
+    with :ok <- Scanner.scan_define(source, module, policy, scan_opts) do
       Docs.check(source)
     end
   end
