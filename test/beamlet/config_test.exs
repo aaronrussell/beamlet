@@ -173,6 +173,19 @@ defmodule Beamlet.ConfigTest do
 
       assert message =~ "does not exist: #{missing}"
     end
+
+    @tag :capture_log
+    test "starting fails when the migrations dir is missing" do
+      repo = Application.fetch_env!(:beamlet, Beamlet.Repo)
+      on_exit(fn -> Application.put_env(:beamlet, Beamlet.Repo, repo) end)
+      Application.put_env(:beamlet, Beamlet.Repo, Keyword.put(repo, :priv, "priv/missing"))
+
+      assert {:error, {{%ArgumentError{message: message}, _stack}, _spec}} =
+               start_supervised({Beamlet, only: :system})
+
+      assert message =~ "migrations are missing: "
+      assert message =~ "priv/missing/migrations"
+    end
   end
 
   describe "the accessors" do

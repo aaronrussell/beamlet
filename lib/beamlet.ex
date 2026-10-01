@@ -104,6 +104,7 @@ defmodule Beamlet do
   # system half serves nothing.
   defp prepare!(only) do
     ensure_data_dir!()
+    ensure_migrations!()
     if only == nil, do: ensure_endpoint!()
     File.mkdir_p!(Config.files_dir())
     Enum.each([Beamlet.Repo, Host.Repo], &ensure_database!/1)
@@ -115,6 +116,18 @@ defmodule Beamlet do
     unless File.dir?(dir) do
       raise ArgumentError,
             "config :beamlet, :data_dir does not exist: #{dir} (create or mount it before starting)"
+    end
+  end
+
+  # Ecto.Migrator reads a missing dir as no migrations and boots, so
+  # the first query fails instead, on a table that was never created.
+  defp ensure_migrations! do
+    path = Ecto.Migrator.migrations_path(Beamlet.Repo)
+
+    unless File.dir?(path) do
+      raise ArgumentError,
+            "Beamlet's migrations are missing: #{path} (the release must carry " <>
+              "the beamlet app's priv dir)"
     end
   end
 
