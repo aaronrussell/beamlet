@@ -11,8 +11,8 @@ defmodule Beamlet.OAuth.AuthorizeLive do
   the browser back to the client, or sends it back with
   `access_denied`. The request lives in the page's own state between
   the two, so nothing the form carries can be tampered with. The
-  policies on offer are the ones the signed-in user may carry
-  (`Beamlet.Users.policies/1`).
+  policies on offer are every one the beamlet declares
+  (`Beamlet.Policies`), `default` preselected.
 
   A request the beamlet cannot safely redirect for, an unknown
   client or a redirect URI its document does not list, is an error
@@ -36,7 +36,6 @@ defmodule Beamlet.OAuth.AuthorizeLive do
   alias Beamlet.OAuth.Codes
   alias Beamlet.Policies
   alias Beamlet.Policy
-  alias Beamlet.Users
   alias Beamlet.Web.Layouts
 
   @fields ~w(client_id redirect_uri state scope code_challenge code_challenge_method response_type resource)a
@@ -130,7 +129,7 @@ defmodule Beamlet.OAuth.AuthorizeLive do
           <% :bad_redirect -> %>
             The app asked to be sent to an address its metadata document does not list.
           <% :bad_policy -> %>
-            The chosen policy is not one this beamlet lets you use.
+            The chosen policy is not one this beamlet declares.
           <% :bad_form -> %>
             The consent form was incomplete. Go back to the app and connect again.
         <% end %>
@@ -142,7 +141,7 @@ defmodule Beamlet.OAuth.AuthorizeLive do
   defp decide(socket, request, %{"decision" => "allow", "policy" => policy}) do
     user = socket.assigns.current_user
 
-    if policy in Users.policies(user) do
+    if policy in Policies.names() do
       code =
         Codes.store(%{
           user_id: user.id,
@@ -166,15 +165,9 @@ defmodule Beamlet.OAuth.AuthorizeLive do
 
   defp decide(socket, _request, _params), do: error_page(socket, :bad_form)
 
-  # The page offers only what the user may carry, so the gate in
-  # `Users.create_token/2` never refuses a choice made here; `default`
-  # is preselected when it is on offer and the user's first policy
-  # otherwise.
   defp consent(socket, request) do
-    names = Users.policies(socket.assigns.current_user)
-
     policies =
-      for name <- names, {:ok, policy} <- [Policies.fetch(name)] do
+      for name <- Policies.names(), {:ok, policy} <- [Policies.fetch(name)] do
         {name, Enum.map_join(Policy.tool_list(policy), ", ", &to_string/1)}
       end
 
@@ -185,7 +178,7 @@ defmodule Beamlet.OAuth.AuthorizeLive do
       client_host: URI.parse(request.client_id).host,
       loopback?: Clients.loopback?(request.redirect_uri),
       policies: policies,
-      selected: if("default" in names, do: "default", else: List.first(names))
+      selected: "default"
     )
   end
 

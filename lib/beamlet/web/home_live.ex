@@ -225,7 +225,7 @@ defmodule Beamlet.Web.HomeLive do
     ~H"""
     <p class="mt-2 text-sm text-muted">
       A policy is what a connected app may do on your beamlet: which tools it has and what its code may reach.
-      You choose one when you sign in, from the policies you have been granted.
+      You choose one when you sign in.
     </p>
     """
   end

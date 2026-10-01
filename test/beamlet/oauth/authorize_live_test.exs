@@ -9,7 +9,6 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
 
   alias Beamlet.OAuth.Clients
   alias Beamlet.OAuth.Codes
-  alias Beamlet.Users
 
   @client_id "https://chat.example/client.json"
   @redirect_uri "https://chat.example/callback"
@@ -108,25 +107,6 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
       refute has_element?(view, ~s(input[name=policy][value=explorer][checked]))
       assert [_, after_explorer] = String.split(render(view), ~s(value="explorer"), parts: 2)
       assert after_explorer =~ ">eval<"
-    end
-
-    @tag policies: [explorer: [tools: [:eval]], restricted: [tools: [:eval]]]
-    test "offers a bounded user only their policies, the first selected unless default is among them",
-         %{params: params} do
-      {:ok, bob} = Users.create(name: "bob", policies: ["restricted", "explorer"])
-      {:ok, view, _html} = build_conn() |> sign_in(bob) |> live(path(params))
-
-      assert has_element?(view, ~s(input[name=policy][value=restricted][checked]))
-      assert has_element?(view, ~s(input[name=policy][value=explorer]))
-      refute has_element?(view, ~s(input[name=policy][value=explorer][checked]))
-      refute has_element?(view, ~s(input[name=policy][value=default]))
-
-      {:ok, bob} = Users.update(bob, policies: ["explorer", "default"])
-      {:ok, view, _html} = build_conn() |> sign_in(bob) |> live(path(params))
-
-      assert has_element?(view, ~s(input[name=policy][value=default][checked]))
-      refute has_element?(view, ~s(input[name=policy][value=explorer][checked]))
-      refute has_element?(view, ~s(input[name=policy][value=restricted]))
     end
 
     test "warns when the redirect is loopback", %{conn: conn, params: params} do
@@ -272,12 +252,9 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
       assert decide(view, "maybe", "default") =~ "incomplete"
     end
 
-    @tag policies: [explorer: [tools: [:eval]]]
-    test "a policy outside the user's list is an error page", %{params: params} do
-      {:ok, bob} = Users.create(name: "bob", policies: ["explorer"])
-      {:ok, view, _html} = build_conn() |> sign_in(bob) |> live(path(params))
-
-      assert decide(view, "allow", "default") =~ "not one this beamlet lets you use"
+    test "an undeclared policy is an error page", %{conn: conn, params: params} do
+      {:ok, view, _html} = live(conn, path(params))
+      assert decide(view, "allow", "gone") =~ "not one this beamlet declares"
     end
 
     test "a decision after an error page changes nothing", %{conn: conn, params: params} do

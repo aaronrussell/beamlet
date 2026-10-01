@@ -21,14 +21,7 @@ defmodule Beamlet.Users do
   expires; an `oauth` token expires at `expires_at` and is refreshed
   by the token endpoint. Policy attaches to the token, not the user: a
   token names one and has `default` when it names none, and the name
-  must be a policy the beamlet declares (`Beamlet.Policies`). A user
-  bounds which: `policies/1` is the list a user's tokens may carry,
-  the user's own `policies` or every declared one when that list is
-  empty, and `create_token/2` and `update_token/2` refuse a policy
-  outside it. The command line, the consent page and the token
-  endpoint all mint through those two functions, so this is the one
-  gate; `Beamlet.MCP.Plug` applies the same bound on every request,
-  so narrowing a user's list takes effect at once.
+  must be a policy the beamlet declares (`Beamlet.Policies`).
 
   A user signs in on the web with a password the operator sets
   (`update_password/2`); `authenticate_password/2` is how the sign-in
@@ -62,27 +55,13 @@ defmodule Beamlet.Users do
     |> Repo.insert()
   end
 
-  @doc """
-  Updates a user's name or policy list; the id, and everything keyed
-  on it, stays. A new list replaces the old one whole, and a token
-  whose policy falls outside it is refused by `Beamlet.MCP.Plug` from
-  the next request on.
-  """
+  @doc "Updates a user's name; the id, and everything keyed on it, stays."
   @spec update(User.t(), map() | keyword()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
   def update(%User{} = user, attrs) do
     user
     |> User.changeset(Map.new(attrs))
     |> Repo.update()
   end
-
-  @doc """
-  The policy names a user's tokens may carry: the user's own list in
-  the order the operator gave it, or every declared policy when that
-  list is empty.
-  """
-  @spec policies(User.t()) :: [String.t()]
-  def policies(%User{policies: []}), do: Beamlet.Policies.names()
-  def policies(%User{policies: policies}), do: policies
 
   @doc "Deletes a user and every token they hold."
   @spec delete(User.t()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
@@ -148,19 +127,14 @@ defmodule Beamlet.Users do
   Creates a token for a user. `kind` picks the shape and is `cli` when
   absent: a `cli` token takes `name` and an optional `policy`; an
   `oauth` token takes `client`, `policy`, `expires_at` and
-  `refresh_expires_at`.
-
-  The policy must be one the user may carry (`policies/1`); a
-  bounded user whose list lacks `default` gets no default, so a
-  `cli` token for them must name its policy. Anything else is a
-  changeset error on `policy` naming what the user may use.
+  `refresh_expires_at`. The policy must be one the beamlet declares.
 
   The returned token carries its `secret`, and an `oauth` token its
   `refresh_secret` too; nothing else ever will.
   """
   @spec create_token(User.t(), map() | keyword()) ::
           {:ok, Token.t()} | {:error, Ecto.Changeset.t()}
-  def create_token(%User{id: user_id} = user, attrs) do
+  def create_token(%User{id: user_id}, attrs) do
     attrs = Map.new(attrs)
     token = %Token{user_id: user_id}
 
@@ -171,14 +145,13 @@ defmodule Beamlet.Users do
       end
 
     changeset
-    |> validate_user_policy(user)
     |> put_secret(:secret)
     |> Repo.insert()
   end
 
   @doc """
-  Updates a `cli` token's name or policy; the policy must be one its
-  user may carry (`policies/1`). The secret cannot change; create a
+  Updates a `cli` token's name or policy; the policy must be one the
+  beamlet declares. The secret cannot change; create a
   new token instead. An `oauth` token is not editable: its client is
   verified identity and its policy was chosen at consent, so the
   answer is `{:error, :oauth_token}`.
@@ -187,10 +160,9 @@ defmodule Beamlet.Users do
           {:ok, Token.t()} | {:error, Ecto.Changeset.t() | :oauth_token}
   def update_token(%Token{kind: :oauth}, _attrs), do: {:error, :oauth_token}
 
-  def update_token(%Token{user_id: user_id} = token, attrs) do
+  def update_token(%Token{} = token, attrs) do
     token
     |> Token.cli_changeset(Map.new(attrs))
-    |> validate_user_policy(Repo.get!(User, user_id))
     |> Repo.update()
   end
 
@@ -322,25 +294,6 @@ defmodule Beamlet.Users do
   @doc "Deletes a session, signing its browser out."
   @spec delete_session(Session.t()) :: {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
   def delete_session(%Session{} = session), do: Repo.delete(session)
-
-  # The policy is read as a field rather than a change: a cli token
-  # named with no policy carries the schema's default, and a bounded
-  # user who may not use it must hear so here.
-  defp validate_user_policy(changeset, %User{policies: []}), do: changeset
-
-  defp validate_user_policy(changeset, %User{name: name, policies: policies}) do
-    policy = Ecto.Changeset.get_field(changeset, :policy)
-
-    if policy in policies or Keyword.has_key?(changeset.errors, :policy) do
-      changeset
-    else
-      Ecto.Changeset.add_error(
-        changeset,
-        :policy,
-        "#{policy} is not a policy #{name} may use (#{name}'s policies: #{Enum.join(policies, ", ")})"
-      )
-    end
-  end
 
   defp expiring(token, expires_at) do
     if DateTime.compare(expires_at, DateTime.utc_now()) == :gt,

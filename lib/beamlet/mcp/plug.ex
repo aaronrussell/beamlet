@@ -12,6 +12,8 @@ defmodule Beamlet.MCP.Plug do
 
       Authorization: Bearer <token>
 
+  The scheme is matched in any case, as HTTP has it.
+
   The plug turns that secret into its token and user, puts the
   `Beamlet.Principal` in the conn's assigns under `:principal`, and
   hands the request to the MCP transport, which carries the assigns
@@ -26,10 +28,7 @@ defmodule Beamlet.MCP.Plug do
   its own authorization server and starts the flow. A token naming a
   policy the beamlet does not declare, one removed from config since
   the token was created, is a 403 with a line naming the token and
-  the policy: the credential is real but insufficient. So is a token
-  naming a policy outside its user's current list
-  (`Beamlet.Users.policies/1`), which is how narrowing a user's
-  policies takes effect on their existing tokens at once.
+  the policy: the credential is real but insufficient.
 
   The transport waits `config :beamlet, mcp: [request_timeout: ...]`
   for a request's answer (`Beamlet.Config.mcp/0`), read per request
@@ -58,21 +57,22 @@ defmodule Beamlet.MCP.Plug do
   def call(conn, transport_opts) do
     with {:ok, secret} <- bearer(conn),
          {:ok, token} <- Users.authenticate(secret),
-         :ok <- declared(token),
-         :ok <- granted(token) do
+         :ok <- declared(token) do
       conn
       |> assign(:principal, Principal.from_token(token))
       |> StreamableHTTP.Plug.call(%{transport_opts | timeout: Config.mcp()[:request_timeout]})
     else
-      {:error, {:no_policy, token}} -> forbidden(conn, token, :undeclared)
-      {:error, {:not_granted, token}} -> forbidden(conn, token, :not_granted)
+      {:error, {:no_policy, token}} -> forbidden(conn, token)
       {:error, _reason} -> unauthorized(conn)
     end
   end
 
   defp bearer(conn) do
-    case get_req_header(conn, "authorization") do
-      ["Bearer " <> secret] -> {:ok, secret}
+    with [header] <- get_req_header(conn, "authorization"),
+         [scheme, secret] <- String.split(header, " ", parts: 2),
+         "bearer" <- String.downcase(scheme) do
+      {:ok, secret}
+    else
       _other -> {:error, :no_token}
     end
   end
@@ -82,10 +82,6 @@ defmodule Beamlet.MCP.Plug do
       {:ok, _policy} -> :ok
       {:error, :not_found} -> {:error, {:no_policy, token}}
     end
-  end
-
-  defp granted(%Token{policy: policy, user: user} = token) do
-    if policy in Users.policies(user), do: :ok, else: {:error, {:not_granted, token}}
   end
 
   defp unauthorized(conn) do
@@ -98,19 +94,13 @@ defmodule Beamlet.MCP.Plug do
     |> send_resp(401, @body)
   end
 
-  defp forbidden(conn, token, reason) do
+  defp forbidden(conn, token) do
     conn
     |> put_resp_content_type("text/plain")
     |> send_resp(
       403,
-      "Token #{Token.label(token)} names policy #{token.policy}, " <> why(token, reason)
+      "Token #{Token.label(token)} names policy #{token.policy}, " <>
+        "which this beamlet does not declare."
     )
-  end
-
-  defp why(_token, :undeclared), do: "which this beamlet does not declare."
-
-  defp why(%Token{user: user}, :not_granted) do
-    "which its user #{user.name} may not use (#{user.name}'s policies: " <>
-      Enum.join(user.policies, ", ") <> ")."
   end
 end
