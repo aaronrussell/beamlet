@@ -109,7 +109,7 @@ defmodule Beamlet.Router do
     plug :require_auth
   end
 
-  # 1. Bealmet UI routes
+  # 1. Beamlet UI routes
 
   scope "/beamlet", Beamlet.Web do
     pipe_through :browser
