@@ -260,6 +260,23 @@ defmodule Beamlet.Code do
     File.mkdir_p!(migrations_dir)
     File.mkdir_p!(ebin_dir)
     File.rm_rf!(staging_dir)
+
+    # The table, a bag keyed by row kind. Per compile, written while
+    # it runs; :ctx lives from Tracer.install/1 to Tracer.uninstall/1,
+    # and clear_records/0 clears the rest before the next compile:
+    #
+    #   {:ctx, ctx}                          the roots and granted names
+    #                                        the tracer reads
+    #   {:compiled, mod, file, binary}       each module compiled; capture/3
+    #   {:edge, from, to}                    a compile-time dependency; Tracer
+    #   {:call, caller, callee, fun, arity}  a remote call; Tracer
+    #
+    # Published, rewritten from the state by publish/1 after every
+    # change, and read outside the lane by defined/0, manifest/0,
+    # quarantined/0 and source_file/1:
+    #
+    #   {:defined, mod, source_file, beam_file, migration}
+    #   {:quarantined, file, modules, error}
     :ets.new(__MODULE__, [:named_table, :bag, :public])
 
     state = %{
@@ -355,95 +372,147 @@ defmodule Beamlet.Code do
     {:error, "patch names no modules — pass one patch per change"}
   end
 
-  defp run_define(state, entries, principal, %{timeout: timeout} = run, caller_ref) do
-    buffer_modules = Enum.map(entries, & &1.module)
+  # A run is one define or patch going through the lane: one map the
+  # stages grow, each adding its keys.
+  #
+  #   define/3    timeout, verb, context
+  #   prepare/4   entries, principal, entry_modules, new, replaced,
+  #               placements ({path, version} per module), dependents
+  #   stage/2     staged ({module, staging file}), files (what the
+  #               compiler takes: staged and dependents' files),
+  #               previous (the versions unloaded), locators
+  #
+  # Every stage after stage/2 has changed something, so any failure
+  # from there rolls back here, and nowhere else.
+  defp run_define(state, entries, principal, run, caller_ref) do
+    with {:ok, run} <- prepare(state, entries, principal, run) do
+      run = stage(state, run)
+
+      result =
+        with {:ok, warnings} <- compile(state, run, caller_ref),
+             :ok <- verify(state, run, warnings) do
+          commit(state, run)
+        end
+
+      case result do
+        {:ok, _summary, _state} ->
+          result
+
+        failure ->
+          rollback(state, run)
+          failure
+      end
+    end
+  end
+
+  # Every check that needs no compile, and the dependents a replace
+  # recompiles. Nothing has changed yet, so a refusal needs no undo.
+  defp prepare(state, entries, principal, run) do
+    entry_modules = Enum.map(entries, & &1.module)
 
     with :ok <- check_hashes(state, entries),
-         {:ok, new_mods, replaced} <- classify(state, entries),
+         {:ok, new, replaced} <- classify(state, entries),
          :ok <- check_not_applied(state, replaced, verb_word(run.verb)),
          {:ok, placements} <- placements(state, entries),
          :ok <- check_paths(state, entries, placements) do
       dependents =
         state.deps
         |> dependents_closure(replaced)
-        |> MapSet.difference(MapSet.new(buffer_modules))
+        |> MapSet.difference(MapSet.new(entry_modules))
         |> Enum.sort()
 
-      closure_files = Enum.map(dependents, &Map.fetch!(state.modules, &1))
-      staged = write_staging(state, entries, placements)
-      staging_files = Enum.map(staged, fn {_mod, file} -> file end)
+      {:ok,
+       Map.merge(run, %{
+         entries: entries,
+         principal: principal,
+         entry_modules: entry_modules,
+         new: new,
+         replaced: replaced,
+         placements: placements,
+         dependents: dependents
+       })}
+    end
+  end
 
-      # Fully removed, not just purged: the compiler resolves struct
-      # and macro references against loaded modules, so a dependent
-      # would silently recompile against the old version if it were
-      # still loaded. Absent modules make the parallel compiler wait
-      # for the in-flight new versions instead. Rollback restores
-      # them from their beams.
-      previous = with_generated(state, replaced ++ dependents)
-      Enum.each(previous, &remove_module/1)
-      clear_records()
+  defp stage(state, run) do
+    staged = write_staging(state, run.entries, run.placements)
+    dependent_files = Enum.map(run.dependents, &Map.fetch!(state.modules, &1))
 
-      ctx = %{
-        roots: MapSet.new(staging_files ++ closure_files),
-        granted: MapSet.union(known_module_names(state), MapSet.new(buffer_modules))
-      }
+    # Fully removed, not just purged: the compiler resolves struct
+    # and macro references against loaded modules, so a dependent
+    # would silently recompile against the old version if it were
+    # still loaded. Absent modules make the parallel compiler wait
+    # for the in-flight new versions instead. Rollback restores
+    # them from their beams.
+    previous = with_generated(state, run.replaced ++ run.dependents)
+    Enum.each(previous, &remove_module/1)
+    clear_records()
 
-      outcome =
-        with_compiler_env(ctx, fn ->
-          task =
-            Task.Supervisor.async_nolink(Beamlet.TaskSupervisor, fn ->
-              Kernel.ParallelCompiler.compile(staging_files ++ closure_files,
-                return_diagnostics: true,
-                dest: state.ebin_dir,
-                each_module: &capture/3
-              )
-            end)
+    Map.merge(run, %{
+      staged: staged,
+      files: Enum.map(staged, fn {_mod, file} -> file end) ++ dependent_files,
+      previous: previous,
+      locators: locators(state, staged, run)
+    })
+  end
 
-          await(task, caller_ref, timeout)
-        end)
+  defp compile(state, run, caller_ref) do
+    ctx = %{
+      roots: MapSet.new(run.files),
+      granted: MapSet.union(known_module_names(state), MapSet.new(run.entry_modules))
+    }
 
-      locators = locators(state, staged, entries, placements, dependents)
+    outcome =
+      with_compiler_env(ctx, fn ->
+        task =
+          Task.Supervisor.async_nolink(Beamlet.TaskSupervisor, fn ->
+            Kernel.ParallelCompiler.compile(run.files,
+              return_diagnostics: true,
+              dest: state.ebin_dir,
+              each_module: &capture/3
+            )
+          end)
 
-      render = %{
-        context: run.context,
-        locators: locators,
-        code_dir: state.code_dir,
-        staging_dir: state.staging_dir
-      }
+        await(task, caller_ref, run.timeout)
+      end)
 
-      case outcome do
-        {:ok, {:ok, _modules, %{compile_warnings: warnings}}} ->
-          with :ok <- check_grouped(warnings, locators),
-               :ok <- check_kinds(entries),
-               owners = compile_owners(state, buffer_modules),
-               calls = merge_calls(state, buffer_modules ++ dependents, owners),
-               [] <- broken_callers(calls, replaced) do
-            commit(state, staged, entries, replaced, dependents, principal, placements, run.verb)
-          else
-            {:error, message} ->
-              rollback(state, new_mods, previous)
-              {:error, message}
+    case outcome do
+      {:ok, {:ok, _modules, %{compile_warnings: warnings}}} ->
+        {:ok, warnings}
 
-            breaks ->
-              rollback(state, new_mods, previous)
-              {:error, render_broken_callers(breaks)}
-          end
+      {:ok, {:error, diagnostics, _warnings}} ->
+        render = %{
+          context: run.context,
+          locators: run.locators,
+          code_dir: state.code_dir,
+          staging_dir: state.staging_dir
+        }
 
-        {:ok, {:error, diagnostics, _warnings}} ->
-          rollback(state, new_mods, previous)
-          {:error, render_compile_error(state, diagnostics, render, replaced, dependents)}
+        {:error, render_compile_error(state, diagnostics, render, run.replaced, run.dependents)}
 
-        :timeout ->
-          rollback(state, new_mods, previous)
-          {:error, "#{run.verb} timed out after #{timeout}ms — nothing was changed"}
+      :timeout ->
+        {:error, "#{run.verb} timed out after #{run.timeout}ms — nothing was changed"}
 
-        :cancelled ->
-          rollback(state, new_mods, previous)
-          :cancelled
+      :cancelled ->
+        :cancelled
 
-        {:exit, reason} ->
-          rollback(state, new_mods, previous)
-          {:error, "#{run.verb} failed (#{inspect(reason)}) — nothing was changed"}
+      {:exit, reason} ->
+        {:error, "#{run.verb} failed (#{inspect(reason)}) — nothing was changed"}
+    end
+  end
+
+  # What only the compiled modules can show: clauses the compiler
+  # warned are scattered, a kind the `use` line did not predict, and
+  # a replaced module's callers left calling what it dropped.
+  defp verify(state, run, warnings) do
+    with :ok <- check_grouped(warnings, run.locators),
+         :ok <- check_kinds(run.entries) do
+      owners = compile_owners(state, run.entry_modules)
+      calls = merge_calls(state, run.entry_modules ++ run.dependents, owners)
+
+      case broken_callers(calls, run.replaced) do
+        [] -> :ok
+        breaks -> {:error, render_broken_callers(breaks)}
       end
     end
   end
@@ -491,19 +560,19 @@ defmodule Beamlet.Code do
   # is what the quoted line is read from, held here because the
   # staged copy is gone by the time an error renders. A patched
   # entry's label names the patches that produced it.
-  defp locators(state, staged, entries, placements, dependents) do
-    labels = Map.new(entries, fn entry -> {entry.module, Map.get(entry, :label)} end)
+  defp locators(state, staged, run) do
+    labels = Map.new(run.entries, fn entry -> {entry.module, Map.get(entry, :label)} end)
 
     staged_locators =
       Map.new(staged, fn {mod, staging_file} ->
-        {path, _version} = Map.fetch!(placements, mod)
+        {path, _version} = Map.fetch!(run.placements, mod)
         source = File.read!(staging_file)
 
         {staging_file,
          %{module: mod, locator: relative(state, path), source: source, label: labels[mod]}}
       end)
 
-    Map.new(dependents, fn mod ->
+    Map.new(run.dependents, fn mod ->
       file = Map.fetch!(state.modules, mod)
       {file, %{module: mod, locator: relative(state, file), source: File.read!(file), label: nil}}
     end)
@@ -809,13 +878,31 @@ defmodule Beamlet.Code do
 
   # Commit and rollback
 
-  defp commit(state, staged, entries, replaced, dependents, principal, placements, verb) do
-    buffer_modules = Enum.map(entries, & &1.module)
+  defp commit(state, run) do
+    diffs = replace_diffs(state, run)
     compiled = compiled_records()
-    diffs = Map.new(replaced, fn mod -> {mod, replace_diff(state, mod, staged)} end)
+    persist(state, run, compiled)
+    state = committed_state(state, run, compiled)
+    publish(state)
+    audit(state, run, diffs)
+    {:ok, summary(run, state.calls, diffs), state}
+  end
 
-    Enum.each(staged, fn {mod, staging_file} ->
-      {path, _version} = Map.fetch!(placements, mod)
+  # What a replace did to the module's functions, read before the
+  # staged text moves over the old file, which is the last moment the
+  # old source exists. A quarantined module's old source is its
+  # quarantined file, whatever else that file holds.
+  defp replace_diffs(state, run) do
+    Map.new(run.replaced, fn mod ->
+      {^mod, staging_file} = List.keyfind(run.staged, mod, 0)
+      {:ok, old_file} = source_file(state, mod)
+      {mod, Source.diff(File.read!(old_file), File.read!(staging_file))}
+    end)
+  end
+
+  defp persist(state, run, compiled) do
+    Enum.each(run.staged, fn {mod, staging_file} ->
+      {path, _version} = Map.fetch!(run.placements, mod)
       File.mkdir_p!(Path.dirname(path))
       File.rename!(staging_file, path)
       remove_divergent_source(state, mod, path)
@@ -826,57 +913,43 @@ defmodule Beamlet.Code do
     end)
 
     clear_staging(state)
+  end
 
+  defp committed_state(state, run, compiled) do
     modules =
-      Enum.reduce(buffer_modules, state.modules, fn mod, modules ->
-        {path, _version} = Map.fetch!(placements, mod)
+      Enum.reduce(run.entry_modules, state.modules, fn mod, modules ->
+        {path, _version} = Map.fetch!(run.placements, mod)
         Map.put(modules, mod, path)
       end)
 
-    owners = compile_owners(state, buffer_modules)
+    owners = compile_owners(state, run.entry_modules)
 
     compiled_mods =
       for {:compiled, mod, _file, _binary} <- compiled, not Map.has_key?(owners, mod), do: mod
 
-    generated = replace_generated(state, compiled_mods, owners)
-
     quarantined =
       Enum.reject(state.quarantined, fn entry ->
-        Enum.any?(entry.modules, &(&1 in buffer_modules))
+        Enum.any?(entry.modules, &(&1 in run.entry_modules))
       end)
 
-    calls = merge_calls(state, compiled_mods, owners)
-
-    state = %{
+    %{
       state
       | modules: modules,
         deps: merge_deps(state, compiled_mods, owners),
-        calls: calls,
-        generated: generated,
+        calls: merge_calls(state, compiled_mods, owners),
+        generated: replace_generated(state, compiled_mods, owners),
         quarantined: quarantined
     }
-
-    publish(state)
-
-    case verb do
-      :define -> Audit.record_define(state.code_dir, buffer_modules, replaced, diffs, principal)
-      :patch -> Audit.record_patch(state.code_dir, buffer_modules, diffs, principal)
-    end
-
-    caller_lines = runtime_caller_lines(calls, replaced, buffer_modules)
-    heads = Map.new(buffer_modules, fn mod -> {mod, head(verb, mod, replaced, placements)} end)
-    {:ok, summary(buffer_modules, heads, dependents, caller_lines, diffs), state}
   end
 
-  # What a replace did to the module's functions, read before the
-  # staged text moves over the old file, which is the last moment the
-  # old source exists. A quarantined module's old source is its
-  # quarantined file, whatever else that file holds.
-  defp replace_diff(state, mod, staged) do
-    {^mod, staging_file} = List.keyfind(staged, mod, 0)
+  defp audit(state, run, diffs) do
+    case run.verb do
+      :define ->
+        Audit.record_define(state.code_dir, run.entry_modules, run.replaced, diffs, run.principal)
 
-    {:ok, old_file} = source_file(state, mod)
-    Source.diff(File.read!(old_file), File.read!(staging_file))
+      :patch ->
+        Audit.record_patch(state.code_dir, run.entry_modules, diffs, run.principal)
+    end
   end
 
   # source_file/1 over the server's own state, which the table is
@@ -896,14 +969,17 @@ defmodule Beamlet.Code do
 
   # Neither define nor patch applies a migration, and the moment of
   # definition is when the cue to run it matters.
-  defp head(verb, mod, replaced, placements) do
+  defp head(run, mod) do
     verb_part =
-      case verb do
-        :define -> "Defined #{inspect(mod)} (#{if mod in replaced, do: "replaced", else: "new"})"
-        :patch -> "Patched #{inspect(mod)}"
+      case run.verb do
+        :define ->
+          "Defined #{inspect(mod)} (#{if mod in run.replaced, do: "replaced", else: "new"})"
+
+        :patch ->
+          "Patched #{inspect(mod)}"
       end
 
-    case Map.fetch!(placements, mod) do
+    case Map.fetch!(run.placements, mod) do
       {_path, nil} ->
         verb_part
 
@@ -915,10 +991,10 @@ defmodule Beamlet.Code do
   # A replace and a patch say what they did to the module's
   # functions, since a function lost in a re-emission is otherwise
   # lost silently.
-  defp summary(buffer_modules, heads, dependents, caller_lines, diffs) do
+  defp summary(run, calls, diffs) do
     lines =
-      Enum.flat_map(buffer_modules, fn mod ->
-        head = Map.fetch!(heads, mod)
+      Enum.flat_map(run.entry_modules, fn mod ->
+        head = head(run, mod)
 
         case diffs do
           %{^mod => diff} -> [head | Source.render_diff(diff)]
@@ -927,25 +1003,26 @@ defmodule Beamlet.Code do
       end)
 
     lines =
-      case dependents do
+      case run.dependents do
         [] ->
           lines
 
-        _some ->
+        dependents ->
           lines ++ ["Recompiled dependents: #{Enum.map_join(dependents, ", ", &inspect/1)}"]
       end
 
+    caller_lines = runtime_caller_lines(calls, run.replaced, run.entry_modules)
     Enum.join(lines ++ caller_lines, "\n")
   end
 
-  # Callers outside the buffer survive a replace unrecompiled, since
+  # Callers outside the entries survive a replace unrecompiled, since
   # their calls resolve at runtime, so the summary names them and
   # what they call, as fact: whether the replacement still suits them
   # is the agent's judgment.
-  defp runtime_caller_lines(calls, replaced, buffer_modules) do
+  defp runtime_caller_lines(calls, replaced, entry_modules) do
     callers =
       for {caller, targets} <- calls,
-          caller not in buffer_modules,
+          caller not in entry_modules,
           {callee, fas} <- targets,
           callee in replaced,
           fa <- fas,
@@ -1016,11 +1093,11 @@ defmodule Beamlet.Code do
   # Besides the new entries, the compile may have loaded modules no
   # previous version had, an embedded schema a replace renamed, and
   # those go too.
-  defp rollback(state, new_mods, previous_mods) do
+  defp rollback(state, run) do
     compiled = for {:compiled, mod, _file, _binary} <- compiled_records(), do: mod
-    Enum.each(Enum.uniq(new_mods ++ compiled) -- previous_mods, &remove_module/1)
+    Enum.each(Enum.uniq(run.new ++ compiled) -- run.previous, &remove_module/1)
 
-    Enum.each(previous_mods, fn mod ->
+    Enum.each(run.previous, fn mod ->
       path = beam_path(state, mod)
 
       case File.read(path) do
@@ -1396,56 +1473,50 @@ defmodule Beamlet.Code do
         )
       end)
 
-    case result do
-      {:ok, _modules, %{compile_warnings: warnings}} ->
-        case scattered_clauses(warnings) do
-          [] ->
-            finalize_boot(state, file_modules, quarantined)
+    case boot_errors(state, files, result) do
+      errors when map_size(errors) == 0 ->
+        finalize_boot(state, file_modules, quarantined)
 
-          scattered ->
-            by_file = Enum.group_by(scattered, &elem(&1, 0))
-
-            quarantine_files(
-              state,
-              files,
-              file_modules,
-              quarantined,
-              by_file |> Map.keys() |> Enum.sort(),
-              fn file ->
-                by_file
-                |> Map.fetch!(file)
-                |> Enum.map_join("; ", &render_scattered(&1, relative(state, file)))
-              end
-            )
-        end
-
-      {:error, diagnostics, _warnings} ->
-        bad_files =
-          diagnostics
-          |> Enum.map(& &1.file)
-          |> Enum.uniq()
-          |> Enum.filter(&(&1 in files))
-
-        # An unattributable failure quarantines everything remaining
-        # rather than looping forever.
-        bad_files = if bad_files == [], do: files, else: bad_files
-
-        quarantine_files(state, files, file_modules, quarantined, bad_files, fn file ->
-          boot_error(diagnostics, file)
-        end)
+      errors ->
+        entries = quarantine_files(state, file_modules, errors)
+        boot_loop(state, files -- Map.keys(errors), Enum.reverse(entries) ++ quarantined)
     end
   end
 
-  defp quarantine_files(state, files, file_modules, quarantined, bad_files, error_fun) do
+  # Each file the round must quarantine, with the error it carries.
+  defp boot_errors(state, _files, {:ok, _modules, %{compile_warnings: warnings}}) do
+    warnings
+    |> scattered_clauses()
+    |> Enum.group_by(&elem(&1, 0))
+    |> Map.new(fn {file, scattered} ->
+      {file, Enum.map_join(scattered, "; ", &render_scattered(&1, relative(state, file)))}
+    end)
+  end
+
+  defp boot_errors(_state, files, {:error, diagnostics, _warnings}) do
+    bad_files =
+      diagnostics
+      |> Enum.map(& &1.file)
+      |> Enum.uniq()
+      |> Enum.filter(&(&1 in files))
+
+    # An unattributable failure quarantines everything remaining
+    # rather than looping forever.
+    bad_files = if bad_files == [], do: files, else: bad_files
+    Map.new(bad_files, &{&1, boot_error(diagnostics, &1)})
+  end
+
+  defp quarantine_files(state, file_modules, errors) do
     entries =
-      Enum.map(bad_files, fn file ->
-        error = error_fun.(file)
+      errors
+      |> Enum.sort()
+      |> Enum.map(fn {file, error} ->
         Logger.warning("code boot: quarantined #{relative(state, file)}: #{error}")
         %{file: file, modules: Map.fetch!(file_modules, file), error: error}
       end)
 
-    purge_captured(bad_files)
-    boot_loop(state, files -- bad_files, Enum.reverse(entries) ++ quarantined)
+    purge_captured(Map.keys(errors))
+    entries
   end
 
   # The defined set is what the files declare at top level, as at
@@ -1628,8 +1699,8 @@ defmodule Beamlet.Code do
     |> Map.new()
   end
 
-  defp compile_owners(state, buffer_modules) do
-    generated_owners(&(&1 in buffer_modules or Map.has_key?(state.modules, &1)))
+  defp compile_owners(state, entry_modules) do
+    generated_owners(&(&1 in entry_modules or Map.has_key?(state.modules, &1)))
   end
 
   # A recompiled file's generated modules are the ones this compile
