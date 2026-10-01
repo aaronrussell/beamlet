@@ -79,12 +79,20 @@ defmodule BeamletSystemOnlyTest do
   use ExUnit.Case
 
   test "only: :system starts the policies and the system database, nothing else" do
+    agent_db = Beamlet.Config.agent_db_file()
+    File.rm_rf!(Beamlet.Config.files_dir())
+    for file <- [agent_db, agent_db <> "-wal", agent_db <> "-shm"], do: File.rm(file)
+
     start_supervised!({Beamlet, only: :system})
 
     assert Process.whereis(Beamlet.Policies)
     assert Process.whereis(Beamlet.Repo)
     refute Process.whereis(Host.Repo)
     refute Process.whereis(Beamlet.MCP.Server)
+
+    assert File.exists?(Beamlet.Config.system_db_file())
+    refute File.exists?(agent_db)
+    refute File.exists?(Beamlet.Config.files_dir())
   end
 
   @tag :capture_log

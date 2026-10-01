@@ -99,15 +99,20 @@ defmodule Beamlet do
   end
 
   # The world the checked config points at: the data dir exists, the
-  # files dir and the database files do, before any child runs. The
-  # full boot also needs an endpoint to serve the routes through; the
-  # system half serves nothing.
+  # migrations and the system database do, before any child runs. The
+  # full boot also needs an endpoint to serve the routes through, the
+  # files dir and the agent database; the system half touches nothing
+  # an agent reaches.
   defp prepare!(only) do
     ensure_data_dir!()
     ensure_migrations!()
-    if only == nil, do: ensure_endpoint!()
-    File.mkdir_p!(Config.files_dir())
-    Enum.each([Beamlet.Repo, Host.Repo], &ensure_database!/1)
+    ensure_database!(Beamlet.Repo)
+
+    if only == nil do
+      ensure_endpoint!()
+      File.mkdir_p!(Config.files_dir())
+      ensure_database!(Host.Repo)
+    end
   end
 
   defp ensure_data_dir! do
