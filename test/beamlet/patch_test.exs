@@ -133,10 +133,10 @@ defmodule Beamlet.PatchTest do
       assert message ==
                "patch 1 (#{inspect(mod)}, find \"def total(x)\"): no match — quote text " <>
                  "exactly as Host.Code.print_source prints it. Source is stored formatted, " <>
-                 "so text from a define buffer may differ from what is stored."
+                 "so it may differ from the code you passed to define."
     end
 
-    test "text from the define buffer that the formatter changed does not match", ctx do
+    test "code passed to define that the formatter changed does not match", ctx do
       ns = unique_namespace()
       mod = Module.concat([ns, Loose])
       purge_on_exit([mod])

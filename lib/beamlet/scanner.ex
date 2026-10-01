@@ -643,7 +643,7 @@ defmodule Beamlet.Scanner do
 
   defp check_local(acc, meta, fun, arity) do
     cond do
-      # Buffer-defined functions come first: a local may shadow a
+      # The scanned code's own functions come first: a local may shadow a
       # denied Kernel import, and function heads read as local calls.
       MapSet.member?(acc.locals, {fun, arity}) ->
         acc

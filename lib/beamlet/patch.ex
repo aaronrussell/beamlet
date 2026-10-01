@@ -327,13 +327,13 @@ defmodule Beamlet.Patch do
 
   defp find_error(patch, :not_found) do
     "#{label(patch)}: no match — quote text exactly as Host.Code.print_source prints it. " <>
-      "Source is stored formatted, so text from a define buffer may differ from what is stored."
+      "Source is stored formatted, so it may differ from the code you passed to define."
   end
 
   defp find_error(patch, :indented) do
     "#{label(patch)}: no exact match, though the text matches once with leading whitespace " <>
       "ignored — quote it with its indentation as Host.Code.print_source prints it. Source " <>
-      "is stored formatted, so text from a define buffer may differ from what is stored."
+      "is stored formatted, so it may differ from the code you passed to define."
   end
 
   defp find_error(patch, {:several, count}) do

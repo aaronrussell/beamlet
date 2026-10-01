@@ -161,9 +161,8 @@ defmodule Beamlet.Policy do
 
   The other half of the effective grants: modules defined on the
   beamlet are granted by existence, so the runtimes merge the defined
-  set in before every scan (`Beamlet.Code.defined/0`), and the
-  scanner grants a `define` buffer's own modules to each other the
-  same way.
+  set in before every scan (`Beamlet.Code.defined/0`), and `define`
+  grants the modules of one call to each other the same way.
   """
   @spec grant(t(), [module()]) :: t()
   def grant(%__MODULE__{grants: grants} = policy, modules) do
