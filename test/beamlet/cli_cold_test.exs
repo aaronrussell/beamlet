@@ -57,4 +57,22 @@ defmodule Beamlet.CLIColdTest do
     assert Process.whereis(Beamlet) == nil
     assert Process.whereis(Beamlet.Repo) == nil
   end
+
+  test "a boot check raised outside any child fails the command with its message" do
+    data_dir = Application.fetch_env!(:beamlet, :data_dir)
+    on_exit(fn -> Application.put_env(:beamlet, :data_dir, data_dir) end)
+
+    missing =
+      Path.join(System.tmp_dir!(), "beamlet_missing_#{System.unique_integer([:positive])}")
+
+    Application.put_env(:beamlet, :data_dir, missing)
+
+    assert {:error, output} = with_io(:stderr, fn -> CLI.main(["users"]) end)
+
+    assert output ==
+             "config :beamlet, :data_dir does not exist: #{missing} " <>
+               "(create or mount it before starting)\n"
+
+    assert Process.whereis(Beamlet) == nil
+  end
 end

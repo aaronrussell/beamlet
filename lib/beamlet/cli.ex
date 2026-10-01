@@ -554,14 +554,19 @@ defmodule Beamlet.CLI do
             Supervisor.stop(pid)
           end
 
-        {:error, {:shutdown, {:failed_to_start_child, _child, {error, _stack}}}}
-        when is_exception(error) ->
-          fail(Exception.message(error))
+        {:error, reason} ->
+          fail(boot_error(reason))
       end
     after
       Process.flag(:trap_exit, trapping?)
     end
   end
+
+  # A child that fails to start arrives wrapped; an exception raised in
+  # Beamlet.init/1 itself, a bad config or a missing dir, arrives bare.
+  defp boot_error({:shutdown, {:failed_to_start_child, _child, reason}}), do: boot_error(reason)
+  defp boot_error({error, _stack}) when is_exception(error), do: Exception.message(error)
+  defp boot_error(reason), do: "The beamlet failed to start: #{inspect(reason)}"
 
   defp table(headers, rows) do
     rows = [headers | Enum.map(rows, fn row -> Enum.map(row, &to_string/1) end)]
