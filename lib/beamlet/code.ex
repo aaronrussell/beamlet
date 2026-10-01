@@ -83,6 +83,7 @@ defmodule Beamlet.Code do
 
   alias Beamlet.Code.Audit
   alias Beamlet.Code.Docs
+  alias Beamlet.Code.Entry
   alias Beamlet.Code.Source
   alias Beamlet.Code.Tracer
   alias Beamlet.Config
@@ -692,13 +693,13 @@ defmodule Beamlet.Code do
         Enum.map_reduce(entries, floor + 1, fn %{module: mod} = entry, next ->
           cond do
             entry.kind == :module ->
-              {{mod, {module_path(state.lib_dir, mod), nil}}, next}
+              {{mod, {named_path(state, mod, :module), nil}}, next}
 
             version = migration_version(state, mod) ->
-              {{mod, {migration_path(state, version, mod), version}}, next}
+              {{mod, {named_path(state, mod, :migration, version), version}}, next}
 
             true ->
-              {{mod, {migration_path(state, next, mod), next}}, next + 1}
+              {{mod, {named_path(state, mod, :migration, next), next}}, next + 1}
           end
         end)
 
@@ -803,12 +804,8 @@ defmodule Beamlet.Code do
     end
   end
 
-  # Four-digit padding is cosmetic; the version is parsed numerically.
-  defp migration_path(state, version, mod) do
-    name = mod |> Macro.underscore() |> String.replace("/", "_")
-    number = version |> Integer.to_string() |> String.pad_leading(4, "0")
-    Path.join(state.migrations_dir, "#{number}_#{name}.ex")
-  end
+  defp named_path(state, mod, kind, version \\ nil),
+    do: Path.join(state.code_dir, Entry.named_path(mod, kind, version))
 
   # Commit and rollback
 
@@ -1691,7 +1688,7 @@ defmodule Beamlet.Code do
         case Code.string_to_quoted(code) do
           {:ok, ast} ->
             ast
-            |> block_forms()
+            |> Entry.block_forms()
             |> Enum.flat_map(fn
               {:defmodule, _meta, [{:__aliases__, _, parts} | _rest]} ->
                 if is_list(parts) and Enum.all?(parts, &is_atom/1),
@@ -1727,11 +1724,6 @@ defmodule Beamlet.Code do
   end
 
   defp clear_staging(state), do: File.rm_rf!(state.staging_dir)
-
-  defp block_forms({:__block__, _meta, forms}), do: forms
-  defp block_forms(form), do: [form]
-
-  defp module_path(lib_dir, mod), do: Path.join(lib_dir, Macro.underscore(mod) <> ".ex")
 
   defp beam_path(state, mod), do: Path.join(state.ebin_dir, "#{mod}.beam")
 

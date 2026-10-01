@@ -34,6 +34,8 @@ defmodule Beamlet.Code.Source do
   # inserted code trimmed of blank lines and set off by one, which
   # the formatter tidies later.
 
+  alias Beamlet.Code.Entry
+
   @function_kinds [:def, :defp, :defmacro, :defmacrop, :defguard, :defguardp, :defdelegate]
   @type_kinds [:type, :typep, :opaque]
   @callback_kinds [:callback, :macrocallback]
@@ -89,7 +91,7 @@ defmodule Beamlet.Code.Source do
 
       items =
         ast
-        |> block_forms()
+        |> Entry.block_forms()
         |> Enum.flat_map(&module_forms/1)
         |> walk(lines)
 
@@ -272,11 +274,8 @@ defmodule Beamlet.Code.Source do
 
   # ── The walk ──────────────────────────────────────────────────────
 
-  defp module_forms({:defmodule, _meta, [_name, [{_do, body}]]}), do: block_forms(body)
+  defp module_forms({:defmodule, _meta, [_name, [{_do, body}]]}), do: Entry.block_forms(body)
   defp module_forms(_other), do: []
-
-  defp block_forms({:__block__, _meta, forms}), do: forms
-  defp block_forms(form), do: [form]
 
   # Forward over the forms with two things in hand: the function
   # block under construction and the attachments waiting for
@@ -380,7 +379,7 @@ defmodule Beamlet.Code.Source do
     do: :attachment
 
   defp classify({kind, _meta, [head | _rest]}) when kind in @function_kinds do
-    case function_name(head) do
+    case Entry.function_name(head) do
       {:ok, name, arity} -> {:function, kind, name, arity}
       :error -> {:other, :other}
     end
@@ -400,7 +399,7 @@ defmodule Beamlet.Code.Source do
   end
 
   defp classify({:@, _meta, [{kind, _, [spec]}]}) when kind in @callback_kinds do
-    case function_name(callback_head(spec)) do
+    case Entry.function_name(callback_head(spec)) do
       {:ok, name, arity} -> {:definer, :callback, "@#{kind} #{name}/#{arity}"}
       :error -> {:other, :other}
     end
@@ -412,14 +411,6 @@ defmodule Beamlet.Code.Source do
   defp callback_head({:when, _meta, [spec | _guards]}), do: callback_head(spec)
   defp callback_head({:"::", _meta, [head, _return]}), do: head
   defp callback_head(other), do: other
-
-  defp function_name({:when, _meta, [head | _guards]}), do: function_name(head)
-
-  defp function_name({name, _meta, args}) when is_atom(name) do
-    {:ok, name, if(is_list(args), do: length(args), else: 0)}
-  end
-
-  defp function_name(_head), do: :error
 
   # A do-block ends at its `end`; a one-liner and a heredoc attribute
   # end where the parser says the expression does; the greatest line

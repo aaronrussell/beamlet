@@ -2,16 +2,23 @@ defmodule Beamlet.Code.DocsTest do
   use ExUnit.Case, async: true
 
   alias Beamlet.Code.Docs
+  alias Beamlet.Code.Entry
+
+  defp check(code) do
+    {:ok, ast} = Entry.parse(code)
+    {:ok, module, body} = Entry.module(ast)
+    Docs.check(module, body)
+  end
 
   defp check_error(code) do
-    assert {:error, message} = Docs.check(code)
+    assert {:error, message} = check(code)
     message
   end
 
   describe "check/1" do
     test "a fully documented module passes" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.A do
                  @moduledoc "A fixture."
 
@@ -60,7 +67,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "doc false satisfies the gate for functions" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.E do
                  @moduledoc "E."
 
@@ -72,7 +79,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "clauses share one doc, tracked per name" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.F do
                  @moduledoc "F."
 
@@ -85,7 +92,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "default arguments declare a head without needing a second doc" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.G do
                  @moduledoc "G."
 
@@ -98,7 +105,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "guards are unwrapped" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.H do
                  @moduledoc "H."
 
@@ -110,7 +117,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "private functions need no doc" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.I do
                  @moduledoc "I."
 
@@ -173,7 +180,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "a LiveView's undocumented callbacks pass" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.N do
                  @moduledoc "A live view."
                  use Phoenix.LiveView
@@ -187,7 +194,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "a controller's undocumented actions and helpers pass" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.O do
                  @moduledoc "A controller."
                  use Phoenix.Controller, formats: [:json]
@@ -200,7 +207,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "a LiveComponent's undocumented callbacks pass" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.P do
                  @moduledoc "A live component."
                  use Phoenix.LiveComponent
@@ -214,7 +221,7 @@ defmodule Beamlet.Code.DocsTest do
     test "use Host.Web, :live_view, :controller and :live_component exempt too" do
       for role <- [:live_view, :controller, :live_component] do
         assert :ok =
-                 Docs.check("""
+                 check("""
                  defmodule Docs.Fixture.W do
                    @moduledoc "Web."
                    use Host.Web, #{inspect(role)}
@@ -241,7 +248,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "use Ecto.Migration, Ecto.Type and Ecto.ParameterizedType exempt their callbacks" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.M do
                  @moduledoc "Creates a table."
                  use Ecto.Migration
@@ -251,7 +258,7 @@ defmodule Beamlet.Code.DocsTest do
                """)
 
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.T do
                  @moduledoc "A type."
                  use Ecto.Type
@@ -264,7 +271,7 @@ defmodule Beamlet.Code.DocsTest do
                """)
 
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.P do
                  @moduledoc "A parameterized type."
                  use Ecto.ParameterizedType
@@ -322,7 +329,7 @@ defmodule Beamlet.Code.DocsTest do
 
     test "the use line exempts wherever it sits in the module" do
       assert :ok =
-               Docs.check("""
+               check("""
                defmodule Docs.Fixture.S do
                  @moduledoc "A live view."
 
@@ -331,27 +338,6 @@ defmodule Beamlet.Code.DocsTest do
                  use Phoenix.LiveView
                end
                """)
-    end
-
-    test "the exemption is per module, not per buffer" do
-      message =
-        check_error("""
-        defmodule Docs.Fixture.T do
-          @moduledoc "A live view."
-          use Phoenix.LiveView
-
-          def mount(_params, _session, socket), do: {:ok, socket}
-        end
-
-        defmodule Docs.Fixture.U do
-          @moduledoc "Plain."
-
-          def add(a, b), do: a + b
-        end
-        """)
-
-      assert [only] = String.split(message, "\n")
-      assert only =~ "Docs.Fixture.U.add/2 is missing @doc"
     end
   end
 end

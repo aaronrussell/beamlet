@@ -1,7 +1,7 @@
 defmodule Beamlet.Code.Docs do
   @moduledoc false
 
-  # The docs gate on a define buffer. Documentation is the discovery
+  # The docs gate on a define entry. Documentation is the discovery
   # surface: what an agent defines is found later through its docs,
   # so an undocumented module is an unfindable one and the gate is
   # enforced, not suggested. Checked in the AST before compilation.
@@ -24,6 +24,8 @@ defmodule Beamlet.Code.Docs do
   # module's own API and its @doc is where the fields get written
   # down. `use Host.Web, :html` keeps it too, since components are
   # discoverable functions. The match is syntactic, on the `use` line.
+
+  alias Beamlet.Code.Entry
 
   @public_kinds [:def, :defmacro, :defdelegate]
   @private_kinds [:defp, :defmacrop]
@@ -52,37 +54,16 @@ defmodule Beamlet.Code.Docs do
     |> String.trim()
   end
 
-  @spec check(String.t()) :: :ok | {:error, String.t()}
-  def check(code) do
-    code
-    |> Code.string_to_quoted!()
-    |> top_level_modules()
-    |> Enum.flat_map(fn {module, body} -> check_module(module, body) end)
-    |> case do
+  @spec check(module(), Macro.t()) :: :ok | {:error, String.t()}
+  def check(module, body) do
+    case check_module(module, body) do
       [] -> :ok
       violations -> {:error, Enum.join(violations, "\n")}
     end
   end
 
-  defp top_level_modules(ast) do
-    ast
-    |> block_forms()
-    |> Enum.flat_map(fn
-      {:defmodule, _meta, [{:__aliases__, _, parts}, [{:do, body} | _]]} ->
-        if is_list(parts) and Enum.all?(parts, &is_atom/1),
-          do: [{Module.concat(parts), body}],
-          else: []
-
-      _other ->
-        []
-    end)
-  end
-
-  defp block_forms({:__block__, _meta, forms}), do: forms
-  defp block_forms(form), do: [form]
-
   defp check_module(module, body) do
-    forms = block_forms(body)
+    forms = Entry.block_forms(body)
 
     state = %{
       module: module,
@@ -120,7 +101,7 @@ defmodule Beamlet.Code.Docs do
   defp form({:@, _meta, [{:doc, _, [_value]}]}, state), do: %{state | pending_doc: true}
 
   defp form({kind, _meta, [head | _rest]}, state) when kind in @public_kinds do
-    case function_name(head) do
+    case Entry.function_name(head) do
       {:ok, name, arity} -> public_function(state, name, arity)
       :error -> state
     end
@@ -157,12 +138,4 @@ defmodule Beamlet.Code.Docs do
       %{state | violations: [violation | state.violations]}
     end
   end
-
-  defp function_name({:when, _meta, [head | _guards]}), do: function_name(head)
-
-  defp function_name({name, _meta, args}) when is_atom(name) do
-    {:ok, name, if(is_list(args), do: length(args), else: 0)}
-  end
-
-  defp function_name(_head), do: :error
 end

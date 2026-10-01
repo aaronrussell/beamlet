@@ -376,7 +376,7 @@ defmodule Beamlet.Patch do
       {:ok, ast} ->
         with {:ok, body} <- same_module(ast, state, label),
              {:ok, source} <- format(state, label),
-             :ok <- check(source, state, label, policy) do
+             :ok <- check(source, body, state, label, policy) do
           {:ok,
            %{
              module: state.module,
@@ -431,8 +431,10 @@ defmodule Beamlet.Patch do
     end
   end
 
-  defp check(source, state, label, policy) do
-    case Entry.check(source, state.module, policy, state.path, context: @context) do
+  defp check(source, body, state, label, policy) do
+    entry = %{module: state.module, body: body, source: source, path: state.path}
+
+    case Entry.check(entry, policy, context: @context) do
       :ok -> :ok
       {:error, message} -> {:error, "#{label}: #{message}"}
     end

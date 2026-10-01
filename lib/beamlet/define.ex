@@ -109,6 +109,7 @@ defmodule Beamlet.Define do
        %{
          index: index,
          module: module,
+         body: body,
          kind: kind,
          path: Entry.path(module, kind, manifest),
          source: source,
@@ -178,7 +179,7 @@ defmodule Beamlet.Define do
 
     violations =
       Enum.flat_map(parsed, fn entry ->
-        case Entry.check(entry.source, entry.module, policy, entry.path) do
+        case Entry.check(entry, policy) do
           :ok -> []
           {:error, message} -> [message]
         end
