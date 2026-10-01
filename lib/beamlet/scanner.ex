@@ -288,8 +288,16 @@ defmodule Beamlet.Scanner do
 
   # ── Node handlers ─────────────────────────────────────────────────
 
+  # A handler returns the node the walk descends into next, so its
+  # return decides what goes unscanned: `{node, acc}` walks every
+  # child, `walk_only(children, acc)` walks only those listed, and
+  # `skip(acc)` walks nothing below. A handler skips only what it has
+  # checked itself; anything else in the subtree must be walked.
+  defp skip(acc), do: {:ok, acc}
+  defp walk_only(children, acc), do: {{:__block__, [], children}, acc}
+
   defp handle({:__scan_violation__, meta, [message]}, acc) do
-    {:ok, violation(acc, meta, message)}
+    skip(violation(acc, meta, message))
   end
 
   # In define mode the structure pass owns every module-definition
@@ -300,18 +308,18 @@ defmodule Beamlet.Scanner do
   end
 
   defp handle({form, meta, _args}, acc) when form in [:defmodule, :defprotocol, :defimpl] do
-    {:ok, violation(acc, meta, eval_defmodule_error(acc.policy))}
+    skip(violation(acc, meta, eval_defmodule_error(acc.policy)))
   end
 
-  defp handle({:alias, meta, args}, acc), do: {:ok, handle_alias(args, meta, acc)}
+  defp handle({:alias, meta, args}, acc), do: skip(handle_alias(args, meta, acc))
 
-  defp handle({:import, meta, args}, acc), do: {:ok, handle_import(args, meta, acc)}
+  defp handle({:import, meta, args}, acc), do: skip(handle_import(args, meta, acc))
 
-  defp handle({:require, meta, args}, acc), do: {:ok, handle_require(args, meta, acc)}
+  defp handle({:require, meta, args}, acc), do: skip(handle_require(args, meta, acc))
 
   defp handle({:use, meta, [target | rest]}, acc) do
     acc = check_module_target(acc, meta, target, :use)
-    {{:__block__, [], rest}, acc}
+    walk_only(rest, acc)
   end
 
   # &Mod.fun/2 is a no-parens zero-arg call in the AST; check it at
@@ -320,26 +328,27 @@ defmodule Beamlet.Scanner do
        when is_atom(fun) and is_integer(arity) do
     case literal_module(target, acc.aliases) do
       {:ok, module} ->
-        {:ok, check_remote(acc, meta, module, fun, arity)}
+        skip(check_remote(acc, meta, module, fun, arity))
 
       :error ->
         if acc.policy.rules.allow_dynamic_dispatch do
-          {target, acc}
+          walk_only([target], acc)
         else
-          {:ok,
-           violation(
-             acc,
-             meta,
-             "capture target must be a literal module, got: " <>
-               "&#{Macro.to_string(target)}.#{fun}/#{arity}"
-           )}
+          skip(
+            violation(
+              acc,
+              meta,
+              "capture target must be a literal module, got: " <>
+                "&#{Macro.to_string(target)}.#{fun}/#{arity}"
+            )
+          )
         end
     end
   end
 
   defp handle({:&, _meta, [{:/, meta, [{fun, _, ctx}, arity]}]}, acc)
        when is_atom(fun) and is_atom(ctx) and is_integer(arity) do
-    {:ok, check_local(acc, meta, fun, arity)}
+    skip(check_local(acc, meta, fun, arity))
   end
 
   # defdelegate's to: target sits in data position, but each head is
@@ -365,7 +374,7 @@ defmodule Beamlet.Scanner do
           end
       end
 
-    {{:__block__, [], heads}, acc}
+    walk_only(heads, acc)
   end
 
   # The compile-hook attributes name a module whose code the compiler
@@ -378,12 +387,12 @@ defmodule Beamlet.Scanner do
     case target do
       {mod, fun} when is_atom(fun) ->
         case literal_module(mod, acc.aliases) do
-          {:ok, module} -> {:ok, check_remote(acc, meta, module, fun, arity)}
-          :error -> {:ok, violation(acc, meta, "@#{attr} target must be a literal module")}
+          {:ok, module} -> skip(check_remote(acc, meta, module, fun, arity))
+          :error -> skip(violation(acc, meta, "@#{attr} target must be a literal module"))
         end
 
       _module_form ->
-        {:ok, check_module_target(acc, meta, target, "@#{attr}")}
+        skip(check_module_target(acc, meta, target, "@#{attr}"))
     end
   end
 
@@ -393,54 +402,58 @@ defmodule Beamlet.Scanner do
   defp handle({:@, _at_meta, [{:compile, meta, [value]}]}, acc) do
     cond do
       not literal_option?(value) ->
-        {:ok,
-         violation(
-           acc,
-           meta,
-           "@compile takes a literal value, such as @compile {:inline, name: 1}"
-         )}
+        skip(
+          violation(
+            acc,
+            meta,
+            "@compile takes a literal value, such as @compile {:inline, name: 1}"
+          )
+        )
 
       transform?(value) ->
-        {:ok,
-         violation(
-           acc,
-           meta,
-           "@compile parse_transform and core_transform run code at compile time and are not " <>
-             "allowed; a macro does the same job in Elixir"
-         )}
+        skip(
+          violation(
+            acc,
+            meta,
+            "@compile parse_transform and core_transform run code at compile time and are not " <>
+              "allowed; a macro does the same job in Elixir"
+          )
+        )
 
       true ->
-        {:ok, acc}
+        skip(acc)
     end
   end
 
   defp handle({:@, _at_meta, [{:derive, meta, [_target]}]}, acc) do
-    {:ok, violation(acc, meta, @derive_error)}
+    skip(violation(acc, meta, @derive_error))
   end
 
   defp handle({{:., _dot_meta, [target, fun]}, meta, args}, acc)
        when is_atom(fun) and is_list(args) do
     case literal_module(target, acc.aliases) do
       {:ok, module} ->
-        {{:__block__, [], args}, check_remote(acc, meta, module, fun, length(args))}
+        walk_only(args, check_remote(acc, meta, module, fun, length(args)))
 
       :error ->
         cond do
           meta[:no_parens] == true and args == [] ->
             # `user.name`: map field access on a variable; passes.
-            {{:__block__, [], [target]}, acc}
+            walk_only([target], acc)
 
           acc.policy.rules.allow_dynamic_dispatch ->
-            {{:__block__, [], [target | args]}, acc}
+            walk_only([target | args], acc)
 
           true ->
-            {{:__block__, [], [target | args]},
-             violation(
-               acc,
-               meta,
-               "call target must be a literal module — " <>
-                 "`#{Macro.to_string(target)}.#{fun}(...)` with a variable is not allowed"
-             )}
+            walk_only(
+              [target | args],
+              violation(
+                acc,
+                meta,
+                "call target must be a literal module — " <>
+                  "`#{Macro.to_string(target)}.#{fun}(...)` with a variable is not allowed"
+              )
+            )
         end
     end
   end
