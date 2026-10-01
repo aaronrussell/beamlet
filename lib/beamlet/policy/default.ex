@@ -256,7 +256,7 @@ defmodule Beamlet.Policy.Default do
   # disconnect_all touch the pool). Raw SQL is granted: the agent
   # database is the agent's to break, and the one statement that
   # reached past it, ATTACH DATABASE, is refused by the SQLite
-  # authorizer on every connection (Beamlet.SQLiteAuthorizer).
+  # authorizer on every connection (Host.Repo.init/2).
   @host %{
     Host.Code => :all,
     Host.File => :all,

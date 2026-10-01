@@ -49,7 +49,7 @@ defmodule Host.Repo do
       config
       |> Keyword.put(:database, Beamlet.Config.agent_db_file())
       |> Keyword.put(:journal_mode, :wal)
-      |> Keyword.put(:after_connect, {Beamlet.SQLiteAuthorizer, :install, [[:attach, :detach]]})
+      |> Keyword.put(:authorizer, [:attach, :detach])
 
     {:ok, config}
   end
