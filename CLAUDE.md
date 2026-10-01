@@ -90,5 +90,6 @@ Run the affected tests while working and `mix precommit` before claiming done.
 ## Where to look
 
 - **Design** — `context/design.md`: framing, settled decisions, what is deliberately open.
+- **Security** — `context/security.md`: the stance, what is trusted, the escape classes left open on purpose, the rule for deciding what to fix, and the accepted risks. Read it before a change that adds an input Beamlet reads back, touches the token edge or the app, widens a grant, or makes an outbound request, and update it in the same piece of work.
 - **Roadmap** — `context/roadmap.md`: what each version ships and the steps inside it. `../omni_host/context/beamlet.md` holds the shaping note behind the port: the shape discussion, the seam crossed, and the context carried from the spike.
 - **Reference implementation** — `../omni_host/lib/omni_host/code`, `../omni_host/lib/host`, `../omni_host/lib/omni_host/mcp`, with `../omni_host/context/code-mode.md` as its design record and `../omni_host/context/mcp-spike.md` for what MCP clients actually do with instructions, descriptions and errors.
