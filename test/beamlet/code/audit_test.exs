@@ -63,7 +63,7 @@ defmodule Beamlet.Code.AuditTest do
       assert commit_count(ctx.code_dir) == 2
       message = last_message(ctx.code_dir)
       assert message =~ "manual changes"
-      assert message =~ "User: beamlet (0)"
+      assert message =~ "Token: beamlet (0)"
 
       assert git!(ctx.code_dir, ["log", "-1", "--format=%an <%ae>"]) =~
                "beamlet <beamlet@beamlet>"
@@ -92,11 +92,10 @@ defmodule Beamlet.Code.AuditTest do
       assert commit_count(ctx.code_dir) == 2
       message = last_message(ctx.code_dir)
       assert message =~ "define: #{ns}.Audited (new)"
-      assert message =~ "User: alice (#{ctx.principal.user_id})"
       assert message =~ "Token: test (#{ctx.principal.token_id})"
       assert message =~ "Policy: default"
 
-      assert git!(ctx.code_dir, ["log", "-1", "--format=%an <%ae>"]) =~ "alice <alice@beamlet>"
+      assert git!(ctx.code_dir, ["log", "-1", "--format=%an <%ae>"]) =~ "test <test@beamlet>"
 
       assert git!(ctx.code_dir, ["log", "-1", "--format=%cn <%ce>"]) =~
                "beamlet <beamlet@beamlet>"
@@ -165,7 +164,7 @@ defmodule Beamlet.Code.AuditTest do
                )
 
       assert last_message(ctx.code_dir) =~
-               "patch: #{ns}.Patched\n\n#{ns}.Patched\n  - unchanged\n\nUser: alice"
+               "patch: #{ns}.Patched\n\n#{ns}.Patched\n  - unchanged\n\nToken: test"
     end
 
     test "a replace carries the function changes of each replaced module in the body", ctx do
@@ -189,7 +188,7 @@ defmodule Beamlet.Code.AuditTest do
 
       assert message =~
                "define: #{ns}.Shelf (replaced), #{ns}.Rack (new)\n\n" <>
-                 "#{ns}.Shelf\n  - removed a/0\n  - changed b/0\n  - new c/0\n\nUser: alice"
+                 "#{ns}.Shelf\n  - removed a/0\n  - changed b/0\n  - new c/0\n\nToken: test"
 
       assert {:ok, decoded} = Principal.from_trailers(message)
       assert decoded == ctx.principal

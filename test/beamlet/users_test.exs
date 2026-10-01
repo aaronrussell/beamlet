@@ -220,6 +220,11 @@ defmodule Beamlet.UsersTest do
       assert message =~ "lowercase letters"
     end
 
+    test "reserves beamlet for the system principal", %{user: user} do
+      assert {:error, changeset} = Users.create_token(user, name: "beamlet")
+      assert %{name: ["is reserved for the beamlet itself"]} = errors_on(changeset)
+    end
+
     test "an empty policy means the default one", %{user: user} do
       assert {:ok, %Token{policy: "default"}} =
                Users.create_token(user, name: "laptop", policy: "")

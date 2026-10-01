@@ -178,8 +178,8 @@ defmodule Beamlet.EvalTest do
     test "is what the evaluated code runs as", %{user: user} do
       {:ok, token} = Users.create_token(user, name: "phone", policy: "probe")
 
-      assert {:ok, ~s|=> "alice"|} =
-               Eval.run("Beamlet.Principal.current().user_name", principal(token))
+      assert {:ok, ~s|=> "phone"|} =
+               Eval.run("Beamlet.Principal.current().token_label", principal(token))
     end
   end
 end

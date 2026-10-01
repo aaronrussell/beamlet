@@ -4,12 +4,10 @@ defmodule Beamlet.PrincipalTest do
   alias Beamlet.Principal
   alias Beamlet.Users
 
-  test "builds the flat principal from an authenticated token", %{user: user, token: token} do
+  test "builds the flat principal from an authenticated token", %{token: token} do
     {:ok, authenticated} = Users.authenticate(token.secret)
 
     assert Principal.from_token(authenticated) == %Principal{
-             user_id: user.id,
-             user_name: "alice",
              token_id: token.id,
              token_label: "test",
              policy: "default"
@@ -39,13 +37,7 @@ defmodule Beamlet.PrincipalTest do
   test "system/0 is the beamlet acting on its own behalf, and round-trips" do
     system = Principal.system()
 
-    assert %Principal{
-             user_id: 0,
-             user_name: "beamlet",
-             token_id: 0,
-             token_label: "beamlet",
-             policy: "default"
-           } = system
+    assert %Principal{token_id: 0, token_label: "beamlet", policy: "default"} = system
 
     assert {:ok, ^system} = Principal.from_trailers(Principal.to_trailers(system))
   end
@@ -55,9 +47,7 @@ defmodule Beamlet.PrincipalTest do
       principal = principal(token)
 
       assert Principal.to_trailers(principal) ==
-               "User: alice (#{principal.user_id})\n" <>
-                 "Token: test (#{principal.token_id})\n" <>
-                 "Policy: default\n"
+               "Token: test (#{principal.token_id})\nPolicy: default\n"
 
       assert {:ok, ^principal} = Principal.from_trailers(Principal.to_trailers(principal))
     end
@@ -66,15 +56,14 @@ defmodule Beamlet.PrincipalTest do
       principal = principal(token)
 
       message =
-        "define: Shopping.List (new)\n\nPolicy: default\nUser: alice (#{principal.user_id})\n" <>
-          "Token: test (#{principal.token_id})\n"
+        "define: Shopping.List (new)\n\nPolicy: default\nToken: test (#{principal.token_id})\n"
 
       assert {:ok, ^principal} = Principal.from_trailers(message)
     end
 
     test "decoding a message with no trailers is an error" do
       assert :error = Principal.from_trailers("manual changes\n")
-      assert :error = Principal.from_trailers("User: alice (1)\n")
+      assert :error = Principal.from_trailers("Token: test (1)\n")
     end
   end
 
@@ -85,7 +74,6 @@ defmodule Beamlet.PrincipalTest do
       map = Principal.to_map(principal)
 
       assert map == %{
-               "user" => %{"id" => principal.user_id, "name" => "alice"},
                "token" => %{"id" => principal.token_id, "label" => "test"},
                "policy" => "default"
              }
@@ -95,12 +83,11 @@ defmodule Beamlet.PrincipalTest do
 
     test "a map missing a part or with the wrong types is an error" do
       assert :error = Principal.from_map(%{})
-      assert :error = Principal.from_map(%{"user" => %{"id" => 1, "name" => "alice"}})
+      assert :error = Principal.from_map(%{"token" => %{"id" => 1, "label" => "t"}})
 
       assert :error =
                Principal.from_map(%{
-                 "user" => %{"id" => "1", "name" => "alice"},
-                 "token" => %{"id" => 1, "label" => "t"},
+                 "token" => %{"id" => "1", "label" => "t"},
                  "policy" => "default"
                })
     end
@@ -114,6 +101,18 @@ defmodule Beamlet.PrincipalTest do
 
     assert :ok = Principal.put_current(principal)
     assert Principal.current() == principal
+  end
+
+  test "current!/1 returns the current principal, and raises naming the caller without one",
+       %{token: token} do
+    assert_raise RuntimeError,
+                 "Host.Code.remove works from eval, where your code acts as you; " <>
+                   "there is no principal in this process",
+                 fn -> Principal.current!("Host.Code.remove") end
+
+    principal = principal(token)
+    Principal.put_current(principal)
+    assert Principal.current!("Host.Code.remove") == principal
   end
 
   defp oauth_attrs(client) do

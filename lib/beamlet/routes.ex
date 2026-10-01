@@ -173,10 +173,8 @@ defmodule Beamlet.Routes do
 
   defp log_broken(route) do
     Logger.warning(
-      "routes: #{verb_word(route.verb)} #{route.path} is not served: #{route.module} is not " <>
+      "routes: #{Route.method(route.verb)} #{route.path} is not served: #{route.module} is not " <>
         "a module defined with define, or does not serve a #{route.kind} route"
     )
   end
-
-  defp verb_word(verb), do: verb |> Atom.to_string() |> String.upcase()
 end

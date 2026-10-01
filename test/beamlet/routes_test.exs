@@ -75,7 +75,7 @@ defmodule Beamlet.RoutesTest do
       assert decoded == ctx.principal
       assert %DateTime{} = route.inserted_at
 
-      assert [%Route{principal: %{"user" => %{"name" => "alice"}}}] = Routes.list()
+      assert [%Route{principal: %{"token" => %{"label" => "test"}}}] = Routes.list()
     end
 
     test "requires a principal", ctx do

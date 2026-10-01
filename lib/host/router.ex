@@ -15,8 +15,8 @@ defmodule Host.Router do
   external services; `url/1` builds it. In a template, `~p"/todos"`
   (imported by `use Host.Web`) turns a path into the browser path a
   link needs. A path whose first segment is `beamlet` is your
-  beamlet's own (`/beamlet/login`, `/beamlet/mcp`), and one whose
-  first segment starts with `~` is reserved; neither can be mounted.
+  beamlet's own (`/beamlet/login`, `/beamlet/mcp`) and cannot be
+  mounted.
 
   Mounting prints the route and its URL and returns `:ok`;
   `unmount/1` prints what it removed. `print_routes/0` prints the
@@ -51,7 +51,7 @@ defmodule Host.Router do
   """
   @spec live(String.t(), module(), atom() | nil) :: :ok
   def live(path, module, action \\ nil) do
-    principal = principal!(:live)
+    principal = Principal.current!("Host.Router.live")
     validate_mount_path!(path)
     ensure_defined!(module)
     ensure_live!(module)
@@ -113,7 +113,7 @@ defmodule Host.Router do
   """
   @spec unmount(String.t(), keyword()) :: :ok
   def unmount(path, opts \\ []) do
-    _principal = principal!(:unmount)
+    Principal.current!("Host.Router.unmount")
     validate_path!(path)
     verb = unmount_verb!(opts)
     filters = if verb, do: [path: path, verb: verb], else: [path: path]
@@ -229,8 +229,8 @@ defmodule Host.Router do
   @doc """
   Prints the mounted routes.
 
-  Verb, path, the module (and action) serving each, and the user
-  who mounted it, under the base URL they are served from. A route
+  Verb, path, the module (and action) serving each, and the token
+  that mounted it, under the base URL they are served from. A route
   whose module is gone or no longer fits it is marked as not served.
   """
   @spec print_routes() :: :ok
@@ -242,7 +242,7 @@ defmodule Host.Router do
   # ── Mounting ──────────────────────────────────────────────────────
 
   defp mount_action(verb, path, module, action) do
-    principal = principal!(verb)
+    principal = Principal.current!("Host.Router.#{verb}")
     validate_mount_path!(path)
     validate_action!(action)
     ensure_defined!(module)
@@ -300,7 +300,7 @@ defmodule Host.Router do
         [] -> "another route"
       end
 
-    "#{verb_word(verb)} #{attrs.path} is already mounted — #{taken}. " <>
+    "#{Route.method(verb)} #{attrs.path} is already mounted — #{taken}. " <>
       "Unmount it first, or choose another path."
   end
 
@@ -309,7 +309,7 @@ defmodule Host.Router do
   end
 
   defp nothing_mounted(path, verb) do
-    "no #{verb_word(verb)} route is mounted at #{path} — " <>
+    "no #{Route.method(verb)} route is mounted at #{path} — " <>
       "Host.Router.print_routes() shows the mounted routes"
   end
 
@@ -337,7 +337,7 @@ defmodule Host.Router do
       stack = __STACKTRACE__
       drain(conn)
 
-      reraise "#{verb_word(verb)} #{path} crashed: " <>
+      reraise "#{Route.method(verb)} #{path} crashed: " <>
                 Exception.format_banner(kind, reason, stack),
               trim_stack(stack)
   end
@@ -406,7 +406,7 @@ defmodule Host.Router do
   end
 
   defp route_line(route) do
-    verb = route.verb |> verb_word() |> String.pad_trailing(7)
+    verb = route.verb |> Route.method() |> String.pad_trailing(7)
     changeset = Route.load_changeset(route)
 
     cond do
@@ -426,7 +426,7 @@ defmodule Host.Router do
     end
   end
 
-  defp summary(route), do: "#{verb_word(route.verb)} #{route.path} — #{target_label(route)}"
+  defp summary(route), do: "#{Route.method(route.verb)} #{route.path} — #{target_label(route)}"
 
   defp target_label(%Route{action: nil} = route), do: route.module
 
@@ -438,20 +438,12 @@ defmodule Host.Router do
 
   defp mounted_by(route) do
     case Route.principal(route) do
-      {:ok, principal} -> principal.user_name
-      :error -> "an unknown user"
+      {:ok, principal} -> principal.token_label
+      :error -> "an unknown token"
     end
   end
 
-  defp verb_word(verb), do: verb |> Atom.to_string() |> String.upcase()
-
   # ── Validation ────────────────────────────────────────────────────
-
-  defp principal!(fun) do
-    Principal.current() ||
-      raise "Host.Router.#{fun} works from eval, where your code acts as you; " <>
-              "there is no principal in this process"
-  end
 
   defp validate_path!("/" <> _rest = path) do
     reject_reserved!(path)
@@ -470,20 +462,13 @@ defmodule Host.Router do
   defp validate_mount_path!(path), do: validate_path!(path)
 
   defp reject_reserved!(path) do
-    case first_segment(path) do
-      "beamlet" ->
-        raise "paths whose first segment is beamlet are your beamlet's own " <>
-                "(/beamlet/login, /beamlet/mcp) — #{path} cannot be mounted. " <>
-                "Use another first segment"
-
-      "~" <> rest = segment ->
-        raise "paths whose first segment starts with ~ are reserved — #{path} cannot " <>
-                "be mounted. Use a first segment that starts with a letter or a digit, " <>
-                "e.g. #{String.replace_prefix(collapse(path), "/" <> segment, "/" <> rest)}"
-
-      _segment ->
-        :ok
+    if first_segment(path) == "beamlet" do
+      raise "paths whose first segment is beamlet are your beamlet's own " <>
+              "(/beamlet/login, /beamlet/mcp) — #{path} cannot be mounted. " <>
+              "Use another first segment"
     end
+
+    :ok
   end
 
   defp first_segment(path), do: path |> String.split("/", trim: true) |> List.first("")

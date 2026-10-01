@@ -5,7 +5,8 @@ defmodule Beamlet.Token do
 
   A `cli` token is minted by the operator with `beamlet tokens.create`
   and named there; the name is unique per user and follows the user
-  name rule, since it lands in a git trailer. It never expires and is
+  name rule, since it lands in a git trailer, and `beamlet` is
+  reserved for the system principal (`Beamlet.Principal.system/0`). It never expires and is
   revoked by deleting it. This is how the operator's own code connects.
 
   An `oauth` token is minted by the token endpoint after a person
@@ -83,6 +84,7 @@ defmodule Beamlet.Token do
     |> cast(attrs, [:name, :policy])
     |> put_change(:kind, :cli)
     |> User.validate_name()
+    |> validate_exclusion(:name, ["beamlet"], message: "is reserved for the beamlet itself")
     |> validate_required([:policy])
     |> validate_policy()
     |> unique_constraint([:user_id, :name],

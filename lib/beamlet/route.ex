@@ -102,6 +102,10 @@ defmodule Beamlet.Route do
   def action_atom(%__MODULE__{action: action}) when is_binary(action),
     do: String.to_atom(action)
 
+  @doc "The HTTP method for a verb as a request line writes it, e.g. `\"GET\"`."
+  @spec method(verb()) :: String.t()
+  def method(verb), do: verb |> Atom.to_string() |> String.upcase()
+
   @doc "The principal that mounted the route, decoded from the row."
   @spec principal(t()) :: {:ok, Principal.t()} | :error
   def principal(%__MODULE__{principal: map}), do: Principal.from_map(map)

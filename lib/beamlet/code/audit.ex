@@ -134,8 +134,8 @@ defmodule Beamlet.Code.Audit do
     end
   end
 
-  defp author(%Principal{user_name: name}) do
-    [{"GIT_AUTHOR_NAME", name}, {"GIT_AUTHOR_EMAIL", "#{name}@beamlet"}]
+  defp author(%Principal{token_label: label}) do
+    [{"GIT_AUTHOR_NAME", label}, {"GIT_AUTHOR_EMAIL", "#{label}@beamlet"}]
   end
 
   defp log_failure(step, output) do

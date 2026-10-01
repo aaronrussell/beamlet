@@ -350,9 +350,8 @@ defmodule Host.RouterTest do
           Host.Router.post("/~alice/notes", controller, :create)
         end
 
-      assert error.message =~ "first segment starts with ~ are reserved"
-      assert error.message =~ "/~alice/notes cannot be mounted"
-      assert error.message =~ "e.g. /alice/notes"
+      assert error.message =~ "the path must start with / and contain only letters"
+      assert error.message =~ "/~alice/notes"
 
       assert_raise RuntimeError, ~r/\/beamlet\/mcp cannot be mounted/, fn ->
         Host.Router.live("/beamlet/mcp", mod)
@@ -444,7 +443,7 @@ defmodule Host.RouterTest do
         assert_raise RuntimeError, fn -> Host.Router.get("/rt/taken", controller, :create) end
 
       assert error.message =~
-               "GET /rt/taken is already mounted — #{inspect(mod)}, mounted by alice"
+               "GET /rt/taken is already mounted — #{inspect(mod)}, mounted by test"
 
       assert error.message =~ "Unmount it first, or choose another path"
 
@@ -580,10 +579,6 @@ defmodule Host.RouterTest do
       assert_raise RuntimeError, ~r/\/beamlet\/assets\/app\.js cannot be mounted/, fn ->
         Host.Router.path("/beamlet/assets/app.js")
       end
-
-      assert_raise RuntimeError, ~r/\/~bob cannot be mounted/, fn ->
-        Host.Router.url("/~bob")
-      end
     end
 
     test "path/1 needs no principal" do
@@ -644,8 +639,8 @@ defmodule Host.RouterTest do
       output = capture_io(&Host.Router.print_routes/0)
 
       assert output =~ "Paths are served at #{ctx.base}:\n"
-      assert output =~ "GET    /rt/page — #{inspect(live_mod)} (alice)"
-      assert output =~ "POST   /rt/hooks — #{inspect(controller)}, action: :create (alice)"
+      assert output =~ "GET    /rt/page — #{inspect(live_mod)} (test)"
+      assert output =~ "POST   /rt/hooks — #{inspect(controller)}, action: :create (test)"
     end
 
     @tag web: [prefix: "/app"]
@@ -678,7 +673,7 @@ defmodule Host.RouterTest do
         })
 
       assert capture_io(&Host.Router.print_routes/0) =~
-               "/rt/ghost — No.Such.Live (alice) — not served: the target is missing"
+               "/rt/ghost — No.Such.Live (test) — not served: the target is missing"
     end
 
     test "shows a malformed row on one line, quoted, with the fields at fault" do
@@ -691,7 +686,7 @@ defmodule Host.RouterTest do
       output = capture_io(&Host.Router.print_routes/0)
 
       assert output =~
-               ~s|GET    "/x\\"\\n  live \\"/y" — My.PageLive (an unknown user) — | <>
+               ~s|GET    "/x\\"\\n  live \\"/y" — My.PageLive (an unknown token) — | <>
                  "not served: the row is malformed (path) " <>
                  "and is deleted the next time the router is built"
     end
@@ -716,7 +711,7 @@ defmodule Host.RouterTest do
       refute Routes.servable?(route)
 
       assert capture_io(&Host.Router.print_routes/0) =~
-               "/rt/hooks — #{inspect(mod)}, action: :create (alice) — not served"
+               "/rt/hooks — #{inspect(mod)}, action: :create (test) — not served"
     end
   end
 

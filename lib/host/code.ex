@@ -54,7 +54,7 @@ defmodule Host.Code do
   """
   @spec print_policy() :: :ok
   def print_policy do
-    {:ok, policy} = Policies.fetch(principal!(:print_policy).policy)
+    {:ok, policy} = Policies.fetch(Principal.current!("Host.Code.print_policy").policy)
     print({:ok, Policy.render(policy)})
   end
 
@@ -181,22 +181,16 @@ defmodule Host.Code do
       raise "Host.Code.remove takes a module or a list of modules, e.g. remove(Shopping.List)"
     end
 
-    case Beamlet.Code.remove(modules, principal!(:remove)) do
+    case Beamlet.Code.remove(modules, Principal.current!("Host.Code.remove")) do
       :ok -> :ok
       {:error, message} -> raise message
     end
   end
 
-  defp principal!(fun) do
-    Principal.current() ||
-      raise "Host.Code.#{fun} works from eval, where your code acts as you; " <>
-              "there is no principal in this process"
-  end
-
   # The effective policy: the principal's with the defined modules
   # granted by existence, as the runtimes build it before a scan.
   defp policy!(fun) do
-    {:ok, policy} = Policies.fetch(principal!(fun).policy)
+    {:ok, policy} = Policies.fetch(Principal.current!("Host.Code.#{fun}").policy)
     Policy.grant(policy, Beamlet.Code.defined())
   end
 
