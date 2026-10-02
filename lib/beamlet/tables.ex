@@ -58,7 +58,7 @@ defmodule Beamlet.Tables do
   @spec current_version() :: pos_integer()
   def current_version, do: @current
 
-  @spec version() :: non_neg_integer()
+  @spec version() :: integer()
   def version do
     %{rows: [[version]]} = Host.Repo.query!("PRAGMA user_version")
     version
