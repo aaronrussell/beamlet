@@ -146,12 +146,43 @@ defmodule Beamlet.OwnerTest do
       assert {:error, :invalid_credentials} = Owner.authenticate(user.email, password)
     end
 
+    # The claim is equal work on every branch, so the test counts it:
+    # PBKDF2 makes one HMAC call per round, and a failure must make as
+    # many as a success, whatever failed.
+    test "every failure does the hashing a success does", %{user: user, password: password} do
+      success = hmacs(fn -> Owner.authenticate(user.email, password) end)
+      assert success > 0
+
+      for {email, given} <- [
+            {user.email, "wrong password"},
+            {"other@example.com", password},
+            {user.email, String.duplicate("a", 129)},
+            {nil, password}
+          ] do
+        assert hmacs(fn -> Owner.authenticate(email, given) end) == success,
+               "#{inspect(email)} with #{inspect(given)} hashed differently"
+      end
+
+      Repo.delete!(user)
+      assert hmacs(fn -> Owner.authenticate(user.email, password) end) == success
+    end
+
     test "refuses a password longer than the owner can have", %{user: user} do
       longest = String.duplicate("a", 128)
       {:ok, user} = Owner.update(user, password: longest)
 
       assert {:ok, _user} = Owner.authenticate(user.email, longest)
       assert {:error, :invalid_credentials} = Owner.authenticate(user.email, longest <> "a")
+    end
+
+    # Hashing cost grows with the password's length times the rounds:
+    # against a hash of 20,000 rounds a 1MB password would take seconds
+    # to verify, so the timeout fails the test if it is ever hashed.
+    @tag timeout: 3_000
+    test "refuses an overlong password before hashing it", %{user: user} do
+      user
+      |> Ecto.Changeset.change(password_hash: Pbkdf2.hash_pwd_salt("x", rounds: 20_000))
+      |> Repo.update!()
 
       assert {:error, :invalid_credentials} =
                Owner.authenticate(user.email, String.duplicate("a", 1_000_000))
@@ -195,6 +226,31 @@ defmodule Beamlet.OwnerTest do
       assert :ok = Owner.delete_session(nil)
       assert {:error, :unknown_session} = Owner.authenticate_session(first.secret)
       assert {:ok, _user} = Owner.authenticate_session(second.secret)
+    end
+  end
+
+  # Call traces go to a collector: a process does not receive its own.
+  defp hmacs(fun) do
+    collector =
+      start_supervised!(Supervisor.child_spec({Task, fn -> collect_hmacs(0) end}, id: make_ref()))
+
+    :erlang.trace_pattern({:crypto, :mac, 4}, true, [])
+    :erlang.trace(self(), true, [:call, {:tracer, collector}])
+    fun.()
+    :erlang.trace(self(), false, [:call])
+    :erlang.trace_pattern({:crypto, :mac, 4}, false, [])
+
+    ref = :erlang.trace_delivered(self())
+    assert_receive {:trace_delivered, _pid, ^ref}
+    send(collector, {:count, self()})
+    assert_receive {:hmacs, count}
+    count
+  end
+
+  defp collect_hmacs(count) do
+    receive do
+      {:trace, _pid, :call, {:crypto, :mac, _args}} -> collect_hmacs(count + 1)
+      {:count, from} -> send(from, {:hmacs, count})
     end
   end
 end

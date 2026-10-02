@@ -392,6 +392,38 @@ defmodule Host.MigratorTest do
     end
   end
 
+  describe "rows written outside the migrator" do
+    # Agents have raw SQL on Host.Repo, so schema_migrations holds
+    # whatever they write: the history must read it, not trust it.
+    test "a version inserted by hand is an orphan like any other", ctx do
+      ns = unique_namespace()
+      {mod, table} = new_migration_names(ns)
+      _versions = applied()
+
+      Host.Repo.query!(
+        "insert into schema_migrations (version, inserted_at) values (7, '2026-01-01T00:00:00')"
+      )
+
+      assert printed_migrations() =~
+               "  7  (missing)  applied 2026-01-01 00:00 UTC, source missing"
+
+      error = assert_raise RuntimeError, fn -> Host.Migrator.rollback() end
+      assert error.message =~ "cannot roll back migration 7 — its source is missing"
+
+      assert {:ok, summary} = define!(ctx.principal, migration(mod, table), [mod])
+      assert summary =~ "migration 8, pending"
+    end
+
+    test "a version that is not an integer cannot be written" do
+      _versions = applied()
+
+      assert {:error, %Exqlite.Error{message: "datatype mismatch"}} =
+               Host.Repo.query(
+                 "insert into schema_migrations (version, inserted_at) values ('x', '2026-01-01T00:00:00')"
+               )
+    end
+  end
+
   describe "through eval" do
     test "agent code migrates and reads the history", ctx do
       ns = unique_namespace()

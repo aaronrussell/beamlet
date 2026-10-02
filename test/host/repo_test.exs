@@ -8,6 +8,11 @@ defmodule Host.RepoTest do
              Host.Repo.query("attach database ? as system", [system_db])
   end
 
+  test "DETACH DATABASE is refused on the agent database" do
+    assert {:error, %Exqlite.Error{message: "not authorized"}} =
+             Host.Repo.query("detach database main")
+  end
+
   @tag :tmp_dir
   test "VACUUM INTO is refused on the agent database", ctx do
     copy = Path.join(ctx.tmp_dir, "copy.db")

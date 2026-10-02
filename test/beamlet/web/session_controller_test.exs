@@ -101,4 +101,27 @@ defmodule Beamlet.Web.SessionControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Signed out."
     end
   end
+
+  # Phoenix.ConnTest skips the forgery check; these turn it back on to
+  # prove another site cannot sign the owner in or out.
+  describe "without a CSRF token" do
+    test "a sign-in is refused", %{conn: conn, user: user, password: password} do
+      conn = put_private(conn, :plug_skip_csrf_protection, false)
+
+      assert_error_sent 403, fn ->
+        post(conn, "/beamlet/login", user: %{email: user.email, password: password})
+      end
+    end
+
+    test "a sign-out is refused and the session stands", %{conn: conn} do
+      conn = sign_in(conn)
+      secret = get_session(conn, :session_secret)
+
+      assert_error_sent 403, fn ->
+        conn |> put_private(:plug_skip_csrf_protection, false) |> post("/beamlet/logout")
+      end
+
+      assert {:ok, _user} = Owner.authenticate_session(secret)
+    end
+  end
 end

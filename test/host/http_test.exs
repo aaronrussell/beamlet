@@ -153,6 +153,41 @@ defmodule Host.HTTPTest do
       assert Exception.message(error) =~ "the host does not resolve"
     end
 
+    @tag :capture_log
+    test "a retried request is checked again, so a name that turns private is refused" do
+      test = self()
+      configured = Application.fetch_env!(:beamlet, Host.HTTP)
+      on_exit(fn -> Application.put_env(:beamlet, Host.HTTP, configured) end)
+      lookups = :counters.new(1, [])
+
+      # Public on the first lookup, private on every one after: the
+      # rebinding a retry would otherwise carry past the guard.
+      resolver = fn
+        _host, :inet, _timeout ->
+          :counters.add(lookups, 1, 1)
+
+          if :counters.get(lookups, 1) == 1,
+            do: {:ok, [{93, 184, 216, 34}]},
+            else: {:ok, [{10, 0, 0, 5}]}
+
+        _host, :inet6, _timeout ->
+          {:error, :nxdomain}
+      end
+
+      Application.put_env(:beamlet, Host.HTTP, Keyword.put(configured, :resolver, resolver))
+
+      Req.Test.stub(Host.HTTP, fn conn ->
+        send(test, :requested)
+        Plug.Conn.send_resp(conn, 503, "")
+      end)
+
+      assert {:error, %Host.HTTP.BlockedError{reason: :reserved_address}} =
+               Host.HTTP.get(@url, retry_delay: 0, max_retries: 1)
+
+      assert_received :requested
+      refute_received :requested
+    end
+
     test "a redirect to a private host is refused at the redirect, once" do
       test = self()
 

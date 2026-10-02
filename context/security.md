@@ -2,7 +2,7 @@
 
 **Status:** Standing context: the threat model, the rule for deciding what to fix, and the risks accepted. Written from the 0.1 code review and checked against the code by the pre-release review. The mechanism lives in `design.md`; this note says what it defends, what it does not, and why, and points there. Update it in the same piece of work as any change that adds an input Beamlet reads back, touches the token edge or the app, changes a grant or a guardrail, or accepts or closes a risk.
 
-**Last updated:** 2026-10-02 (the pre-release review: the app socket's reach, the loopback exception, macros after the scan, live actions as atoms)
+**Last updated:** 2026-10-02 (the test review: `schema_migrations` among what agents write)
 
 ---
 
@@ -24,7 +24,7 @@ So the token is the boundary. What a token reaches past its policy is what the o
 
 - **A request without a valid token.** It reaches the sign-in and OAuth pages and nothing else.
 - **Agent code.** Guardrailed by its token's policy, not contained.
-- **Anything agent code can write.** Agents have raw SQL on the agent database, so a `__routes` or `__kv` row, `PRAGMA user_version`, or anything else Beamlet reads back from that file may hold what no changeset allowed. Beamlet's own compiles are not scanned, so what feeds them is data, never text: the router is built as quoted form from validated rows whose names resolve to existing atoms, and KV values are strict JSON, a format that cannot express a fun. The review's two worst findings were this one mistake, Beamlet trusting bytes an agent could write.
+- **Anything agent code can write.** Agents have raw SQL on the agent database, so a `__routes` or `__kv` row, a `schema_migrations` version, `PRAGMA user_version`, or anything else Beamlet reads back from that file may hold what no changeset allowed. Beamlet's own compiles are not scanned, so what feeds them is data, never text: the router is built as quoted form from validated rows whose names resolve to existing atoms, and KV values are strict JSON, a format that cannot express a fun. The review's two worst findings were this one mistake, Beamlet trusting bytes an agent could write.
 - **What arrives from outside.** The bearer header (hashed and looked up, so a malformed value matches nothing); a client's metadata document and its redirect URIs (fetched behind an SSRF guard, script-capable schemes refused); URLs agent code is told to fetch by text it has read (the outbound guard).
 - **Script on agent pages.** Agent pages share the beamlet's origin with the app, and the browser sends the app's cookie with any request under `/beamlet`, whichever page makes it.
 

@@ -29,6 +29,10 @@ defmodule Beamlet.MCP.PlugTest do
     assert request("BEARER " <> token.secret).status == 200
   end
 
+  test "two Authorization headers are a 401, even both naming the token", %{token: token} do
+    assert unauthorized?(request(["Bearer " <> token.secret, "Bearer " <> token.secret]))
+  end
+
   test "a secret matching no token is a 401" do
     assert unauthorized?(request("Bearer " <> Base.url_encode64(:crypto.strong_rand_bytes(32))))
   end
@@ -116,15 +120,22 @@ defmodule Beamlet.MCP.PlugTest do
              JSON.decode!(conn.resp_body)
   end
 
-  defp request(authorization) do
-    :post
-    |> conn(
-      "/",
-      JSON.encode!(%{jsonrpc: "2.0", id: 1, method: "initialize", params: initialize_params()})
-    )
-    |> put_req_header("content-type", "application/json")
-    |> put_req_header("accept", "application/json")
-    |> put_req_header("authorization", authorization)
+  defp request(authorization) when is_binary(authorization), do: request([authorization])
+
+  defp request(authorizations) do
+    conn =
+      :post
+      |> conn(
+        "/",
+        JSON.encode!(%{jsonrpc: "2.0", id: 1, method: "initialize", params: initialize_params()})
+      )
+      |> put_req_header("content-type", "application/json")
+      |> put_req_header("accept", "application/json")
+
+    headers = for authorization <- authorizations, do: {"authorization", authorization}
+
+    conn
+    |> Map.update!(:req_headers, &(headers ++ &1))
     |> Beamlet.MCP.Plug.call(@plug_opts)
   end
 
