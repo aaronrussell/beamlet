@@ -30,7 +30,7 @@ defmodule Beamlet.Config do
         http: [allow: ["homeassistant.local", "192.168.1.0/24"]]
   """
 
-  @eval_defaults [timeout: 30_000, max_heap_bytes: 268_435_456, max_output: 16_384]
+  @eval_defaults [timeout: 30_000, max_heap_bytes: 134_217_728, max_output: 32_768]
   @define_defaults [timeout: 30_000]
   @mcp_defaults [request_timeout: 65_000]
   @http_defaults [allow: []]
@@ -98,7 +98,7 @@ defmodule Beamlet.Config do
 
   @doc """
   The eval limits, merged over the defaults: `timeout` 30 seconds,
-  `max_heap_bytes` 256MB, `max_output` 16KB (`Beamlet.Eval` says
+  `max_heap_bytes` 128MB, `max_output` 32KB (`Beamlet.Eval` says
   what each protects).
   """
   @spec eval() :: keyword()

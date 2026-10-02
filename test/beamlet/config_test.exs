@@ -260,13 +260,13 @@ defmodule Beamlet.ConfigTest do
     end
 
     test "eval/0 is the defaults when unset" do
-      assert Config.eval() == [timeout: 30_000, max_heap_bytes: 268_435_456, max_output: 16_384]
+      assert Config.eval() == [timeout: 30_000, max_heap_bytes: 134_217_728, max_output: 32_768]
     end
 
     test "eval/0 merges a configured limit over the defaults" do
       Application.put_env(:beamlet, :eval, timeout: 100)
 
-      assert Config.eval() == [timeout: 100, max_heap_bytes: 268_435_456, max_output: 16_384]
+      assert Config.eval() == [timeout: 100, max_heap_bytes: 134_217_728, max_output: 32_768]
     end
 
     test "define/0 is the default timeout when unset, the configured one otherwise" do

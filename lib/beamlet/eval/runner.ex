@@ -3,30 +3,42 @@ defmodule Beamlet.Eval.Runner do
 
   # The code runs in a process of its own so that the timeout and the
   # heap cap can kill it while the caller survives to report, with the
-  # output so far; the caller owns the StringIO for the same reason.
+  # output so far; the caller owns the output device for the same
+  # reason.
   # The child is not linked, since those two kills would take the
   # caller down with it. A cancel from the client kills the caller
   # instead (Anubis terminates the tool task), and nothing would tell
   # the child, so a watcher monitors the caller and kills the child
   # when it goes: the one-way tie Erlang has no primitive for.
 
+  alias Beamlet.Eval.Output
   alias Beamlet.Principal
 
+  @typedoc "The bytes kept of what was printed, and the bytes printed in all."
+  @type output :: {binary(), non_neg_integer()}
+
   @type outcome ::
-          {:ok, %{output: String.t(), result: term()}}
+          {:ok, %{output: output(), result: term()}}
           | {:error, :timeout | :killed | {atom(), term(), Exception.stacktrace()},
-             %{output: String.t()}}
+             %{output: output()}}
 
   @spec run(String.t(), Principal.t(), keyword()) :: outcome()
   def run(code, %Principal{} = principal, opts) do
     timeout = Keyword.fetch!(opts, :timeout)
     heap_words = div(Keyword.fetch!(opts, :max_heap_bytes), :erlang.system_info(:wordsize))
-    {:ok, io} = StringIO.open("")
+    {:ok, io} = Output.start(Keyword.fetch!(opts, :max_output))
 
     task =
       Task.Supervisor.async_nolink(Beamlet.TaskSupervisor, fn ->
         Process.group_leader(self(), io)
-        Process.flag(:max_heap_size, %{size: heap_words, kill: true, error_logger: false})
+
+        Process.flag(:max_heap_size, %{
+          size: heap_words,
+          kill: true,
+          error_logger: false,
+          include_shared_binaries: true
+        })
+
         Principal.put_current(principal)
         evaluate(code)
       end)
@@ -34,8 +46,7 @@ defmodule Beamlet.Eval.Runner do
     watch(self(), task.pid)
 
     outcome = Task.yield(task, timeout) || Task.shutdown(task, :brutal_kill)
-    {_input, output} = StringIO.contents(io)
-    StringIO.close(io)
+    output = Output.close(io)
 
     case outcome do
       {:ok, {:ok, result}} ->

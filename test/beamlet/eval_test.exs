@@ -36,16 +36,26 @@ defmodule Beamlet.EvalTest do
       assert {:ok, output} =
                Eval.run(~s|IO.puts(String.duplicate("x", 500))|, principal, max_output: 100)
 
-      assert output =~ "...(truncated, showing first 100B of 5"
+      assert output =~ "...(output truncated, showing first 93B of 501B"
+      assert String.ends_with?(output, "\n=> :ok")
       assert byte_size(output) < 250
     end
 
     test "never cuts through a character", %{principal: principal} do
       assert {:ok, output} =
-               Eval.run(~s|IO.puts(String.duplicate("é", 100))|, principal, max_output: 101)
+               Eval.run(~s|IO.puts(String.duplicate("é", 100))|, principal, max_output: 102)
 
       assert String.valid?(output)
-      assert output =~ "showing first 101B"
+      assert output =~ "showing first 94B of 201B"
+    end
+
+    test "a print loop keeps the first max_output and counts the rest", %{principal: principal} do
+      code = ~s|Enum.each(1..500, fn _ -> IO.puts(String.duplicate("x", 100_000)) end)|
+
+      assert {:ok, output} = Eval.run(code, principal, max_output: 32_768)
+      assert output =~ "...(output truncated, showing first 32KB of 47.7MB"
+      assert String.ends_with?(output, "\n=> :ok")
+      assert byte_size(output) < 33_000
     end
   end
 
@@ -82,6 +92,51 @@ defmodule Beamlet.EvalTest do
         run_error("length(Enum.to_list(1..50_000_000))", principal, max_heap_bytes: 1_000_000)
 
       assert message =~ "went over the memory limit of 976.6KB"
+    end
+
+    test "an off-heap binary counts against the memory limit", %{principal: principal} do
+      message =
+        run_error(~s|byte_size(String.duplicate("x", 100_000_000))|, principal,
+          max_heap_bytes: 10_000_000
+        )
+
+      assert message =~ "went over the memory limit of 9.5MB"
+    end
+
+    test "the error is kept whole and the output takes the room left", %{principal: principal} do
+      code = ~s|IO.puts(String.duplicate("x", 500))\nraise "boom"|
+      message = run_error(code, principal, max_output: 200)
+
+      assert message =~ "...(output truncated, showing first"
+      assert message =~ "(RuntimeError) boom"
+    end
+
+    test "a print loop that times out still names the limit", %{principal: principal} do
+      code = ~s|Stream.cycle([1]) \|> Enum.each(fn _ -> IO.puts("tick") end)|
+      message = run_error(code, principal, timeout: 200, max_output: 1_000)
+
+      assert message =~ "...(output truncated, showing first"
+      assert message =~ "Evaluation timed out after 200ms"
+      assert byte_size(message) < 1_200
+    end
+
+    test "an error longer than max_output is cut and the output gives way", %{
+      principal: principal
+    } do
+      code = ~s|IO.puts("before")\nraise String.duplicate("x", 500)|
+      message = run_error(code, principal, max_output: 100)
+
+      assert message =~ "...(output truncated, showing first 0B of 7B"
+      assert message =~ "** (RuntimeError) xxx"
+      assert message =~ "...(truncated, showing first 100B of"
+      assert byte_size(message) < 300
+    end
+
+    test "an invalid byte in an error message is replaced", %{principal: principal} do
+      message = run_error("raise <<255>>", principal)
+
+      assert String.valid?(message)
+      assert message =~ "(RuntimeError) \uFFFD"
     end
 
     test "a throw is formatted", %{principal: principal} do

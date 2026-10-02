@@ -47,6 +47,18 @@ defmodule Beamlet.MCP.ServerTest do
     assert text =~ "System.cmd"
   end
 
+  test "an invalid byte in an error is replaced and the session lives on", %{token: token} do
+    {client, _result} = MCPClient.initialize(token)
+
+    assert %{"isError" => true, "content" => [%{"text" => text}]} =
+             MCPClient.call_tool(client, "eval", %{code: "raise <<255>>"})
+
+    assert text =~ "(RuntimeError) \uFFFD"
+
+    assert %{"isError" => false, "content" => [%{"text" => "=> 2"}]} =
+             MCPClient.call_tool(client, "eval", %{code: "1 + 1"})
+  end
+
   test "define compiles the module, writes its source and returns the summary", %{
     token: token,
     data_dir: data_dir
@@ -159,15 +171,15 @@ defmodule Beamlet.MCP.ServerTest do
   end
 
   describe "cancel" do
-    @tag policies: [probe: [allow: [Kernel]]]
+    @tag policies: [probe: [allow: [Kernel, Process]]]
     @tag :capture_log
-    test "stops the evaluation when the client cancels the request" do
+    test "stops the evaluation and its output device when the client cancels the request" do
       {:ok, token} = Tokens.create(name: "phone", policy: "probe")
       {client, _result} = MCPClient.initialize(token)
       Process.register(self(), :eval_probe)
 
       code = """
-      send(:eval_probe, self())
+      send(:eval_probe, {:evaluating, self(), Process.group_leader()})
 
       receive do
       after
@@ -180,12 +192,14 @@ defmodule Beamlet.MCP.ServerTest do
           MCPClient.rpc(client, "tools/call", %{name: "eval", arguments: %{code: code}}, id: 42)
         end)
 
-      assert_receive evaluating when is_pid(evaluating), 5_000
+      assert_receive {:evaluating, evaluating, device}, 5_000
       ref = Process.monitor(evaluating)
+      device_ref = Process.monitor(device)
 
       assert MCPClient.notify(client, "notifications/cancelled", %{requestId: 42}).status == 202
 
       assert_receive {:DOWN, ^ref, :process, ^evaluating, :killed}, 5_000
+      assert_receive {:DOWN, ^device_ref, :process, ^device, _reason}, 5_000
       assert %{"error" => %{"message" => message}} = JSON.decode!(Task.await(call).resp_body)
       assert message =~ "cancelled"
     end
