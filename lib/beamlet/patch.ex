@@ -50,6 +50,7 @@ defmodule Beamlet.Patch do
   alias Beamlet.Policies
   alias Beamlet.Policy
   alias Beamlet.Principal
+  alias Beamlet.Routes
   alias Beamlet.Scanner
 
   @context 2
@@ -88,9 +89,22 @@ defmodule Beamlet.Patch do
          {:ok, sources} <- apply_patches(parsed, sources),
          {:ok, entries} <- finish(order, sources, parsed, Policy.grant(policy, order)) do
       run_opts = [verb: :patch, context: @context] ++ Keyword.take(opts, [:timeout])
-      Code.define(entries, principal, run_opts)
+
+      entries
+      |> Code.define(principal, run_opts)
+      |> refresh_routes()
     end
   end
+
+  # As in Beamlet.Define: the patch stands whatever the router does.
+  defp refresh_routes({:ok, summary}) do
+    case Routes.refresh() do
+      :ok -> {:ok, summary}
+      {:error, warning} -> {:ok, summary <> "\n" <> warning}
+    end
+  end
+
+  defp refresh_routes(error), do: error
 
   # ── The patches ───────────────────────────────────────────────────
 

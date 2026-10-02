@@ -424,6 +424,62 @@ defmodule Beamlet.RoutesTest do
       assert conn |> get("/peek") |> json_response(200) == %{}
     end
 
+    test "a raw row naming a never-seen module or action makes no atom and answers 404", ctx do
+      ns = unique_namespace()
+      module = "#{ns}.Never"
+      action = "never_#{System.unique_integer([:positive])}"
+      {:ok, _ghost} = Routes.create(%{ctx.live_attrs | path: "/never", module: module})
+      echo = add_echo!(ctx, :get, action, "/never/action")
+
+      log = capture_log(fn -> assert :ok = Routes.regenerate() end)
+
+      assert log =~ "GET /never is not served"
+      refute Routes.servable?(echo)
+      assert_raise ArgumentError, fn -> String.to_existing_atom("Elixir." <> module) end
+      assert_raise ArgumentError, fn -> String.to_existing_atom(action) end
+      assert ctx.conn |> get("/never") |> response(404)
+      assert ctx.conn |> get("/never/action") |> response(404)
+    end
+
+    test "an earlier mount wins an overlapping match, whatever its kind", ctx do
+      add_echo!(ctx, :get, "show", "/items/:id")
+      add_hello!(ctx, "/items/new")
+      add_hello!(ctx, "/pages/new")
+      add_echo!(ctx, :get, "show", "/pages/:id")
+      assert :ok = Routes.regenerate()
+
+      assert %{"echo" => "show", "params" => %{"id" => "new"}} =
+               ctx.conn |> get("/items/new") |> json_response(200)
+
+      {:ok, _view, html} = live(ctx.conn, "/pages/new")
+      assert html =~ "hello from HelloLive"
+      assert %{"echo" => "show"} = ctx.conn |> get("/pages/1") |> json_response(200)
+    end
+
+    test "served?/1 is what the router in the VM holds", ctx do
+      route = add_hello!(ctx)
+      assert Routes.servable?(route)
+      refute Routes.served?(route)
+
+      assert :ok = Routes.regenerate()
+      assert Routes.served?(route)
+
+      {:ok, moved} = route |> Ecto.Changeset.change(path: "/moved") |> Host.Repo.update()
+      refute Routes.served?(moved)
+    end
+
+    test "refresh/0 rebuilds only when the router and the table disagree", ctx do
+      {:ok, _ghost} = Routes.create(%{ctx.live_attrs | path: "/ghost", module: "No.Such.Module"})
+      assert capture_log(fn -> assert :ok = Routes.refresh() end) == ""
+
+      add_hello!(ctx)
+      log = capture_log(fn -> assert :ok = Routes.refresh() end)
+
+      assert log =~ "GET /ghost is not served"
+      {:ok, _view, _html} = live(ctx.conn, "/hello/1")
+      assert capture_log(fn -> assert :ok = Routes.refresh() end) == ""
+    end
+
     test "regenerate compiles the table as it stands when the compile runs", ctx do
       server = Process.whereis(Beamlet.Code)
       :erlang.trace(server, true, [:receive])

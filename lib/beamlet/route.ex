@@ -93,14 +93,27 @@ defmodule Beamlet.Route do
     |> validate_fields()
   end
 
-  @doc "The target module as an atom."
-  @spec target(t()) :: module()
-  def target(%__MODULE__{module: module}), do: Module.concat([module])
+  @doc """
+  The target module as an atom.
 
-  @doc "The controller or live action as an atom. Rows with an action only."
+  Only an existing atom: rows can be written with raw SQL, and
+  turning their strings into new atoms at every regeneration would
+  fill the atom table. Raises `ArgumentError` when the atom does not
+  exist, which means no such module was ever loaded.
+  """
+  @spec target(t()) :: module()
+  def target(%__MODULE__{module: module}), do: String.to_existing_atom("Elixir." <> module)
+
+  @doc """
+  The controller action as an atom.
+
+  An existing atom only, raising `ArgumentError` otherwise, as
+  `target/1` does: an exported function's name exists as an atom
+  once its module is loaded.
+  """
   @spec action_atom(t()) :: atom()
   def action_atom(%__MODULE__{action: action}) when is_binary(action),
-    do: String.to_atom(action)
+    do: String.to_existing_atom(action)
 
   @doc "The HTTP method for a verb as a request line writes it, e.g. `\"GET\"`."
   @spec method(verb()) :: String.t()

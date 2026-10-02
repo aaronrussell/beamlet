@@ -10,4 +10,6 @@ defmodule Beamlet.DynamicRouter do
   # is a derived artifact, never on disk, always rebuildable.
 
   use Phoenix.Router, helpers: false
+
+  def __served__, do: []
 end

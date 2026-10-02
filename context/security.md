@@ -24,7 +24,7 @@ So the token is the boundary. What a token reaches past its policy is what the o
 
 - **A request without a valid token.** It reaches the sign-in and OAuth pages and nothing else.
 - **Agent code.** Guardrailed by its token's policy, not contained.
-- **Anything agent code can write.** Agents have raw SQL on the agent database, so a `__routes` or `__kv` row, `PRAGMA user_version`, or anything else Beamlet reads back from that file may hold what no changeset allowed. Beamlet's own compiles are not scanned, so what feeds them is data, never text: the router is built as quoted form from validated rows, and KV values are strict JSON, a format that cannot express a fun. The review's two worst findings were this one mistake, Beamlet trusting bytes an agent could write.
+- **Anything agent code can write.** Agents have raw SQL on the agent database, so a `__routes` or `__kv` row, `PRAGMA user_version`, or anything else Beamlet reads back from that file may hold what no changeset allowed. Beamlet's own compiles are not scanned, so what feeds them is data, never text: the router is built as quoted form from validated rows whose names resolve to existing atoms, and KV values are strict JSON, a format that cannot express a fun. The review's two worst findings were this one mistake, Beamlet trusting bytes an agent could write.
 - **What arrives from outside.** The bearer header (hashed and looked up, so a malformed value matches nothing); a client's metadata document and its redirect URIs (fetched behind an SSRF guard, script-capable schemes refused); URLs agent code is told to fetch by text it has read (the outbound guard).
 - **Script on agent pages.** Agent pages share the beamlet's origin with the app, and the browser sends the app's cookie with any request under `/beamlet`, whichever page makes it.
 
@@ -75,6 +75,7 @@ Each with why it is accepted and what reopens it.
 - **A session has no expiry of its own.** It ends at sign-out, a new password, or when the browser drops the cookie.
 - **A new password from `beamlet setup` does not disconnect open app pages.** Every session is deleted, so the next reload goes to the login; the CLI has no way to the server's PubSub (roadmap, Deferred).
 - **DNS rebinding** in the outbound guard and the client-document fetch: the name is resolved again when the connection is made. Pinning the address costs a Finch pool per host.
+- **Live actions on route rows become atoms.** A live action names no function, so a loaded LiveView need not hold its atom, and the router makes one for each row whose target is a defined LiveView, at every regeneration and boot. Many raw rows with distinct actions against one LiveView would exhaust the atom table at every boot, until `beamlet reset` or hand-written SQL clears them: atom exhaustion, as § 4 accepts, by a token holder. Requiring the target to mention its live action, so the atom exists once the module loads, would close it at the cost of a mount rule.
 - **Shell access edits anything**, the code dir and the databases included, and the operator config file can set any application's keys. Shell access is the owner.
 - **Small items** with a fix each, unscheduled: the roadmap's "Security minors" under Deferred.
 

@@ -19,11 +19,13 @@ defmodule Beamlet.Routes do
   when regeneration fails. A row whose target is not a module defined
   with `define`, is missing, quarantined or of the wrong shape is
   left out at generation with a warning and answers 404; the row
-  stays in the table for inspection, since redefining the module
-  brings it back. A row that fails `Beamlet.Route`'s validations
-  could only have been written with raw SQL and nothing can make it
-  valid again, so regeneration deletes it with a warning recording
-  the row. Boot regeneration never fails the boot: the worst case is
+  stays in the table for inspection. A define can repair a target or
+  break one without touching the table, so `Beamlet.Define` and
+  `Beamlet.Patch` call `refresh/0` after theirs, and redefining the
+  module brings its routes back. A row that fails `Beamlet.Route`'s
+  validations could only have been written with raw SQL and nothing
+  can make it valid again, so regeneration deletes it with a warning
+  recording the row. Boot regeneration never fails the boot: the worst case is
   the empty placeholder serving 404s with an error in the log.
   """
 
@@ -107,6 +109,42 @@ defmodule Beamlet.Routes do
   end
 
   @doc """
+  Rebuilds the router when it disagrees with the table: a row that
+  can serve is missing from it, or a row it serves no longer can.
+  Redefining a routed module that stays servable needs no rebuild,
+  since the router names the module and the new version serves, so
+  most defines compile nothing here.
+
+  On a failure the previous router keeps serving, and the error is a
+  warning for the summary of the define that called it, since the
+  define stands.
+  """
+  @spec refresh() :: :ok | {:error, String.t()}
+  def refresh do
+    with false <- Enum.all?(list(), &(servable?(&1) == served?(&1))),
+         {:error, message} <- regenerate() do
+      {:error, refresh_warning(message)}
+    else
+      _ok -> :ok
+    end
+  rescue
+    exception -> {:error, refresh_warning(Exception.message(exception))}
+  end
+
+  defp refresh_warning(message) do
+    "Warning: the router failed to rebuild, so your routes serve as they did before this " <>
+      "change: #{message}. Host.Router.print_routes() shows which are served."
+  end
+
+  @doc """
+  Whether the router in the VM serves this row as it stands. False
+  for a row the last regeneration left out, and for one changed or
+  added since.
+  """
+  @spec served?(Route.t()) :: boolean()
+  def served?(route), do: Generator.key(route) in Beamlet.DynamicRouter.__served__()
+
+  @doc """
   Whether a route can serve: the row passes `Beamlet.Route`'s
   validations, and its target is a module defined with `define` that
   is loaded and a LiveView for a `:live_view` row, or a Phoenix
@@ -123,11 +161,14 @@ defmodule Beamlet.Routes do
 
   defp well_formed?(route), do: Route.load_changeset(route).valid?
 
+  # A name with no atom was never loaded, so it cannot serve.
   defp target_serves?(%Route{kind: :live_view} = route) do
     target = Route.target(route)
 
     target in Beamlet.Code.defined() and Code.ensure_loaded?(target) and
       function_exported?(target, :__live__, 0)
+  rescue
+    ArgumentError -> false
   end
 
   defp target_serves?(%Route{kind: :controller} = route) do
@@ -136,6 +177,8 @@ defmodule Beamlet.Routes do
     target in Beamlet.Code.defined() and Code.ensure_loaded?(target) and
       function_exported?(target, :action, 2) and
       function_exported?(target, Route.action_atom(route), 2)
+  rescue
+    ArgumentError -> false
   end
 
   @doc false

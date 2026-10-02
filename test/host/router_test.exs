@@ -10,6 +10,8 @@ defmodule Host.RouterTest do
   import Plug.Conn, only: [put_req_header: 3]
 
   alias Beamlet.Code
+  alias Beamlet.Define
+  alias Beamlet.Patch
   alias Beamlet.Principal
   alias Beamlet.Routes
 
@@ -209,6 +211,153 @@ defmodule Host.RouterTest do
       assert Routes.list(path: "/*rest/more") == []
       assert %{status: 200, body: body} = Host.Router.call(:get, "/rt/page")
       assert body =~ "page 1"
+    end
+  end
+
+  describe "redefining a routed module" do
+    defp page_source(ns, body) do
+      """
+      defmodule #{ns}.PageLive do
+        @moduledoc "A page."
+        use Host.Web, :live_view
+
+        @impl true
+        def render(assigns) do
+          ~H"<div>#{body}</div>"
+        end
+      end
+      """
+    end
+
+    defp define_page!(ctx, ns, body) do
+      purge_on_exit([Module.concat([ns, "PageLive"])])
+      {:ok, _summary} = Define.run([%{code: page_source(ns, body), replace: true}], ctx.principal)
+      Module.concat([ns, "PageLive"])
+    end
+
+    test "a module torn at boot and repaired by patch serves its route again", ctx do
+      ns = unique_namespace()
+      mod = define_page!(ctx, ns, "page one")
+      quietly(fn -> Host.Router.live("/rt/torn", mod) end)
+
+      {:ok, file} = Code.source_file(mod)
+      path = Path.expand(file, Path.join(ctx.data_dir, "code"))
+
+      File.write!(
+        path,
+        String.replace(File.read!(path), "~H\"<div>page one</div>\"", "~H\"<div>")
+      )
+
+      capture_log(fn ->
+        quiet(fn ->
+          :ok = Supervisor.terminate_child(Beamlet, Code)
+          {:ok, _pid} = Supervisor.restart_child(Beamlet, Code)
+          assert :ignore = Routes.boot()
+        end)
+      end)
+
+      assert [%{modules: [^mod]}] = Code.quarantined()
+      assert ctx.conn |> get("/rt/torn") |> response(404)
+
+      assert capture_io(&Host.Router.print_routes/0) =~
+               "/rt/torn — #{inspect(mod)} (test) — not served"
+
+      patch = %{module: inspect(mod), find: "~H\"<div>", replace: "~H\"<div>page two</div>\""}
+      assert {:ok, _summary} = quiet(fn -> Patch.run([patch], ctx.principal) end)
+
+      {:ok, _view, html} = live(ctx.conn, "/rt/torn")
+      assert html =~ "page two"
+      refute capture_io(&Host.Router.print_routes/0) =~ "not served"
+    end
+
+    test "a redefine that breaks a route drops it, and the fix brings it back", ctx do
+      ns = unique_namespace()
+      mod = define_page!(ctx, ns, "page one")
+      quietly(fn -> Host.Router.live("/rt/shape", mod) end)
+
+      plain = """
+      defmodule #{ns}.PageLive do
+        @moduledoc "No longer a page."
+
+        @doc "Says hello."
+        def hello, do: :hello
+      end
+      """
+
+      capture_log(fn ->
+        assert {:ok, _summary} = Define.run([%{code: plain, replace: true}], ctx.principal)
+      end)
+
+      assert ctx.conn |> get("/rt/shape") |> response(404)
+
+      assert capture_io(&Host.Router.print_routes/0) =~
+               "/rt/shape — #{inspect(mod)} (test) — not served"
+
+      define_page!(ctx, ns, "page again")
+      {:ok, _view, html} = live(ctx.conn, "/rt/shape")
+      assert html =~ "page again"
+    end
+
+    test "a redefine leaves the router alone while every route stays as it was", ctx do
+      ns = unique_namespace()
+      mod = define_page!(ctx, ns, "page one")
+      quietly(fn -> Host.Router.live("/rt/same", mod) end)
+      router = :code.get_object_code(Beamlet.DynamicRouter)
+
+      define_page!(ctx, ns, "page two")
+
+      assert :code.get_object_code(Beamlet.DynamicRouter) == router
+      {:ok, _view, html} = live(ctx.conn, "/rt/same")
+      assert html =~ "page two"
+    end
+
+    test "a define stands when the router fails to rebuild, with a warning", ctx do
+      page = define_page!(ctx, unique_namespace(), "page one")
+      hook = define_controller!(ctx)
+      quietly(fn -> Host.Router.live("/rt/kept", page) end)
+
+      Host.Repo.insert!(%Beamlet.Route{
+        kind: :controller,
+        verb: :post,
+        path: "/*rest/more",
+        module: inspect(hook),
+        action: "create",
+        principal: Principal.to_map(ctx.principal)
+      })
+
+      ns = unique_namespace()
+
+      log =
+        capture_log(fn ->
+          quiet(fn ->
+            assert {:ok, summary} = Define.run([%{code: page_source(ns, "new")}], ctx.principal)
+
+            assert summary =~
+                     "Warning: the router failed to rebuild, so your routes serve as they did " <>
+                       "before this change"
+          end)
+        end)
+
+      purge_on_exit([Module.concat([ns, "PageLive"])])
+      assert log =~ "the router failed to regenerate"
+      assert Elixir.Code.ensure_loaded?(Module.concat([ns, "PageLive"]))
+      assert %{status: 200} = Host.Router.call(:get, "/rt/kept")
+    end
+
+    test "print_routes marks a servable route the router has not picked up", ctx do
+      page = define_page!(ctx, unique_namespace(), "page one")
+
+      {:ok, _route} =
+        Routes.create(%{
+          kind: :live_view,
+          path: "/rt/late",
+          module: inspect(page),
+          principal: ctx.principal
+        })
+
+      assert capture_io(&Host.Router.print_routes/0) =~
+               "/rt/late — #{inspect(page)} (test) — not served yet: the router was not " <>
+                 "rebuilt after the last change; unmount it and mount it again"
     end
   end
 

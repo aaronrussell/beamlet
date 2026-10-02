@@ -11,7 +11,9 @@ defmodule Beamlet.Routes.Generator do
   # them). No auth anywhere: every route is public. The prefix
   # becomes the scope path, "/" for the root; rows go in in the order
   # given, so an earlier row wins an overlapping match, as in a
-  # hand-written router.
+  # hand-written router, each run of one kind in its own scope through
+  # that kind's pipeline. __served__/0 lists the rows built in by key,
+  # so what the router serves can be compared with the table.
 
   alias Beamlet.Route
 
@@ -19,10 +21,9 @@ defmodule Beamlet.Routes.Generator do
 
   @spec quoted([Route.t()], String.t()) :: Macro.t()
   def quoted(routes, prefix) do
-    {live_views, controllers} = Enum.split_with(routes, &(&1.kind == :live_view))
     scope_path = if prefix == "", do: "/", else: prefix
-    live_lines = Enum.map(live_views, &live_line/1)
-    controller_lines = Enum.map(controllers, &controller_line/1)
+    scopes = routes |> Enum.chunk_by(& &1.kind) |> Enum.map(&scope(&1, scope_path))
+    served = routes |> Enum.map(&key/1) |> Macro.escape()
 
     quote do
       defmodule unquote(@router) do
@@ -45,15 +46,31 @@ defmodule Beamlet.Routes.Generator do
           plug :accepts, ["json"]
         end
 
-        scope unquote(scope_path) do
-          pipe_through :browser
-          unquote_splicing(live_lines)
-        end
+        unquote_splicing(scopes)
 
-        scope unquote(scope_path) do
-          pipe_through :api
-          unquote_splicing(controller_lines)
-        end
+        def __served__, do: unquote(served)
+      end
+    end
+  end
+
+  @doc false
+  @spec key(Route.t()) :: tuple()
+  def key(route), do: {route.kind, route.verb, route.path, route.module, route.action}
+
+  defp scope([%Route{kind: :live_view} | _rest] = routes, scope_path) do
+    quote do
+      scope unquote(scope_path) do
+        pipe_through :browser
+        unquote_splicing(Enum.map(routes, &live_line/1))
+      end
+    end
+  end
+
+  defp scope(routes, scope_path) do
+    quote do
+      scope unquote(scope_path) do
+        pipe_through :api
+        unquote_splicing(Enum.map(routes, &controller_line/1))
       end
     end
   end
@@ -62,9 +79,16 @@ defmodule Beamlet.Routes.Generator do
     quote do: live(unquote(route.path), unquote(Route.target(route)))
   end
 
+  # A live action names no function, so a loaded target need not hold
+  # its atom and String.to_existing_atom/1 could refuse a route that
+  # serves. Only rows with a defined LiveView target reach here.
   defp live_line(route) do
     quote do
-      live(unquote(route.path), unquote(Route.target(route)), unquote(Route.action_atom(route)))
+      live(
+        unquote(route.path),
+        unquote(Route.target(route)),
+        unquote(String.to_atom(route.action))
+      )
     end
   end
 

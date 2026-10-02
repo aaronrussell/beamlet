@@ -53,6 +53,7 @@ defmodule Beamlet.Define do
   alias Beamlet.Policies
   alias Beamlet.Policy
   alias Beamlet.Principal
+  alias Beamlet.Routes
   alias Beamlet.Scanner
 
   @typedoc "One module to define: its source and whether it may replace a module of the same name."
@@ -73,9 +74,23 @@ defmodule Beamlet.Define do
     with {:ok, parsed} <- parse_entries(entries),
          :ok <- check_entries(parsed, Policy.grant(policy, Enum.map(parsed, & &1.module))) do
       modules = Enum.map(parsed, &Map.take(&1, [:module, :source, :kind, :replace]))
-      Code.define(modules, principal, Keyword.take(opts, [:timeout]))
+
+      modules
+      |> Code.define(principal, Keyword.take(opts, [:timeout]))
+      |> refresh_routes()
     end
   end
+
+  # The define stands whatever the router does, so a failed rebuild
+  # is a warning on the summary, not an error.
+  defp refresh_routes({:ok, summary}) do
+    case Routes.refresh() do
+      :ok -> {:ok, summary}
+      {:error, warning} -> {:ok, summary <> "\n" <> warning}
+    end
+  end
+
+  defp refresh_routes(error), do: error
 
   # Each entry parsed and formatted, with its module, kind and path.
   # Errors from every entry are collected so one call reports them

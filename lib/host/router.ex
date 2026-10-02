@@ -417,12 +417,17 @@ defmodule Host.Router do
           "not served: the row is malformed (#{fields}) " <>
           "and is deleted the next time the router is built"
 
-      Routes.servable?(route) ->
+      not Routes.servable?(route) ->
+        "#{verb}#{route.path} — #{target_label(route)} (#{mounted_by(route)}) — " <>
+          "not served: the target is missing or no longer fits the route"
+
+      Routes.served?(route) ->
         "#{verb}#{route.path} — #{target_label(route)} (#{mounted_by(route)})"
 
       true ->
         "#{verb}#{route.path} — #{target_label(route)} (#{mounted_by(route)}) — " <>
-          "not served: the target is missing or no longer fits the route"
+          "not served yet: the router was not rebuilt after the last change; " <>
+          "unmount it and mount it again"
     end
   end
 
