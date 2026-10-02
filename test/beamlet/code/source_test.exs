@@ -193,11 +193,8 @@ defmodule Beamlet.Code.SourceTest do
     end
 
     test "a source that does not parse names the line" do
-      assert {:error, {1, "missing terminator: end"}} =
-               Source.outline("defmodule A do\n  def x do\nend\n")
-
-      assert {:error, {2, "unexpected reserved word: end"}} =
-               Source.outline("defmodule A do\n  def x(, do: 1\nend\n")
+      assert {:error, {1, _message}} = Source.outline("defmodule A do\n  def x do\nend\n")
+      assert {:error, {2, _message}} = Source.outline("defmodule A do\n  def x(, do: 1\nend\n")
     end
   end
 

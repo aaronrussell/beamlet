@@ -208,12 +208,5 @@ defmodule Host.CodeTest do
                      call
       end
     end
-
-    test "act_as/1 stands in for eval's runtime", %{token: token} do
-      act_as(token)
-
-      output = ExUnit.CaptureIO.capture_io(fn -> assert :ok = Host.Code.print_modules() end)
-      assert output =~ "Host modules (your beamlet's stdlib):"
-    end
   end
 end

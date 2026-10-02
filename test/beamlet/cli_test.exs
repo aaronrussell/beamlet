@@ -17,8 +17,6 @@ defmodule Beamlet.CLITest do
       assert output =~ "tokens.update ID [--name NEW_NAME] [--policy POLICY]"
       assert output =~ "policies.show POLICY"
       assert output =~ "reset"
-      refute output =~ "users"
-      refute output =~ "--user"
 
       assert {:ok, output} = with_io(fn -> CLI.main(["--help"]) end)
       assert output =~ "Usage: beamlet COMMAND"

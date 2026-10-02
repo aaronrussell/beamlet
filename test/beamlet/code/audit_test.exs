@@ -59,9 +59,8 @@ defmodule Beamlet.Code.AuditTest do
 
       log = ExUnit.CaptureLog.capture_log(fn -> restart_code_server() end)
 
-      assert log =~
-               "code audit: manual changes in the code dir, committing them as " <>
-                 "\"manual changes\":\n  ?? lib/hand_edit.ex"
+      assert log =~ "code audit: manual changes in the code dir"
+      assert log =~ "lib/hand_edit.ex"
 
       assert commit_count(ctx.code_dir) == 2
       message = last_message(ctx.code_dir)
@@ -108,34 +107,25 @@ defmodule Beamlet.Code.AuditTest do
       refute files =~ ".beam"
     end
 
-    test "round-trips the principal through the commit", ctx do
+    test "git parses the trailers", ctx do
       ns = unique_namespace()
-      mod = Module.concat([ns, RoundTrip])
+      mod = Module.concat([ns, Parsed])
       purge_on_exit([mod])
 
       assert {:ok, _summary} =
                Code.define(
-                 [entry("defmodule #{ns}.RoundTrip do\n  @moduledoc \"Round trip.\"\nend\n")],
+                 [entry("defmodule #{ns}.Parsed do\n  @moduledoc \"Parsed.\"\nend\n")],
                  ctx.principal
                )
 
-      assert {:ok, decoded} = Principal.from_trailers(last_message(ctx.code_dir))
-      assert decoded == ctx.principal
-    end
+      trailer = fn key ->
+        ctx.code_dir
+        |> git!(["log", "-1", "--format=%(trailers:key=#{key},valueonly)"])
+        |> String.trim()
+      end
 
-    test "git can filter the history by a trailer", ctx do
-      ns = unique_namespace()
-      mod = Module.concat([ns, Filtered])
-      purge_on_exit([mod])
-
-      assert {:ok, _summary} =
-               Code.define(
-                 [entry("defmodule #{ns}.Filtered do\n  @moduledoc \"Filtered.\"\nend\n")],
-                 ctx.principal
-               )
-
-      subjects = git!(ctx.code_dir, ["log", "--format=%s", "--grep=^Token: test", "--all"])
-      assert subjects == "define: #{ns}.Filtered (new)\n"
+      assert trailer.("Token") == "test (#{ctx.principal.token_id})"
+      assert trailer.("Policy") == "default"
     end
 
     test "flags replaced modules in the subject", ctx do
@@ -221,11 +211,11 @@ defmodule Beamlet.Code.AuditTest do
   end
 
   describe "without git" do
-    setup do
+    @describetag :tmp_dir
+
+    setup %{tmp_dir: empty} do
       previous_path = System.get_env("PATH")
       on_exit(fn -> System.put_env("PATH", previous_path) end)
-      empty = Path.join(System.tmp_dir!(), "beamlet_no_git_#{System.unique_integer([:positive])}")
-      File.mkdir_p!(empty)
       System.put_env("PATH", empty)
       :ok
     end

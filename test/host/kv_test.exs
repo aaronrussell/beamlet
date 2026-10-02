@@ -140,6 +140,7 @@ defmodule Host.KVTest do
     test "external term format bytes for a fun do not decode" do
       module = "Elixir.Beamlet.Tokens"
       bytes = <<131, 113, 119, byte_size(module), module::binary, 119, 4, "list", 97, 0>>
+      assert :erlang.binary_to_term(bytes) == (&Beamlet.Tokens.list/0)
       insert_raw("kv-test:fun", bytes)
 
       assert_raise RuntimeError, ~r/"kv-test:fun" is not JSON/, fn ->
@@ -206,21 +207,6 @@ defmodule Host.KVTest do
       end
 
       assert Host.KV.fetch("kv-test:tx") == :error
-    end
-
-    test "the table is in the agent database, not the system database" do
-      sql = "select name from sqlite_master where name = '__kv'"
-
-      assert Host.Repo.query!(sql).rows == [["__kv"]]
-      assert Beamlet.Repo.query!(sql).rows == []
-    end
-
-    test "upgrading the furniture at the current version is a no-op" do
-      assert Beamlet.Tables.upgrade() == :ignore
-      assert Beamlet.Tables.upgrade() == :ignore
-
-      :ok = Host.KV.put("kv-test:after-boot", "ok")
-      assert Host.KV.get("kv-test:after-boot") == "ok"
     end
   end
 

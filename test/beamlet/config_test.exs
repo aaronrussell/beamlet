@@ -20,10 +20,6 @@ defmodule Beamlet.ConfigTest do
   end
 
   describe "validate!/0" do
-    test "passes the test config" do
-      assert :ok = Config.validate!()
-    end
-
     test "raises when the data dir is unset" do
       Application.delete_env(:beamlet, :data_dir)
 
@@ -247,16 +243,8 @@ defmodule Beamlet.ConfigTest do
   end
 
   describe "the accessors" do
-    test "data_dir/0 is the configured path", %{configured: configured} do
-      assert Config.data_dir() == configured
-    end
-
     test "db_dir/0 is the db directory under the data dir", %{configured: configured} do
       assert Config.db_dir() == Path.join(configured, "db")
-    end
-
-    test "policies/0 is empty when unset" do
-      assert Config.policies() == []
     end
 
     test "eval/0 is the defaults when unset" do

@@ -92,7 +92,7 @@ defmodule Beamlet.Config.ProviderTest do
       assert error.message =~ "#{file}:3:"
     end
 
-    test "names the file and line of an error raised while evaluating", %{config_file: file} do
+    test "names the file and line of a compile error", %{config_file: file} do
       File.write!(file, """
       import Config
       config :beamlet, policies: undeclared()
@@ -101,6 +101,16 @@ defmodule Beamlet.Config.ProviderTest do
       error = assert_raise ArgumentError, fn -> Provider.load([], file) end
       assert error.message =~ "#{file}:2:"
       assert error.message =~ "undeclared"
+    end
+
+    test "names the file and line of an error raised while evaluating", %{config_file: file} do
+      File.write!(file, """
+      import Config
+      config :beamlet, eval: [timeout: String.to_integer("soon")]
+      """)
+
+      error = assert_raise ArgumentError, fn -> Provider.load([], file) end
+      assert error.message =~ "#{file}:2:"
     end
 
     test "names the file when the error has no line", %{config_file: file} do

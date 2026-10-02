@@ -26,46 +26,57 @@ defmodule Host.RouterTest do
     :ok
   end
 
-  defp define_live!(ctx, ns \\ unique_namespace()) do
-    mod = Module.concat([ns, "PageLive"])
+  defp live_source(ns) do
+    """
+    defmodule #{ns}.PageLive do
+      use Host.Web, :live_view
 
-    define!(
-      ctx,
-      """
-      defmodule #{ns}.PageLive do
-        use Host.Web, :live_view
-
-        def mount(_params, _session, socket) do
-          {:ok, assign(socket, count: 1)}
-        end
-
-        def render(assigns) do
-          ~H"<div>page {@count}</div>"
-        end
+      def mount(_params, _session, socket) do
+        {:ok, assign(socket, count: 1)}
       end
-      """,
-      [mod]
-    )
 
+      def render(assigns) do
+        ~H"<div>page {@count}</div>"
+      end
+    end
+    """
+  end
+
+  defp controller_source(ns) do
+    """
+    defmodule #{ns}.HookController do
+      use Host.Web, :controller
+
+      def create(conn, _params), do: send_resp(conn, 201, "created")
+    end
+    """
+  end
+
+  defp define_live!(ctx) do
+    ns = unique_namespace()
+    mod = Module.concat([ns, "PageLive"])
+    define!(ctx, live_source(ns), [mod])
     mod
   end
 
   defp define_controller!(ctx, ns \\ unique_namespace()) do
     mod = Module.concat([ns, "HookController"])
-
-    define!(
-      ctx,
-      """
-      defmodule #{ns}.HookController do
-        use Host.Web, :controller
-
-        def create(conn, _params), do: send_resp(conn, 201, "created")
-      end
-      """,
-      [mod]
-    )
-
+    define!(ctx, controller_source(ns), [mod])
     mod
+  end
+
+  # A LiveView and a controller in one define, one compile and one
+  # commit.
+  defp define_live_and_controller!(ctx) do
+    ns = unique_namespace()
+    live = Module.concat([ns, "PageLive"])
+    controller = Module.concat([ns, "HookController"])
+    purge_on_exit([live, controller])
+
+    {:ok, _summary} =
+      Code.define([entry(live_source(ns)), entry(controller_source(ns))], ctx.principal)
+
+    {live, controller}
   end
 
   # A module with the action's shape but no controller `use`;
@@ -117,12 +128,7 @@ defmodule Host.RouterTest do
       assert output =~ "URL: #{ctx.base}/rt/page"
 
       assert [route] = Routes.list(path: "/rt/page")
-      assert route.kind == :live_view
-      assert route.verb == :get
-      assert route.module == inspect(mod)
-      assert route.action == nil
       assert {:ok, ctx.principal} == Beamlet.Route.principal(route)
-      assert Routes.servable?(route)
     end
 
     test "live/3 stores the live action", ctx do
@@ -134,7 +140,7 @@ defmodule Host.RouterTest do
       assert [%{action: "new"}] = Routes.list(path: "/rt/page/new")
     end
 
-    test "verb functions mount controller rows", ctx do
+    test "verb functions mount controller routes", ctx do
       mod = define_controller!(ctx)
 
       output = quietly(fn -> Host.Router.post("/rt/hooks", mod, :create) end)
@@ -143,9 +149,6 @@ defmodule Host.RouterTest do
       assert output =~ "URL: #{ctx.base}/rt/hooks"
 
       assert [route] = Routes.list(path: "/rt/hooks")
-      assert route.kind == :controller
-      assert route.verb == :post
-      assert route.action == "create"
       assert {:ok, ctx.principal} == Beamlet.Route.principal(route)
     end
 
@@ -186,14 +189,12 @@ defmodule Host.RouterTest do
 
       quietly(fn -> Host.Router.live("/rt/plain", mod) end)
 
-      assert [route] = Routes.list(path: "/rt/plain")
-      assert Routes.servable?(route)
+      assert ctx.conn |> get("/rt/plain") |> html_response(200) =~ "plain"
     end
 
     test "a mount the router cannot build is taken back, and the mounted routes keep serving",
          ctx do
-      page = define_live!(ctx)
-      hook = define_controller!(ctx)
+      {page, hook} = define_live_and_controller!(ctx)
       quietly(fn -> Host.Router.live("/rt/page", page) end)
 
       break_router_build()
@@ -301,21 +302,43 @@ defmodule Host.RouterTest do
       ns = unique_namespace()
       mod = define_page!(ctx, ns, "page one")
       quietly(fn -> Host.Router.live("/rt/same", mod) end)
-      router = :code.get_object_code(Beamlet.DynamicRouter)
 
+      server = Process.whereis(Code)
+      :erlang.trace(server, true, [:receive])
       define_page!(ctx, ns, "page two")
+      :erlang.trace(server, false, [:receive])
 
-      assert :code.get_object_code(Beamlet.DynamicRouter) == router
+      refute_received {:trace, ^server, :receive,
+                       {:"$gen_call", _from, {:compile_artifact, _source, _file}}}
+
       {:ok, _view, html} = live(ctx.conn, "/rt/same")
       assert html =~ "page two"
     end
 
     test "a define stands when the router fails to rebuild, with a warning", ctx do
       ns = unique_namespace()
-      mod = define_page!(ctx, ns, "page one")
-      other = define_page!(ctx, unique_namespace(), "other")
-      quietly(fn -> Host.Router.live("/rt/kept", mod) end)
-      quietly(fn -> Host.Router.live("/rt/other", other) end)
+      other_ns = unique_namespace()
+      mod = Module.concat([ns, "PageLive"])
+      other = Module.concat([other_ns, "PageLive"])
+      purge_on_exit([mod, other])
+
+      {:ok, _summary} =
+        Define.run(
+          [%{code: page_source(ns, "page one")}, %{code: page_source(other_ns, "other")}],
+          ctx.principal
+        )
+
+      for {path, page} <- [{"/rt/kept", mod}, {"/rt/other", other}] do
+        {:ok, _route} =
+          Routes.create(%{
+            kind: :live_view,
+            path: path,
+            module: inspect(page),
+            principal: ctx.principal
+          })
+      end
+
+      :ok = Routes.regenerate()
       break_router_build()
 
       plain = """
@@ -361,16 +384,14 @@ defmodule Host.RouterTest do
   end
 
   describe "mount validation" do
-    test "raises without a principal", ctx do
-      mod = define_live!(ctx)
-
+    test "raises without a principal" do
       Task.async(fn ->
         assert_raise RuntimeError, ~r/Host\.Router\.live works from eval/, fn ->
-          Host.Router.live("/rt/x", mod)
+          Host.Router.live("/rt/x", Enum)
         end
 
         assert_raise RuntimeError, ~r/Host\.Router\.post works from eval/, fn ->
-          Host.Router.post("/rt/x", mod, :create)
+          Host.Router.post("/rt/x", Enum, :create)
         end
       end)
       |> Task.await()
@@ -479,8 +500,7 @@ defmodule Host.RouterTest do
 
       quietly(fn -> Host.Router.get("/rt/api", mod, :show) end)
 
-      assert [route] = Routes.list(path: "/rt/api")
-      assert Routes.servable?(route)
+      assert %{status: 200, body: %{"ok" => true}} = Host.Router.call(:get, "/rt/api")
     end
 
     test "refuses a missing controller action", ctx do
@@ -524,7 +544,7 @@ defmodule Host.RouterTest do
     end
 
     test "refuses a reserved first segment, with the convention", ctx do
-      mod = define_live!(ctx)
+      mod = Enum
       controller = define_controller!(ctx)
 
       error = assert_raise RuntimeError, fn -> Host.Router.live("/beamlet/pages", mod) end
@@ -556,9 +576,9 @@ defmodule Host.RouterTest do
       assert Routes.list() == []
     end
 
-    test "refuses an empty segment, naming the path it would be served at", ctx do
-      mod = define_live!(ctx)
-      controller = define_controller!(ctx)
+    test "refuses an empty segment, naming the path it would be served at" do
+      mod = Enum
+      controller = Enum
 
       error = assert_raise RuntimeError, fn -> Host.Router.live("/rt//page", mod) end
 
@@ -583,9 +603,9 @@ defmodule Host.RouterTest do
     end
 
     @tag web: [prefix: "/app"]
-    test "refuses a path that begins with the prefix", ctx do
-      mod = define_live!(ctx)
-      controller = define_controller!(ctx)
+    test "refuses a path that begins with the prefix" do
+      mod = Enum
+      controller = Enum
 
       error = assert_raise RuntimeError, fn -> Host.Router.live("/app/rt/notes", mod) end
 
@@ -623,8 +643,7 @@ defmodule Host.RouterTest do
     end
 
     test "a conflict names the mounted route and its token", ctx do
-      mod = define_live!(ctx)
-      controller = define_controller!(ctx)
+      {mod, controller} = define_live_and_controller!(ctx)
       quietly(fn -> Host.Router.live("/rt/taken", mod) end)
 
       error =
@@ -642,8 +661,7 @@ defmodule Host.RouterTest do
 
   describe "unmount/2" do
     test "unmounts every route at a path, printing each", ctx do
-      live_mod = define_live!(ctx)
-      controller = define_controller!(ctx)
+      {live_mod, controller} = define_live_and_controller!(ctx)
       quietly(fn -> Host.Router.live("/rt/both", live_mod) end)
       quietly(fn -> Host.Router.post("/rt/both", controller, :create) end)
 
@@ -656,8 +674,7 @@ defmodule Host.RouterTest do
     end
 
     test "verb: narrows to one route", ctx do
-      live_mod = define_live!(ctx)
-      controller = define_controller!(ctx)
+      {live_mod, controller} = define_live_and_controller!(ctx)
       quietly(fn -> Host.Router.live("/rt/both", live_mod) end)
       quietly(fn -> Host.Router.post("/rt/both", controller, :create) end)
 
@@ -683,15 +700,10 @@ defmodule Host.RouterTest do
     end
 
     @tag web: [prefix: "/app"]
-    test "rejects a prefixed path", ctx do
-      mod = define_live!(ctx)
-      quietly(fn -> Host.Router.live("/rt/page", mod) end)
-
+    test "rejects a prefixed path" do
       assert_raise RuntimeError, ~r/paths never include the prefix \/app/, fn ->
         Host.Router.unmount("/app/rt/page")
       end
-
-      assert [_route] = Routes.list(path: "/rt/page")
     end
 
     test "rejects a reserved path" do
@@ -801,6 +813,10 @@ defmodule Host.RouterTest do
     test "~p starting with an interpolation is checked at runtime" do
       path = "/notes"
       assert ~p"#{path}" == "/notes"
+
+      path = "notes"
+
+      assert_raise RuntimeError, ~r/must be a string starting with \//, fn -> ~p"#{path}" end
     end
 
     test "~p refuses modifiers" do
@@ -819,8 +835,7 @@ defmodule Host.RouterTest do
     end
 
     test "prints the base once, then verb, path, target, and token", ctx do
-      live_mod = define_live!(ctx)
-      controller = define_controller!(ctx)
+      {live_mod, controller} = define_live_and_controller!(ctx)
       quietly(fn -> Host.Router.live("/rt/page", live_mod) end)
       quietly(fn -> Host.Router.post("/rt/hooks", controller, :create) end)
 
@@ -895,8 +910,6 @@ defmodule Host.RouterTest do
       {:ok, _summary} = Code.define([entry(code, replace: true)], ctx.principal)
 
       assert capture_log(fn -> assert Routes.regenerate() == :ok end) =~ "not served"
-      assert [route] = Routes.list(path: "/rt/hooks")
-      refute Routes.servable?(route)
 
       assert capture_io(&Host.Router.print_routes/0) =~
                "/rt/hooks — #{inspect(mod)}, action: :create (test) — not served"

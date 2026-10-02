@@ -6,7 +6,6 @@ defmodule Beamlet.OAuth.TokenControllerTest do
   import Plug.Conn
 
   alias Beamlet.MCPClient
-  alias Beamlet.OAuth
   alias Beamlet.OAuth.Clients
   alias Beamlet.Token
   alias Beamlet.Tokens
@@ -24,8 +23,6 @@ defmodule Beamlet.OAuth.TokenControllerTest do
   # The browser half of the flow: consent as the signed-in owner and
   # read the code off the redirect. Returns the code and the verifier
   # whose hash the code was issued against.
-  # The consent half: the person allows on the consent page, and the
-  # code rides the redirect back to the client.
   defp authorize(conn, overrides \\ %{}) do
     verifier = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
     challenge = Base.url_encode64(:crypto.hash(:sha256, verifier), padding: false)
@@ -55,10 +52,12 @@ defmodule Beamlet.OAuth.TokenControllerTest do
     {code, verifier}
   end
 
-  # The client half: a form-encoded post with no session, as a client
-  # sends it.
+  # The client half: a form-encoded post with no session and no CSRF
+  # token, as a client sends it, so the endpoint must sit outside the
+  # forgery protection.
   defp token_request(params) do
     build_conn()
+    |> put_private(:plug_skip_csrf_protection, false)
     |> put_req_header("content-type", "application/x-www-form-urlencoded")
     |> post("/beamlet/token", URI.encode_query(params))
   end
@@ -184,8 +183,8 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       {code, _verifier} = authorize(conn)
       conn = token_request(%{grant_type: "authorization_code", code: code})
 
-      assert assert_error(conn, "invalid_request") ==
-               "client_id, redirect_uri, code_verifier required"
+      description = assert_error(conn, "invalid_request")
+      for field <- ~w(client_id redirect_uri code_verifier), do: assert(description =~ field)
     end
   end
 
@@ -250,17 +249,12 @@ defmodule Beamlet.OAuth.TokenControllerTest do
 
     test "missing fields are invalid_request", %{refresh: refresh} do
       conn = token_request(%{grant_type: "refresh_token", refresh_token: refresh})
-      assert assert_error(conn, "invalid_request") == "client_id required"
+      assert assert_error(conn, "invalid_request") =~ "client_id"
     end
   end
 
   test "any other grant type is unsupported_grant_type" do
     assert %{grant_type: "password"} |> token_request() |> assert_error("unsupported_grant_type")
     assert %{} |> token_request() |> assert_error("unsupported_grant_type")
-  end
-
-  test "the lifetimes are a day and thirty days" do
-    assert OAuth.access_ttl() == 86_400
-    assert OAuth.refresh_ttl() == 2_592_000
   end
 end

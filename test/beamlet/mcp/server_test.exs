@@ -43,7 +43,7 @@ defmodule Beamlet.MCP.ServerTest do
     assert %{"isError" => true, "content" => [%{"type" => "text", "text" => text}]} =
              MCPClient.call_tool(client, "eval", %{code: ~s|System.cmd("ls", [])|})
 
-    assert text =~ "System.cmd"
+    assert text =~ "System.cmd/2 is not permitted by your policy"
   end
 
   test "an invalid byte in an error is replaced and the session lives on", %{token: token} do

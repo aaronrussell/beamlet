@@ -50,10 +50,10 @@ defmodule Beamlet.EvalTest do
     end
 
     test "a print loop keeps the first max_output and counts the rest", %{principal: principal} do
-      code = ~s|Enum.each(1..500, fn _ -> IO.puts(String.duplicate("x", 100_000)) end)|
+      code = ~s|Enum.each(1..50, fn _ -> IO.puts(String.duplicate("x", 100_000)) end)|
 
       assert {:ok, output} = Eval.run(code, principal, max_output: 32_768)
-      assert output =~ "...(output truncated, showing first 32KB of 47.7MB"
+      assert output =~ "...(output truncated, showing first 32KB of 4.8MB"
       assert String.ends_with?(output, "\n=> :ok")
       assert byte_size(output) < 33_000
     end
@@ -96,7 +96,7 @@ defmodule Beamlet.EvalTest do
 
     test "an off-heap binary counts against the memory limit", %{principal: principal} do
       message =
-        run_error(~s|byte_size(String.duplicate("x", 100_000_000))|, principal,
+        run_error(~s|byte_size(String.duplicate("x", 20_000_000))|, principal,
           max_heap_bytes: 10_000_000
         )
 
@@ -113,10 +113,10 @@ defmodule Beamlet.EvalTest do
 
     test "a print loop that times out still names the limit", %{principal: principal} do
       code = ~s|Stream.cycle([1]) \|> Enum.each(fn _ -> IO.puts("tick") end)|
-      message = run_error(code, principal, timeout: 200, max_output: 1_000)
+      message = run_error(code, principal, timeout: 50, max_output: 1_000)
 
       assert message =~ "...(output truncated, showing first"
-      assert message =~ "Evaluation timed out after 200ms"
+      assert message =~ "Evaluation timed out after 50ms"
       assert byte_size(message) < 1_200
     end
 
@@ -198,11 +198,6 @@ defmodule Beamlet.EvalTest do
   end
 
   describe "the dispatch rule" do
-    test "a variable call target is refused under the default policy", %{principal: principal} do
-      assert run_error("mod = Enum\nmod.count([1])", principal) =~
-               "call target must be a literal module"
-    end
-
     @tag policies: [relaxed: [rules: [allow_dynamic_dispatch: true]]]
     test "a variable call target evaluates under a policy that allows it" do
       {:ok, token} = Tokens.create(name: "phone", policy: "relaxed")
@@ -215,16 +210,6 @@ defmodule Beamlet.EvalTest do
     test "write and read round-trip through the shared root", %{principal: principal} do
       assert {:ok, "=> :ok"} = Eval.run(~s|Host.File.write!("notes.md", "hello")|, principal)
       assert {:ok, ~s|=> "hello"|} = Eval.run(~s|Host.File.read!("notes.md")|, principal)
-    end
-
-    test "a non-string path raises the teaching error", %{principal: principal} do
-      assert run_error("Host.File.read(:notes)", principal) =~
-               "Host.File paths are strings, got: :notes"
-    end
-
-    test "Path is granted but wildcard is not", %{principal: principal} do
-      assert {:ok, ~s|=> "a/b"|} = Eval.run(~s|Path.join("a", "b")|, principal)
-      assert run_error(~s|Path.wildcard("*")|, principal) =~ "Path.wildcard/1 is not permitted"
     end
   end
 

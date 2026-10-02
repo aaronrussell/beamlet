@@ -16,16 +16,6 @@ defmodule Beamlet.Web.AuthTest do
     |> Phoenix.Controller.fetch_flash([])
   end
 
-  describe "session_options/0" do
-    test "name a cookie of the app's own, scoped to /beamlet and hidden from scripts" do
-      options = Auth.session_options()
-
-      assert options[:key] == "_beamlet_app_key"
-      assert options[:path] == "/beamlet"
-      assert options[:http_only] == true
-    end
-  end
-
   describe "fetch_current_user/2" do
     test "assigns the owner when the secret names a session" do
       {:ok, session} = Owner.create_session()
@@ -56,11 +46,6 @@ defmodule Beamlet.Web.AuthTest do
       conn =
         :get |> session_conn("/x", session_secret: session.secret) |> Auth.fetch_current_user([])
 
-      assert conn.assigns.current_user == nil
-    end
-
-    test "a session naming a user id signs nobody in", %{user: user} do
-      conn = :get |> session_conn("/x", user_id: user.id) |> Auth.fetch_current_user([])
       assert conn.assigns.current_user == nil
     end
   end

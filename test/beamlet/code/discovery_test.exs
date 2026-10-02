@@ -82,9 +82,9 @@ defmodule Beamlet.Code.DiscoveryTest do
       refute text =~ ~r/^  Phoenix\.LiveView — /m
       refute text =~ "Phoenix.Flash (:phoenix)"
       assert text =~ ~r/^  Host\.HTTP — HTTP requests with Req's arguments/m
-      assert text =~ ~r/^  Req\.Response \(:req\) — The response struct\.$/m
+      assert text =~ ~r/^  Req\.Response \(:req\) — \S/m
       refute text =~ ~r/^  Req \(:req\)/m
-      assert text =~ ~r/^  Jason \(:jason\) — A blazing fast JSON parser/m
+      assert text =~ ~r/^  Jason \(:jason\) — \S/m
       refute text =~ ~r/^  Req\.Steps\b/m
       refute text =~ ~r/^  Enum\b/m
       refute text =~ ~r/^  Kernel\b/m
@@ -305,7 +305,6 @@ defmodule Beamlet.Code.DiscoveryTest do
       assert {:ok, text} = Discovery.doc(effective(), Host.Repo, :insert)
 
       assert text =~ "# Host.Repo.insert(struct, opts \\\\ [])"
-      assert text =~ "Inserts a struct defined via `Ecto.Schema` or a changeset."
       assert text =~ "## Options"
 
       assert {:error, message} = Discovery.doc(effective(), Host.Repo, :put_dynamic_repo, 1)

@@ -24,7 +24,7 @@ defmodule Beamlet.OwnerTest do
     end
 
     test "stores the email and a hash of the password, never the password" do
-      assert {:ok, %User{id: 1, email: "ada@example.com", password: nil, password_hash: hash}} =
+      assert {:ok, %User{email: "ada@example.com", password: nil, password_hash: hash}} =
                Owner.create(email: "ada@example.com", password: "correct horse")
 
       assert String.starts_with?(hash, "$pbkdf2-sha512$")

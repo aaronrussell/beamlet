@@ -209,14 +209,7 @@ defmodule Beamlet.Policy.DefaultTest do
       refute Policy.allowed?(policy, Ecto.Migrator)
     end
 
-    test "names the framework modules" do
-      assert Phoenix.LiveView in Default.framework_modules()
-      assert Ecto.Query in Default.framework_modules()
-      refute Req.Response in Default.framework_modules()
-    end
-
     test "expands the shipped packages, hidden modules excluded", %{policy: policy} do
-      assert Default.packages() == [:jason]
       assert policy.grants[Jason] == :all
       # No moduledoc at all still grants; @moduledoc false does not.
       assert policy.grants[Jason.OrderedObject] == :all

@@ -61,6 +61,7 @@ defmodule Beamlet.CLIResetTest do
     locked = Path.join(Config.files_dir(), "locked")
     File.mkdir_p!(locked)
     File.write!(Path.join(locked, "stuck.txt"), "")
+    # Root ignores the mode, so this fails in a container running as root.
     File.chmod!(locked, 0o500)
     on_exit(fn -> File.chmod(locked, 0o700) end)
 

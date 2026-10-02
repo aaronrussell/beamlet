@@ -42,15 +42,8 @@ defmodule Beamlet.RouterTest do
       |> post("/beamlet/mcp", JSON.encode!(initialize))
 
     assert conn.status == 200
-    assert conn.resp_body =~ "beamlet"
-  end
-
-  test "the host's own routes come first", %{conn: conn} do
-    assert conn |> get("/host/ping") |> response(200) == "pong"
-  end
-
-  test "everything else is the generated router, empty at first", %{conn: conn} do
-    assert conn |> get("/nowhere") |> response(404)
+    [_line, data] = Regex.run(~r/^data: (.*)$/m, conn.resp_body)
+    assert %{"result" => %{"serverInfo" => %{"name" => "beamlet"}}} = JSON.decode!(data)
   end
 
   test "the beamlet's own pages are under /beamlet, behind the login", %{conn: conn} do

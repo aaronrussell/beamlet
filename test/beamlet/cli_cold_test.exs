@@ -21,9 +21,11 @@ defmodule Beamlet.CLIColdTest do
     Application.put_env(:beamlet, :policies, restricted: [tools: [:eval]])
     assert Process.whereis(Beamlet) == nil
 
-    # No sandbox here, so the token is committed: a unique name keeps a
-    # run that failed before its delete from failing the next.
+    # No sandbox here, so the token is committed: a test that fails
+    # before its delete would leave it for every later test that lists
+    # tokens, hence the cleanup.
     name = "cold#{System.unique_integer([:positive])}"
+    on_exit(fn -> delete_token(name) end)
 
     assert {:ok, output} =
              with_io(fn -> CLI.main(["tokens.create", name, "--policy", "restricted"]) end)
@@ -49,6 +51,15 @@ defmodule Beamlet.CLIColdTest do
     assert Process.whereis(Beamlet) == nil
 
     assert File.exists?(Path.join(Beamlet.Config.db_dir(), "beamlet.db"))
+  end
+
+  defp delete_token(name) do
+    {:ok, output} = with_io(fn -> CLI.main(["tokens"]) end)
+
+    case Regex.run(~r/^(\d+)\s+cli\s+#{name}\s/m, output, capture: :all_but_first) do
+      [id] -> with_io(fn -> CLI.main(["tokens.delete", id]) end)
+      nil -> :ok
+    end
   end
 
   test "a bad policy declaration fails the command with the boot's error" do

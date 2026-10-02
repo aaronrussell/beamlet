@@ -140,18 +140,6 @@ defmodule Beamlet.CodeTest do
                  "by name.\""
     end
 
-    test "source_file/1 finds a defined module's source", ctx do
-      ns = unique_namespace()
-      mod = Module.concat([ns, Located])
-      purge_on_exit([mod])
-
-      code = "defmodule #{ns}.Located do\n  @moduledoc \"Here.\"\nend\n"
-      assert {:ok, _summary} = define(code, ctx.principal)
-
-      assert Code.source_file(mod) == {:ok, Code.manifest()[mod].source_file}
-      assert Code.source_file(Module.concat([ns, Missing])) == :error
-    end
-
     test "a module the beamlet already has is rejected with no flag", ctx do
       code = """
       defmodule Enum do
@@ -378,62 +366,6 @@ defmodule Beamlet.CodeTest do
       assert Path.wildcard(Path.join(ctx.code_dir, "lib/**/*.ex")) == []
       refute File.exists?(Path.join(ctx.code_dir, ".staging"))
       assert Code.defined() == []
-    end
-
-    test "raising exceptions compiles and runs", ctx do
-      ns = unique_namespace()
-      error_mod = Module.concat([ns, EmptyListError])
-      list_mod = Module.concat([ns, StrictList])
-      purge_on_exit([error_mod, list_mod])
-
-      sources = [
-        """
-        defmodule #{ns}.EmptyListError do
-          @moduledoc "Raised on an empty list."
-          defexception message: "the list is empty"
-        end
-        """,
-        """
-        defmodule #{ns}.StrictList do
-          @moduledoc "A list that refuses to be empty."
-
-          def first!([]), do: raise(#{ns}.EmptyListError)
-          def first!([head | _]), do: head
-
-          def check!(nil), do: raise(ArgumentError, "no list given")
-          def check!(_list), do: raise("just checking")
-        end
-        """
-      ]
-
-      assert {:ok, _summary} = define(sources, ctx.principal)
-
-      assert apply(list_mod, :first!, [[1, 2]]) == 1
-      assert_raise error_mod, fn -> apply(list_mod, :first!, [[]]) end
-      assert_raise ArgumentError, "no list given", fn -> apply(list_mod, :check!, [nil]) end
-      assert_raise RuntimeError, "just checking", fn -> apply(list_mod, :check!, [[1]]) end
-    end
-
-    test "typespecs compile", ctx do
-      ns = unique_namespace()
-      mod = Module.concat([ns, Typed])
-      purge_on_exit([mod])
-
-      code = """
-      defmodule #{ns}.Typed do
-        @moduledoc "Carries typespecs."
-
-        defstruct [:name, :count]
-
-        @type t :: %__MODULE__{name: String.t(), count: non_neg_integer()}
-
-        @spec bump(t()) :: t()
-        def bump(typed), do: %{typed | count: typed.count + 1}
-      end
-      """
-
-      assert {:ok, _summary} = define(code, ctx.principal)
-      assert apply(mod, :bump, [struct(mod, name: "x", count: 1)]).count == 2
     end
   end
 

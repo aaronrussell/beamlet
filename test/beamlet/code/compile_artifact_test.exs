@@ -28,8 +28,14 @@ defmodule Beamlet.Code.CompileArtifactTest do
     v2 = quoted("defmodule #{ns}.Artifact do\n  def version, do: 2\nend\n")
 
     assert {:ok, [^mod]} = Code.compile_artifact(fn -> v1 end, "artifact.ex")
-    assert {:ok, [^mod]} = Code.compile_artifact(fn -> v2 end, "artifact.ex")
+
+    stderr =
+      ExUnit.CaptureIO.capture_io(:stderr, fn ->
+        assert {:ok, [^mod]} = Code.compile_artifact(fn -> v2 end, "artifact.ex")
+      end)
+
     assert mod.version() == 2
+    refute stderr =~ "redefining module"
   end
 
   test "a compile error returns the message and puts the last good version back", %{ns: ns} do

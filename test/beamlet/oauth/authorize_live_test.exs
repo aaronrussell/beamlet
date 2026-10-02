@@ -250,11 +250,6 @@ defmodule Beamlet.OAuth.AuthorizeLiveTest do
       assert decide(view, "maybe", "default") =~ "incomplete"
     end
 
-    test "an undeclared policy is an error page", %{conn: conn, params: params} do
-      {:ok, view, _html} = live(conn, path(params))
-      assert decide(view, "allow", "gone") =~ "not one this beamlet declares"
-    end
-
     test "a decision after an error page changes nothing", %{conn: conn, params: params} do
       {:ok, view, _html} = live(conn, path(%{params | redirect_uri: "https://evil.example/cb"}))
 

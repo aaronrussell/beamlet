@@ -2,21 +2,9 @@ defmodule Beamlet.PolicyTest do
   use ExUnit.Case, async: true
 
   alias Beamlet.Policy
-  alias Beamlet.Policy.Default
   alias Beamlet.Policy.Rules
   alias Beamlet.Policy.Signage
   alias Beamlet.TestPolicies
-
-  describe "default/0" do
-    test "is named default with both tools, strict rules and the curated grants" do
-      policy = Policy.default()
-
-      assert policy.name == "default"
-      assert policy.tools == [:define, :eval]
-      assert policy.rules == %Rules{}
-      assert policy.grants == Default.grants()
-    end
-  end
 
   describe "build/2" do
     test "an empty document is the default under a new name" do

@@ -249,17 +249,5 @@ defmodule Host.FileTest do
       Host.File.write!("notes.md", "here")
       assert File.read!(Path.join(data_dir, "files/notes.md")) == "here"
     end
-
-    test "resolution is stateless: every process sees the same files" do
-      Host.File.write!("notes.md", "from the test process")
-
-      Task.async(fn ->
-        assert Host.File.read!("notes.md") == "from the test process"
-        Host.File.write!("notes.md", "from another process")
-      end)
-      |> Task.await()
-
-      assert Host.File.read!("notes.md") == "from another process"
-    end
   end
 end

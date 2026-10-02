@@ -100,13 +100,13 @@ defmodule Beamlet.MCP.PlugTest do
   @tag :capture_log
   test "the transport waits the configured request timeout, read per request", %{token: token} do
     {client, _result} = MCPClient.initialize(token)
-    Application.put_env(:beamlet, :mcp, request_timeout: 200)
+    Application.put_env(:beamlet, :mcp, request_timeout: 50)
     on_exit(fn -> Application.delete_env(:beamlet, :mcp) end)
 
     code = """
     receive do
     after
-      2_000 -> :ok
+      500 -> :ok
     end
     """
 

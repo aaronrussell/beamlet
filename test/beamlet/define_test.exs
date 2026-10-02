@@ -2,7 +2,6 @@ defmodule Beamlet.DefineTest do
   use Beamlet.Case
 
   alias Beamlet.Code
-  alias Beamlet.Code.Format
   alias Beamlet.Define
   alias Beamlet.Eval
   alias Beamlet.Tokens
@@ -27,24 +26,6 @@ defmodule Beamlet.DefineTest do
 
   defp stored(data_dir, ns, file),
     do: File.read!(Path.join(data_dir, "code/#{lib_path(ns, file)}"))
-
-  test "defines a module and returns the summary", %{principal: principal} do
-    ns = unique_namespace()
-    mod = Module.concat([ns, Greeter])
-    purge_on_exit([mod])
-
-    code = """
-    defmodule #{ns}.Greeter do
-      @moduledoc "Greets people."
-
-      @doc "Greets by name."
-      def hello(name), do: "hello \#{name}"
-    end
-    """
-
-    assert {:ok, "Defined #{ns}.Greeter (new)"} == define(code, principal)
-    assert apply(mod, :hello, ["world"]) == "hello world"
-  end
 
   describe "entries" do
     test "several entries land together, in order", %{principal: principal} do
@@ -211,9 +192,13 @@ defmodule Beamlet.DefineTest do
 
       assert {:ok, _summary} = define(code, principal)
 
-      {:ok, formatted} = Format.format(code)
-      assert stored(data_dir, ns, "messy.ex") == formatted
-      assert formatted =~ "  def add(a, b), do: a + b\n"
+      assert stored(data_dir, ns, "messy.ex") == """
+             defmodule #{ns}.Messy do
+               @moduledoc "Messy."
+               @doc "Adds."
+               def add(a, b), do: a + b
+             end
+             """
     end
 
     test "plug, attr and slot stay bare and ~H content is untouched", %{

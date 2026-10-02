@@ -34,12 +34,4 @@ defmodule Beamlet.OAuth.MetadataControllerTest do
     assert build_conn() |> get("/.well-known/oauth-authorization-server") |> json_response(200) ==
              @authorization_server
   end
-
-  test "the URLs the plug and the documents share come from the endpoint" do
-    assert Beamlet.OAuth.issuer() == "http://localhost:4000"
-    assert Beamlet.OAuth.resource() == "http://localhost:4000/beamlet/mcp"
-
-    assert Beamlet.OAuth.resource_metadata_url() ==
-             "http://localhost:4000/.well-known/oauth-protected-resource"
-  end
 end

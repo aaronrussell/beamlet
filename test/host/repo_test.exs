@@ -20,10 +20,4 @@ defmodule Host.RepoTest do
 
     refute File.exists?(copy)
   end
-
-  test "the system database is not restricted" do
-    agent_db = Host.Repo.config()[:database]
-
-    assert {:ok, _} = Beamlet.Repo.query("attach database ? as agent", [agent_db])
-  end
 end

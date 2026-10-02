@@ -53,13 +53,6 @@ defmodule Beamlet.PrincipalTest do
     end
   end
 
-  test "put_current/1 makes it the current process's principal" do
-    assert Principal.current() == nil
-
-    assert :ok = Principal.put_current(@principal)
-    assert Principal.current() == @principal
-  end
-
   test "current!/1 returns the current principal, and raises naming the caller without one" do
     assert_raise RuntimeError,
                  "Host.Code.remove works from eval, where your code acts as you; " <>

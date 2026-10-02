@@ -6,6 +6,7 @@ defmodule Beamlet.RoutesTest do
   import Plug.Conn
   import Phoenix.LiveViewTest
 
+  alias Beamlet.Owner
   alias Beamlet.Route
   alias Beamlet.RouteFixtures
   alias Beamlet.Routes
@@ -53,12 +54,14 @@ defmodule Beamlet.RoutesTest do
   end
 
   describe "create/1" do
-    test "inserts a live_view route storing verb :get", ctx do
-      assert {:ok, %Route{verb: :get, action: nil}} = Routes.create(ctx.live_attrs)
-    end
-
     test "forces :get on a live_view route regardless of input", ctx do
       assert {:ok, %Route{verb: :get}} = Routes.create(Map.put(ctx.live_attrs, :verb, :post))
+    end
+
+    test "refuses a path Phoenix would refuse", ctx do
+      assert {:error, changeset} = Routes.create(%{ctx.live_attrs | path: "/*rest/more"})
+      assert %{path: [message]} = errors_on(changeset)
+      assert message =~ "glob"
     end
 
     test "inserts a controller route with verb and action", ctx do
@@ -189,12 +192,6 @@ defmodule Beamlet.RoutesTest do
       assert Route.load_changeset(route).valid?
     end
 
-    test "a path Phoenix refuses is not", ctx do
-      assert {:error, changeset} = Routes.create(%{ctx.live_attrs | path: "/*rest/more"})
-      assert %{path: [message]} = errors_on(changeset)
-      assert message =~ "glob"
-    end
-
     test "a row with a malformed path, module or action is not" do
       route = %Route{
         kind: :controller,
@@ -241,8 +238,10 @@ defmodule Beamlet.RoutesTest do
 
       html = ctx.conn |> get("/hello/7") |> html_response(200)
 
+      assert html =~ ~s(new LiveSocket("/beamlet/live")
       assert html =~ "cdn.jsdelivr.net/npm/@tailwindcss/browser"
-      assert html =~ ~s(<body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">)
+      assert html =~ ~r/<body class="[^"]*\bbg-[^"]*\bdark:bg-/
+      refute html =~ "/beamlet/app/live"
       refute html =~ "/beamlet/assets/app.css"
     end
 
@@ -445,12 +444,14 @@ defmodule Beamlet.RoutesTest do
       assert ctx.conn |> get("/hello/2") |> response(404)
     end
 
-    test "an agent route writing user_id to its session signs nobody in to the app", ctx do
+    test "an agent route writing a live session secret to its session signs nobody in to the app",
+         ctx do
       add_echo!(ctx, :get, "session", "/door")
       assert :ok = Routes.regenerate()
+      {:ok, session} = Owner.create_session()
 
-      conn = get(ctx.conn, "/door", user_id: ctx.user.id)
-      assert json_response(conn, 200) == %{"user_id" => to_string(ctx.user.id)}
+      conn = get(ctx.conn, "/door", session_secret: session.secret)
+      assert json_response(conn, 200) == %{"session_secret" => session.secret}
 
       assert conn |> get("/beamlet") |> redirected_to() == "/beamlet/login"
     end

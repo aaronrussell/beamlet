@@ -10,7 +10,7 @@ defmodule Beamlet.PoliciesTest do
   end
 
   test "a beamlet with no declarations has only the default" do
-    start_supervised!({Beamlet, []})
+    start_supervised!({Beamlet, only: :system})
 
     assert Policies.names() == ["default"]
     assert Policies.fetch("default") == {:ok, Policy.default()}
@@ -23,7 +23,7 @@ defmodule Beamlet.PoliciesTest do
       builder: [rules: [allow_defmacro: true]]
     )
 
-    start_supervised!({Beamlet, []})
+    start_supervised!({Beamlet, only: :system})
 
     assert Policies.names() == ["builder", "default", "explorer"]
 
@@ -59,7 +59,7 @@ defmodule Beamlet.PoliciesTest do
 
   defp boot_error do
     assert {:error, {{:shutdown, {:failed_to_start_child, Policies, {error, _stack}}}, _spec}} =
-             start_supervised({Beamlet, []})
+             start_supervised({Beamlet, only: :system})
 
     Exception.message(error)
   end

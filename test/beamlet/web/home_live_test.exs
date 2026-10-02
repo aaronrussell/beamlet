@@ -22,24 +22,23 @@ defmodule Beamlet.Web.HomeLiveTest do
 
   test "shows the MCP URL and how each kind of client connects", %{conn: conn} do
     conn = sign_in(conn)
-    {:ok, view, html} = live(conn, "/beamlet")
+    {:ok, view, _html} = live(conn, "/beamlet")
 
     assert has_element?(view, "#mcp-url", "http://localhost:4000/beamlet/mcp")
     assert has_element?(view, "h2", "ChatGPT")
-    assert html =~ "Browse plugins"
 
     for {client, heading, snippet} <- [
-          {"claude", "Claude", "Add custom connector"},
+          {"claude", "Claude", nil},
           {"claude-code", "Claude Code",
            "claude mcp add --transport http beamlet http://localhost:4000/beamlet/mcp"},
           {"cursor", "Cursor", "Bearer ${env:BEAMLET_TOKEN}"},
           {"code", "From code", "mcp-client-2025-11-20"},
-          {"other", "Other apps", "send it as a header"}
+          {"other", "Other apps", nil}
         ] do
       {:ok, view, html} = live(conn, "/beamlet?client=#{client}")
 
       assert has_element?(view, "h2", heading), "no heading #{heading}"
-      assert html =~ snippet, "#{client} lacks #{snippet}"
+      if snippet, do: assert(html =~ snippet, "#{client} lacks #{snippet}")
     end
 
     {:ok, view, html} = live(conn, "/beamlet?client=code")

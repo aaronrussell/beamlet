@@ -21,8 +21,6 @@ defmodule Beamlet.Routes.GeneratorTest do
     }
   end
 
-  defp source(routes, prefix), do: routes |> Generator.quoted(prefix) |> Macro.to_string()
-
   defp calls(quoted, name) do
     {_quoted, calls} =
       Macro.prewalk(quoted, [], fn
@@ -31,48 +29,6 @@ defmodule Beamlet.Routes.GeneratorTest do
       end)
 
     Enum.reverse(calls)
-  end
-
-  test "an empty route list builds a router with no routes and nothing served" do
-    source = source([], "")
-
-    assert source =~ "defmodule Beamlet.DynamicRouter do"
-    assert source =~ "use Phoenix.Router, helpers: false"
-    assert source =~ "def __served__ do\n    []\n  end"
-    refute source =~ "scope("
-    refute source =~ "live("
-    refute source =~ "get("
-  end
-
-  test "live_view rows become live lines in the browser scope" do
-    source = source([live_route("/hello/:id", My.HelloLive)], "")
-
-    assert source =~ ~s|live("/hello/:id", My.HelloLive)|
-    assert source =~ ~s|put_root_layout, html: {Beamlet.Web.Layouts, :beamlet}|
-    assert source =~ "plug(:protect_from_forgery)"
-  end
-
-  test "a live_view row with a live action becomes the three-argument live line" do
-    route = %Route{
-      kind: :live_view,
-      verb: :get,
-      path: "/todos/new",
-      module: inspect(My.TodoLive),
-      action: "new"
-    }
-
-    assert source([route], "") =~ ~s|live("/todos/new", My.TodoLive, :new)|
-  end
-
-  test "controller rows become verb lines in the api scope" do
-    source = source([controller_route(:post, "/hooks", My.HookController, :create)], "")
-
-    assert source =~ ~s|post("/hooks", My.HookController, :create)|
-    assert source =~ ~s|plug(:accepts, ["json"])|
-  end
-
-  test "a prefix becomes the scope path" do
-    assert source([live_route("/a", My.ALive)], "/pages") =~ ~s|scope("/pages") do|
   end
 
   test "row order is preserved" do

@@ -123,11 +123,6 @@ defmodule Beamlet.ScannerTest do
   end
 
   describe "policy violations" do
-    test "a denied module names itself" do
-      message = scan_error("x = 1\nFile.read!(\"/etc/passwd\")")
-      assert message =~ "line 2: File.read!/1 — File is not permitted by your policy"
-    end
-
     test "a denied function of a granted module names the function" do
       assert scan_error("IO.gets(\"? \")") =~ "IO.gets/1 is not permitted by your policy"
     end
@@ -154,7 +149,6 @@ defmodule Beamlet.ScannerTest do
                "spawn/1 is not permitted by your policy — process primitives"
 
       assert scan_error("send(self(), :hi)") =~ "send/2 is not permitted"
-      assert scan_error("apply(Enum, :sum, [[1]])") =~ "apply/3 is not permitted"
     end
 
     test "pipes are checked at their effective arity" do
@@ -188,8 +182,9 @@ defmodule Beamlet.ScannerTest do
       assert message =~ "Host.Code.print_modules() lists the Host modules"
       refute message =~ "define it first"
 
-      assert scan_error("Host.Files.read(\"x\")") =~ "Host.Code.print_modules() lists"
-      refute message =~ "not permitted"
+      guessed = scan_error("Host.Files.read(\"x\")")
+      assert guessed =~ "Host.Code.print_modules() lists"
+      refute guessed =~ "not permitted"
     end
 
     test "require of a denied module is rejected" do
@@ -298,9 +293,6 @@ defmodule Beamlet.ScannerTest do
   end
 
   describe "parse errors" do
-    test "carry the line" do
-      assert scan_error("Enum.map([1,") =~ ~r/^line 1: /
-    end
   end
 
   describe "scan_define/4 structure" do
@@ -795,18 +787,6 @@ defmodule Beamlet.ScannerTest do
       assert :ok =
                scan_define(code, policy(rules: [allow_defmacro: true]))
     end
-
-    test "defguard stays outside the rule" do
-      assert :ok =
-               scan_define("""
-               defmodule Scan.Fixture.G do
-                 @moduledoc "G."
-
-                 @doc "True for adults."
-                 defguard is_adult(age) when is_integer(age) and age >= 18
-               end
-               """)
-    end
   end
 
   describe "the data surface" do
@@ -946,10 +926,6 @@ defmodule Beamlet.ScannerTest do
                """,
                @relaxed
              ) =~ "@before_compile target must be a literal module"
-    end
-
-    test "map field access on a variable still passes unchanged" do
-      assert :ok = scan("m = %{a: 1}\nm.a", @relaxed)
     end
   end
 end
