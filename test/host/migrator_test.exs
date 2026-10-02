@@ -309,6 +309,33 @@ defmodule Host.MigratorTest do
                "No applied migrations to roll back\n"
     end
 
+    test "a failed rollback names the migration and the way out", ctx do
+      ns = unique_namespace()
+      {mod, table} = new_migration_names(ns)
+
+      source = """
+      defmodule #{inspect(mod)} do
+        @moduledoc "Creates the #{table} table in SQL."
+        use Ecto.Migration
+
+        def change do
+          execute "CREATE TABLE #{table} (id INTEGER PRIMARY KEY)"
+        end
+      end
+      """
+
+      assert {:ok, _} = define!(ctx.principal, source, [mod])
+      capture_io(fn -> Host.Migrator.migrate() end)
+
+      error = assert_raise RuntimeError, fn -> Host.Migrator.rollback() end
+      assert error.message =~ "rollback of migration 1 (#{inspect(mod)}) failed: "
+
+      assert error.message =~
+               " — give it a down/0, or use change/0 commands Ecto can reverse"
+
+      assert applied() == [1]
+    end
+
     test "an applied migration refuses replace and remove until rolled back", ctx do
       ns = unique_namespace()
       {mod, table} = new_migration_names(ns)

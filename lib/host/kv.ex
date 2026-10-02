@@ -48,8 +48,9 @@ defmodule Host.KV do
 
   @doc """
   Returns `{:ok, value}` for the value stored under `key`, or
-  `:error` when there is none. The only read that distinguishes a
-  stored `nil` from a missing key.
+  `:error` when there is none.
+
+  The only read that distinguishes a stored `nil` from a missing key.
   """
   @spec fetch(String.t()) :: {:ok, value()} | :error
   def fetch(key) when is_binary(key) do
@@ -91,7 +92,11 @@ defmodule Host.KV do
     :ok
   end
 
-  @doc "Removes `key`. Removing a key that is not there is a no-op."
+  @doc """
+  Removes `key`.
+
+  Removing a key that is not there is a no-op.
+  """
   @spec delete(String.t()) :: :ok
   def delete(key) when is_binary(key) do
     Host.Repo.delete_all(from(e in Entry, where: e.key == ^key))
@@ -100,9 +105,11 @@ defmodule Host.KV do
 
   @doc """
   Returns every entry whose key starts with `prefix` as a map of key
-  to value, loaded in one query, e.g. `all("poller:")`. Use this
-  rather than `get/2` in a loop; `keys/1` lists the keys alone when
-  the values are not needed. An empty prefix returns everything.
+  to value, loaded in one query, e.g. `all("poller:")`.
+
+  Use this rather than `get/2` in a loop; `keys/1` lists the keys
+  alone when the values are not needed. An empty prefix returns
+  everything.
   """
   @spec all(String.t()) :: %{String.t() => value()}
   def all(prefix \\ "") when is_binary(prefix) do
@@ -115,8 +122,10 @@ defmodule Host.KV do
 
   @doc """
   Returns every key starting with `prefix`, sorted, without loading
-  the values, e.g. `keys("poller:")`. `all/1` returns keys and
-  values together. An empty prefix lists every key.
+  the values, e.g. `keys("poller:")`.
+
+  `all/1` returns keys and values together. An empty prefix lists
+  every key.
   """
   @spec keys(String.t()) :: [String.t()]
   def keys(prefix \\ "") when is_binary(prefix) do
@@ -129,7 +138,9 @@ defmodule Host.KV do
 
   @doc """
   Removes every key starting with `prefix` in one query, e.g.
-  `delete_all("poller:")`. An empty prefix removes every key.
+  `delete_all("poller:")`.
+
+  An empty prefix removes every key.
   """
   @spec delete_all(String.t()) :: :ok
   def delete_all(prefix) when is_binary(prefix) do

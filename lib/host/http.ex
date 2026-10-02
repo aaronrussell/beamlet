@@ -101,7 +101,9 @@ defmodule Host.HTTP do
 
   @doc """
   Makes a request with the method in the options, e.g.
-  `request(url: url, method: :options)`. The method defaults to GET.
+  `request(url: url, method: :options)`.
+
+  The method defaults to GET.
   """
   @spec request(request(), keyword()) :: result()
   def request(request, options \\ []), do: run(request, options)

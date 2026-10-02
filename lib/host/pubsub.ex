@@ -31,8 +31,10 @@ defmodule Host.PubSub do
 
   @doc """
   Subscribes the calling process to `topic`, e.g.
-  `subscribe("notes:updated")`. Messages broadcast on the topic
-  arrive as process messages, `handle_info/2` in a LiveView.
+  `subscribe("notes:updated")`.
+
+  Messages broadcast on the topic arrive as process messages,
+  `handle_info/2` in a LiveView.
   """
   @spec subscribe(String.t()) :: :ok
   def subscribe(topic) when is_binary(topic) do
@@ -43,8 +45,10 @@ defmodule Host.PubSub do
   end
 
   @doc """
-  Unsubscribes the calling process from `topic`. Unsubscribing from
-  a topic the process never subscribed to is a no-op.
+  Unsubscribes the calling process from `topic`.
+
+  Unsubscribing from a topic the process never subscribed to is a
+  no-op.
   """
   @spec unsubscribe(String.t()) :: :ok
   def unsubscribe(topic) when is_binary(topic), do: Phoenix.PubSub.unsubscribe(@server, topic)
@@ -52,6 +56,7 @@ defmodule Host.PubSub do
   @doc """
   Delivers `message`, any term, to every process subscribed to
   `topic`, e.g. `broadcast("notes:updated", {:note_saved, note})`.
+
   Returns `:ok` whether or not anyone is subscribed.
   """
   @spec broadcast(String.t(), term()) :: :ok

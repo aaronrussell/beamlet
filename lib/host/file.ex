@@ -44,8 +44,9 @@ defmodule Host.File do
   @doc """
   Writes `content` to the file at `path`, creating parent directories
   as needed and overwriting an existing file, e.g.
-  `write("journal/today.md", text)`. Pass `[:append]` to add to the
-  end instead.
+  `write("journal/today.md", text)`.
+
+  Pass `[:append]` to add to the end instead.
   """
   @spec write(String.t(), iodata(), [File.mode()]) :: :ok | {:error, File.posix()}
   def write(path, content, modes \\ []) do
@@ -62,9 +63,10 @@ defmodule Host.File do
 
   @doc """
   Returns the names in the directory at `path`, sorted, e.g.
-  `ls("journal")`. The root when `path` is omitted. Files and
-  directories alike, names only; for every file beneath a directory
-  use `ls_r/1`.
+  `ls("journal")`.
+
+  The root when `path` is omitted. Files and directories alike, names
+  only; for every file beneath a directory use `ls_r/1`.
   """
   @spec ls(String.t()) :: {:ok, [String.t()]} | {:error, File.posix()}
   def ls(path \\ "/") do
@@ -77,8 +79,9 @@ defmodule Host.File do
 
   @doc """
   Returns every file under the directory at `path`, sorted, as paths
-  relative to the root, ready to pass to `read/1`. The whole
-  filesystem when `path` is omitted.
+  relative to the root, ready to pass to `read/1`.
+
+  The whole filesystem when `path` is omitted.
 
   Directories appear through the files they contain; an empty
   directory is not listed. A fresh filesystem lists as `{:ok, []}`.
@@ -95,9 +98,11 @@ defmodule Host.File do
   def ls_r!(path \\ "/"), do: unwrap!("list directory recursively", path, ls_r(path))
 
   @doc """
-  Creates the directory at `path`; its parent must exist. Writing a
-  file creates its parents on its own, so this is for a directory
-  wanted ahead of any file. See `mkdir_p/1` for missing parents.
+  Creates the directory at `path`; its parent must exist.
+
+  Writing a file creates its parents on its own, so this is for a
+  directory wanted ahead of any file. See `mkdir_p/1` for missing
+  parents.
   """
   @spec mkdir(String.t()) :: :ok | {:error, File.posix()}
   def mkdir(path), do: File.mkdir(resolve!(path))
@@ -115,8 +120,10 @@ defmodule Host.File do
   def mkdir_p!(path), do: unwrap!("make directory (with -p)", path, mkdir_p(path))
 
   @doc """
-  Removes the file at `path`. Files only: a directory answers
-  `{:error, :eisdir}`. Use `rmdir/1` for an empty directory.
+  Removes the file at `path`.
+
+  Files only: a directory answers `{:error, :eisdir}`. Use `rmdir/1`
+  for an empty directory.
   """
   @spec rm(String.t()) :: :ok | {:error, File.posix()}
   def rm(path) do
@@ -139,8 +146,9 @@ defmodule Host.File do
 
   @doc """
   Copies the file at `source` to `dest`, creating parent directories
-  as needed, e.g. `cp("draft.md", "archive/draft.md")`. Files only;
-  see `cp_r/2` for a directory.
+  as needed, e.g. `cp("draft.md", "archive/draft.md")`.
+
+  Files only; see `cp_r/2` for a directory.
   """
   @spec cp(String.t(), String.t()) :: :ok | {:error, File.posix()}
   def cp(source, dest) do
@@ -161,9 +169,10 @@ defmodule Host.File do
 
   @doc """
   Copies `source` to `dest` recursively, creating parent directories
-  as needed, e.g. `cp_r("notes", "backup/notes")`. Returns the paths
-  copied, relative to the root, or the error with the path it
-  happened on.
+  as needed, e.g. `cp_r("notes", "backup/notes")`.
+
+  Returns the paths copied, relative to the root, or the error with
+  the path it happened on.
   """
   @spec cp_r(String.t(), String.t()) ::
           {:ok, [String.t()]} | {:error, File.posix(), String.t()}

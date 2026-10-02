@@ -103,7 +103,7 @@ defmodule Beamlet.Code.Discovery do
 
   @spec source(Policy.t(), module()) :: {:ok, String.t()} | {:error, String.t()}
   def source(%Policy{} = policy, module) do
-    with {:ok, _path, contents} <- read_source(policy, module) do
+    with {:ok, _path, contents} <- read_source(policy, module, "print_source") do
       {:ok, String.trim_trailing(contents)}
     end
   end
@@ -123,7 +123,7 @@ defmodule Beamlet.Code.Discovery do
 
   @spec outline(Policy.t(), module()) :: {:ok, String.t()} | {:error, String.t()}
   def outline(%Policy{} = policy, module) do
-    with {:ok, path, contents} <- read_source(policy, module),
+    with {:ok, path, contents} <- read_source(policy, module, "print_outline"),
          {:ok, items} <- parsed(module, path, contents, Source.outline(contents)) do
       {:ok, render_outline(module, path, contents, items)}
     end
@@ -132,7 +132,7 @@ defmodule Beamlet.Code.Discovery do
   @spec function(Policy.t(), module(), atom(), arity() | :any) ::
           {:ok, String.t()} | {:error, String.t()}
   def function(%Policy{} = policy, module, fun, arity) do
-    with {:ok, path, contents} <- read_source(policy, module),
+    with {:ok, path, contents} <- read_source(policy, module, "print_source"),
          {:ok, items} <- parsed(module, path, contents, Source.outline(contents)) do
       functions = Enum.filter(items, &(&1.name != nil))
       matches = Enum.filter(functions, &(&1.name == fun and (arity == :any or &1.arity == arity)))
@@ -154,7 +154,7 @@ defmodule Beamlet.Code.Discovery do
 
   @spec lines(Policy.t(), module(), Range.t()) :: {:ok, String.t()} | {:error, String.t()}
   def lines(%Policy{} = policy, module, first..last//1) do
-    with {:ok, _path, contents} <- read_source(policy, module) do
+    with {:ok, _path, contents} <- read_source(policy, module, "print_source") do
       count = Source.line_count(contents)
 
       if first > count,
@@ -163,7 +163,7 @@ defmodule Beamlet.Code.Discovery do
     end
   end
 
-  defp read_source(policy, module) do
+  defp read_source(policy, module, caller) do
     case Beamlet.Code.source_file(module) do
       {:ok, source_file} ->
         case File.read(source_file) do
@@ -177,7 +177,7 @@ defmodule Beamlet.Code.Discovery do
       :error ->
         if Code.ensure_loaded?(module) do
           {:error,
-           "Host.Code.print_source serves defined modules only — #{inspect(module)} is " <>
+           "Host.Code.#{caller} serves defined modules only — #{inspect(module)} is " <>
              "part of your beamlet. Use Host.Code.print_docs(#{inspect(module)}) for " <>
              "its documentation."}
         else

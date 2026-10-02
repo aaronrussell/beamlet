@@ -542,12 +542,18 @@ defmodule Host.Router do
         :ok
 
       _manifest ->
-        if Code.ensure_loaded?(module) do
-          raise "only modules defined with define can be mounted — " <>
-                  "#{inspect(module)} is part of your beamlet"
-        else
-          raise "nothing named #{inspect(module)} exists on your beamlet — " <>
-                  "define it first"
+        cond do
+          Enum.any?(Beamlet.Code.quarantined(), &(module in &1.modules)) ->
+            raise "#{inspect(module)} is quarantined — Host.Code.print_modules() shows " <>
+                    "its error; patch it, then mount"
+
+          Code.ensure_loaded?(module) ->
+            raise "only modules defined with define can be mounted — " <>
+                    "#{inspect(module)} is part of your beamlet"
+
+          true ->
+            raise "nothing named #{inspect(module)} exists on your beamlet — " <>
+                    "define it first"
         end
     end
   end

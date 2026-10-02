@@ -152,6 +152,14 @@ defmodule Host.CodeTest do
       assert error =~ "Host.Code.remove takes a module or a list of modules"
     end
 
+    test "the source reads refuse a beamlet module in their own name", ctx do
+      assert {:error, error} = Eval.run("Host.Code.print_outline(Enum)", ctx.principal)
+      assert error =~ "Host.Code.print_outline serves defined modules only — Enum is part"
+
+      assert {:error, error} = Eval.run("Host.Code.print_source(Enum)", ctx.principal)
+      assert error =~ "Host.Code.print_source serves defined modules only — Enum is part"
+    end
+
     test "remove refuses a routed module until it is unmounted", ctx do
       ns = unique_namespace()
       mod = Module.concat([ns, PageLive])

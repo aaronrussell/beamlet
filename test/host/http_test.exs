@@ -136,6 +136,37 @@ defmodule Host.HTTPTest do
       refute inspect(error) =~ "secret"
     end
 
+    test "a loopback refusal points at Host.Router.call/4" do
+      for url <- ["http://localhost:4000/todos", "http://127.0.0.1/", "http://[::1]/"] do
+        assert {:error, error} = blocked(url)
+
+        assert Exception.message(error) =~
+                 "not one on the public internet — to call a route your beamlet serves, " <>
+                   "use Host.Router.call/4"
+      end
+    end
+
+    test "a refusal of the beamlet's own host points at Host.Router.call/4, another's does not" do
+      config = Application.fetch_env!(:beamlet, Beamlet.TestEndpoint)
+      on_exit(fn -> Application.put_env(:beamlet, Beamlet.TestEndpoint, config) end)
+
+      stop_supervised!(Beamlet.TestEndpoint)
+
+      Application.put_env(
+        :beamlet,
+        Beamlet.TestEndpoint,
+        Keyword.put(config, :url, host: "beamlet.internal.test", port: 4000)
+      )
+
+      start_supervised!(Beamlet.TestEndpoint)
+
+      assert {:error, own} = blocked("http://beamlet.internal.test:4000/todos")
+      assert Exception.message(own) =~ "use Host.Router.call/4"
+
+      assert {:error, other} = blocked("http://nas.internal.test/")
+      refute Exception.message(other) =~ "Host.Router"
+    end
+
     test "a host that does not resolve is refused in ReqSSRF's words" do
       assert {:error, %Host.HTTP.BlockedError{reason: :unresolvable_host} = error} =
                blocked("http://nowhere.invalid/")

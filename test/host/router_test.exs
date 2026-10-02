@@ -392,6 +392,36 @@ defmodule Host.RouterTest do
       end
     end
 
+    test "refuses a quarantined module, pointing at its error", ctx do
+      ns = unique_namespace()
+      mod = define_page!(ctx, ns, "page one")
+
+      {:ok, file} = Code.source_file(mod)
+      path = Path.expand(file, Path.join(ctx.data_dir, "code"))
+
+      File.write!(
+        path,
+        String.replace(File.read!(path), "~H\"<div>page one</div>\"", "~H\"<div>")
+      )
+
+      capture_log(fn ->
+        quiet(fn ->
+          :ok = Supervisor.terminate_child(Beamlet, Code)
+          {:ok, _pid} = Supervisor.restart_child(Beamlet, Code)
+        end)
+      end)
+
+      assert [%{modules: [^mod]}] = Code.quarantined()
+
+      error = assert_raise RuntimeError, fn -> Host.Router.live("/rt/q", mod) end
+
+      assert error.message ==
+               "#{inspect(mod)} is quarantined — Host.Code.print_modules() shows its " <>
+                 "error; patch it, then mount"
+
+      assert Routes.list() == []
+    end
+
     test "refuses something that is not a module" do
       assert_raise RuntimeError, ~r/Host\.Router mounts modules/, fn ->
         Host.Router.live("/rt/x", as_given("Todo.PageLive"))

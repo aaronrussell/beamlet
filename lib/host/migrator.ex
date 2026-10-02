@@ -42,9 +42,11 @@ defmodule Host.Migrator do
 
   @doc """
   Applies every pending migration in version order, printing each
-  one as it is applied. Nothing pending prints so. If one fails, the
-  ones before it stay applied and the error names the one that
-  failed; fix it with define (replace: true) and migrate again.
+  one as it is applied.
+
+  Nothing pending prints so. If one fails, the ones before it stay
+  applied and the error names the one that failed; fix it with define
+  (replace: true) and migrate again.
   """
   @spec migrate() :: :ok
   def migrate do
@@ -63,8 +65,9 @@ defmodule Host.Migrator do
   end
 
   @doc """
-  Undoes the most recently applied migration and prints it. The
-  migration is pending again: replace or remove it, or migrate to
+  Undoes the most recently applied migration and prints it.
+
+  The migration is pending again: replace or remove it, or migrate to
   re-apply it. Call repeatedly to roll back further.
   """
   @spec rollback() :: :ok
@@ -79,7 +82,7 @@ defmodule Host.Migrator do
                 "git history; defining it again would create a new version, not this one."
 
       %{version: version, module: mod} ->
-        Ecto.Migrator.down(Host.Repo, version, mod)
+        down!(version, mod)
         IO.puts("Rolled back migration #{version} (#{inspect(mod)})")
     end
 
@@ -88,8 +91,10 @@ defmodule Host.Migrator do
 
   @doc """
   Prints the migration history: each version with its module and
-  whether it is applied (with when) or pending. This is the audit
-  trail of every change made to the agent database's tables.
+  whether it is applied (with when) or pending.
+
+  This is the audit trail of every change made to the agent
+  database's tables.
   """
   @spec print_migrations() :: :ok
   def print_migrations do
@@ -102,6 +107,16 @@ defmodule Host.Migrator do
   rescue
     exception ->
       reraise "migration #{version} (#{inspect(mod)}) failed: #{Exception.message(exception)}",
+              __STACKTRACE__
+  end
+
+  defp down!(version, mod) do
+    Ecto.Migrator.down(Host.Repo, version, mod)
+  rescue
+    exception ->
+      reraise "rollback of migration #{version} (#{inspect(mod)}) failed: " <>
+                "#{Exception.message(exception)} — give it a down/0, or use change/0 " <>
+                "commands Ecto can reverse",
               __STACKTRACE__
   end
 
