@@ -129,8 +129,10 @@ defmodule Beamlet.Code do
 
   Returns the summary the agent reads, or a teaching error. The
   compile timeout comes from `config :beamlet, :define`;
-  `opts[:timeout]` overrides it. The call itself allows twice that
-  and a margin, since a define may wait behind another one.
+  `opts[:timeout]` overrides it. The call itself waits as long as it
+  takes: a define may wait behind any number of others, and the
+  caller's own lifetime bounds the wait, since a caller that dies
+  while queued is never served.
 
   `opts[:verb]` is `:define` or `:patch` (`Beamlet.Patch`): a patch
   compares each entry's `hash` with the file on disk before anything
@@ -150,7 +152,7 @@ defmodule Beamlet.Code do
       context: Keyword.get(opts, :context, 0)
     }
 
-    GenServer.call(__MODULE__, {:define, entries, principal, run}, 2 * timeout + 5_000)
+    GenServer.call(__MODULE__, {:define, entries, principal, run}, :infinity)
   end
 
   @doc """
@@ -162,7 +164,7 @@ defmodule Beamlet.Code do
   """
   @spec remove([module()], Principal.t()) :: :ok | {:error, String.t()}
   def remove(modules, %Principal{} = principal) do
-    GenServer.call(__MODULE__, {:remove, modules, principal}, 30_000)
+    GenServer.call(__MODULE__, {:remove, modules, principal}, :infinity)
   end
 
   @doc """
@@ -182,11 +184,7 @@ defmodule Beamlet.Code do
   """
   @spec compile_artifact((-> Macro.t()), String.t()) :: {:ok, [module()]} | {:error, String.t()}
   def compile_artifact(source, file) when is_function(source, 0) and is_binary(file) do
-    GenServer.call(
-      __MODULE__,
-      {:compile_artifact, source, file},
-      Config.define()[:timeout] + 5_000
-    )
+    GenServer.call(__MODULE__, {:compile_artifact, source, file}, :infinity)
   end
 
   @typedoc "Where a defined module lives: its source, its beam under `ebin/`, and its version when it is a migration."
@@ -265,7 +263,7 @@ defmodule Beamlet.Code do
     # it runs; :ctx lives from Tracer.install/1 to Tracer.uninstall/1,
     # and clear_records/0 clears the rest before the next compile:
     #
-    #   {:ctx, ctx}                          the roots and granted names
+    #   {:ctx, ctx}                          the roots and defined names
     #                                        the tracer reads
     #   {:compiled, mod, file, binary}       each module compiled; capture/3
     #   {:edge, from, to}                    a compile-time dependency; Tracer
@@ -321,26 +319,17 @@ defmodule Beamlet.Code do
     end
   end
 
-  # An empty root set keeps the tracer out of it: nothing in a derived
-  # artifact is an edge between defined modules.
-  def handle_call({:compile_artifact, source, file}, _from, state) do
-    ctx = %{roots: MapSet.new(), granted: MapSet.new()}
-
-    result =
-      try do
-        quoted = source.()
-        {:ok, with_compiler_env(ctx, fn -> Code.compile_quoted(quoted, file) end)}
-      rescue
-        exception -> {:error, Exception.message(exception)}
-      end
-
-    case result do
+  def handle_call({:compile_artifact, source, file}, {caller, _tag}, state) do
+    case unless_cancelled(caller, fn _caller_ref -> run_compile_artifact(source, file) end) do
       {:ok, compiled} ->
         {:reply, {:ok, Enum.map(compiled, &elem(&1, 0))}, put_in(state.artifacts[file], compiled)}
 
       {:error, _message} = error ->
         restore_artifact(Map.get(state.artifacts, file, []), file)
         {:reply, error, state}
+
+      :cancelled ->
+        {:noreply, state}
     end
   end
 
@@ -351,10 +340,11 @@ defmodule Beamlet.Code do
   # client cancel or the eval's timeout kills. A call still queued
   # when its caller died never starts, so a cancel is an abort. A
   # define also hands the monitor to its compile, which stops and
-  # rolls back on it; a remove, once started, completes. A monitor on
-  # a process already dead signals its DOWN, which a `receive` with
-  # `after 0` can run ahead of, so the check is `Process.alive?/1`,
-  # taken after the monitor so a death in between still reaches it.
+  # rolls back on it; a remove or an artifact compile, once started,
+  # completes. A monitor on a process already dead signals its DOWN,
+  # which a `receive` with `after 0` can run ahead of, so the check
+  # is `Process.alive?/1`, taken after the monitor so a death in
+  # between still reaches it.
   defp unless_cancelled(caller, fun) do
     caller_ref = Process.monitor(caller)
     outcome = if Process.alive?(caller), do: fun.(caller_ref), else: :cancelled
@@ -459,7 +449,7 @@ defmodule Beamlet.Code do
   defp compile(state, run, caller_ref) do
     ctx = %{
       roots: MapSet.new(run.files),
-      granted: MapSet.union(known_module_names(state), MapSet.new(run.entry_modules))
+      defined: MapSet.union(known_module_names(state), MapSet.new(run.entry_modules))
     }
 
     outcome =
@@ -1454,13 +1444,13 @@ defmodule Beamlet.Code do
     clear_records()
     file_modules = Map.new(files, &{&1, parse_modules(&1)})
 
-    # Quarantined names stay in the granted set so edges to them
+    # Quarantined names stay in the defined set so edges to them
     # survive a later recovery.
-    granted =
+    defined =
       (file_modules |> Map.values() |> List.flatten()) ++
         Enum.flat_map(quarantined, & &1.modules)
 
-    ctx = %{roots: MapSet.new(files), granted: MapSet.new(granted)}
+    ctx = %{roots: MapSet.new(files), defined: MapSet.new(defined)}
 
     result =
       with_compiler_env(ctx, fn ->
@@ -1607,11 +1597,16 @@ defmodule Beamlet.Code do
     :ok
   end
 
-  # Runtime compilation ships no docs chunk by default, but docs are
-  # the discovery surface and must ride the beams; module-conflict
-  # warnings are noise for a deliberate replace. Both are VM-global
-  # compiler options, like the tracer: set only around the server's
-  # serialized compiles, restored after.
+  # An empty root set keeps the tracer out of it: nothing in a derived
+  # artifact is an edge between defined modules.
+  defp run_compile_artifact(source, file) do
+    ctx = %{roots: MapSet.new(), defined: MapSet.new()}
+    quoted = source.()
+    {:ok, with_compiler_env(ctx, fn -> Code.compile_quoted(quoted, file) end)}
+  rescue
+    exception -> {:error, Exception.message(exception)}
+  end
+
   # A module body that raises partway through a compile unloads the
   # module's previous version, so the last good binaries go back in.
   # With none, the module loads again from its compiled-in version.
@@ -1622,6 +1617,11 @@ defmodule Beamlet.Code do
     end)
   end
 
+  # Runtime compilation ships no docs chunk by default, but docs are
+  # the discovery surface and must ride the beams; module-conflict
+  # warnings are noise for a deliberate replace. Both are VM-global
+  # compiler options, like the tracer: set only around the server's
+  # serialized compiles, restored after.
   defp with_compiler_env(ctx, fun) do
     previous_tracers = Tracer.install(ctx)
     previous_docs = Code.get_compiler_option(:docs)

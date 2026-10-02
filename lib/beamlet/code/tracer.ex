@@ -25,7 +25,7 @@ defmodule Beamlet.Code.Tracer do
 
   @table Beamlet.Code
 
-  @type ctx :: %{roots: MapSet.t(Path.t()), granted: MapSet.t(module())}
+  @type ctx :: %{roots: MapSet.t(Path.t()), defined: MapSet.t(module())}
 
   @spec install(ctx()) :: [module()]
   def install(ctx) do
@@ -89,6 +89,6 @@ defmodule Beamlet.Code.Tracer do
   end
 
   defp records?(ctx, env, module) do
-    env.module != nil and module != env.module and MapSet.member?(ctx.granted, module)
+    env.module != nil and module != env.module and MapSet.member?(ctx.defined, module)
   end
 end

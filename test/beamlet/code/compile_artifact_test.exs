@@ -70,6 +70,44 @@ defmodule Beamlet.Code.CompileArtifactTest do
     refute loaded?(mod)
   end
 
+  test "a compile whose caller died while it was queued never runs", %{ns: ns} do
+    first = Module.concat([ns, "First"])
+    queued = Module.concat([ns, "Queued"])
+    purge_on_exit([first, queued])
+
+    test = self()
+    first_source = quoted("defmodule #{ns}.First do\nend\n")
+    queued_source = quoted("defmodule #{ns}.Queued do\nend\n")
+
+    holding = fn ->
+      send(test, {:holding, self()})
+      receive do: (:go -> first_source)
+    end
+
+    spawn(fn -> send(test, {:first, Code.compile_artifact(holding, "first.ex")}) end)
+    assert_receive {:holding, server}, 5_000
+
+    # Tracing the server's receives shows the compile queued behind
+    # the first before its caller is killed.
+    :erlang.trace(server, true, [:receive])
+    caller = spawn(fn -> Code.compile_artifact(fn -> queued_source end, "queued.ex") end)
+
+    assert_receive {:trace, ^server, :receive,
+                    {:"$gen_call", _from, {:compile_artifact, _source, "queued.ex"}}},
+                   5_000
+
+    :erlang.trace(server, false, [:receive])
+    caller_ref = Process.monitor(caller)
+    Process.exit(caller, :kill)
+    assert_receive {:DOWN, ^caller_ref, :process, ^caller, :killed}
+
+    send(server, :go)
+    assert_receive {:first, {:ok, [^first]}}, 5_000
+    :sys.get_state(Code)
+
+    refute loaded?(queued)
+  end
+
   test "compiler globals are restored after success and failure", %{ns: ns} do
     purge_on_exit([Module.concat([ns, "Artifact"])])
     docs = Elixir.Code.get_compiler_option(:docs)
