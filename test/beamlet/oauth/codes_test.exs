@@ -26,6 +26,14 @@ defmodule Beamlet.OAuth.CodesTest do
     assert Codes.take(code, codes) == :error
   end
 
+  test "the store holds a code's hash, not the code" do
+    codes = start([])
+    code = Codes.store(@entry, codes)
+
+    assert Map.keys(:sys.get_state(codes).codes) == [Beamlet.Secret.hash(code)]
+    assert Codes.take(code, codes) == {:ok, @entry}
+  end
+
   test "codes are unique and unknown or malformed ones are errors" do
     codes = start([])
     assert Codes.store(@entry, codes) != Codes.store(@entry, codes)

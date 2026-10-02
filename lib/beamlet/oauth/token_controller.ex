@@ -7,9 +7,9 @@ defmodule Beamlet.OAuth.TokenController do
   OAuth error bodies, `invalid_grant` and friends, because the client
   reads them. `grant_type=authorization_code` redeems a code from
   `Beamlet.OAuth.Codes`: the client id, redirect URI and, when sent,
-  the resource must be the ones the code was issued for, and the
-  `code_verifier` must hash to the challenge the client committed
-  to. Then `Beamlet.Tokens.create/1` mints an `oauth` token under
+  the resource must be the ones the code was issued for, a resource
+  first named here being this beamlet's, and the `code_verifier` must
+  hash to the challenge the client committed to. Then `Beamlet.Tokens.create/1` mints an `oauth` token under
   the consented policy. `grant_type=refresh_token` rotates that token
   in place (`Beamlet.Tokens.rotate/2`): the old secrets die, the row
   and its id stay.
@@ -95,7 +95,7 @@ defmodule Beamlet.OAuth.TokenController do
       entry.redirect_uri != redirect_uri ->
         {:error, "invalid_grant", "redirect_uri does not match the authorization request"}
 
-      OAuth.present(resource) != nil and resource != entry.resource ->
+      OAuth.present(resource) != nil and resource != (entry.resource || OAuth.resource()) ->
         {:error, "invalid_grant", "resource does not match the authorization request"}
 
       true ->

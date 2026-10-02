@@ -7,8 +7,9 @@ defmodule Beamlet.OAuth.Codes do
   redirect URI, the PKCE challenge the client committed to, and the
   resource and scope it asked for. It lives ten minutes, is redeemed
   once, since `take/1` deletes it, and is worthless without the PKCE
-  secret. Codes live in memory: a restart mid-flow means the client
-  hears `invalid_grant` and the person clicks connect again.
+  secret. Codes live in memory, keyed by their hash as tokens are: a
+  restart mid-flow means the client hears `invalid_grant` and the
+  person clicks connect again.
   """
 
   use GenServer
@@ -52,12 +53,15 @@ defmodule Beamlet.OAuth.Codes do
   def handle_call({:store, entry}, _from, state) do
     code = Beamlet.Secret.generate()
     expires_at = System.monotonic_time(:millisecond) + state.ttl_ms
-    codes = Map.put(state.codes, code, Map.put(entry, :expires_at, expires_at))
+
+    codes =
+      Map.put(state.codes, Beamlet.Secret.hash(code), Map.put(entry, :expires_at, expires_at))
+
     {:reply, code, %{state | codes: codes}}
   end
 
   def handle_call({:take, code}, _from, state) do
-    {entry, codes} = Map.pop(state.codes, code)
+    {entry, codes} = Map.pop(state.codes, Beamlet.Secret.hash(code))
 
     reply =
       case entry do

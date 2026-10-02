@@ -169,6 +169,17 @@ defmodule Beamlet.OAuth.TokenControllerTest do
       assert code |> exchange(verifier, %{resource: ""}) |> json_response(200)
     end
 
+    test "resource may be named only at the exchange, and only as this beamlet's", %{conn: conn} do
+      {code, verifier} = authorize(conn, %{resource: ""})
+      assert code |> exchange(verifier) |> json_response(200)
+
+      {code, verifier} = authorize(conn, %{resource: ""})
+
+      assert code
+             |> exchange(verifier, %{resource: "http://localhost:4000/other"})
+             |> assert_error("invalid_grant") =~ "resource"
+    end
+
     test "missing fields are invalid_request naming them", %{conn: conn} do
       {code, _verifier} = authorize(conn)
       conn = token_request(%{grant_type: "authorization_code", code: code})
