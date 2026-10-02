@@ -226,14 +226,6 @@ defmodule Beamlet.Code do
     end
   end
 
-  @doc "The compile-time edges between defined modules: each module to those it depends on."
-  @spec deps() :: %{module() => [module()]}
-  def deps, do: GenServer.call(__MODULE__, :deps)
-
-  @doc "The runtime call records: caller to callee to the functions called."
-  @spec calls() :: %{module() => %{module() => [{atom(), arity()}]}}
-  def calls, do: GenServer.call(__MODULE__, :calls)
-
   @doc "The files quarantined at boot, by file. A table read, like `defined/0`."
   @spec quarantined() :: [quarantine_entry()]
   def quarantined do
@@ -332,9 +324,6 @@ defmodule Beamlet.Code do
         {:noreply, state}
     end
   end
-
-  def handle_call(:deps, _from, state), do: {:reply, state.deps, state}
-  def handle_call(:calls, _from, state), do: {:reply, state.calls, state}
 
   # The caller is Anubis's tool process or an eval's child, which a
   # client cancel or the eval's timeout kills. A call still queued

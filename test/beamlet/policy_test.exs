@@ -4,7 +4,6 @@ defmodule Beamlet.PolicyTest do
   alias Beamlet.Policy
   alias Beamlet.Policy.Rules
   alias Beamlet.Policy.Signage
-  alias Beamlet.TestPolicies
 
   describe "build/2" do
     test "an empty document is the default under a new name" do
@@ -272,7 +271,7 @@ defmodule Beamlet.PolicyTest do
     end
 
     test "a re-granted module drops off the denial list" do
-      policy = TestPolicies.doors_open()
+      policy = Policy.default()
       text = Policy.render(%{policy | grants: Map.put(policy.grants, File, :all)})
 
       refute text =~ ~r/^  .*\bFile,/m

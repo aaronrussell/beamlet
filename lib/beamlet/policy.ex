@@ -100,10 +100,6 @@ defmodule Beamlet.Policy do
   @keys [:tools, :rules, :allow, :deny]
   @name ~r/^[a-z0-9_-]{1,64}$/
 
-  @doc "The tools a policy may grant."
-  @spec tools() :: [tool()]
-  def tools, do: @tools
-
   @doc """
   The MCP tools a policy puts in a token's tool list, in name order.
 

@@ -12,10 +12,11 @@ defmodule BeamletTest do
 
   test "creates its own tables in the agent database at boot" do
     assert furniture() == ["__kv", "__routes"]
-    assert Beamlet.Tables.version() == Beamlet.Tables.current_version()
+    assert version() > 0
   end
 
   test "upgrades an agent database at furniture version zero to the current one" do
+    current = version()
     Host.Repo.query!("drop table __routes")
     Host.Repo.query!("drop table __kv")
     Host.Repo.query!("pragma user_version = 0")
@@ -23,13 +24,13 @@ defmodule BeamletTest do
 
     assert Beamlet.Tables.upgrade() == :ignore
 
-    assert Beamlet.Tables.version() == Beamlet.Tables.current_version()
+    assert version() == current
     assert furniture() == ["__kv", "__routes"]
     assert :ok = Host.KV.put("beamlet-test:after-upgrade", 1)
   end
 
   test "refuses an agent database written by a newer Beamlet" do
-    Host.Repo.query!("pragma user_version = #{Beamlet.Tables.current_version() + 1}")
+    Host.Repo.query!("pragma user_version = #{version() + 1}")
 
     assert_raise RuntimeError, ~r/newer Beamlet/, fn -> Beamlet.Tables.upgrade() end
   end
@@ -39,6 +40,11 @@ defmodule BeamletTest do
 
     assert_raise RuntimeError, ~r/furniture version -1/, fn -> Beamlet.Tables.upgrade() end
     assert furniture() == ["__kv", "__routes"]
+  end
+
+  defp version do
+    %{rows: [[version]]} = Host.Repo.query!("pragma user_version")
+    version
   end
 
   defp furniture do

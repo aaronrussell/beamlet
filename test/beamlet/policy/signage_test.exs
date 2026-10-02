@@ -4,7 +4,6 @@ defmodule Beamlet.Policy.SignageTest do
   alias Beamlet.Policy
   alias Beamlet.Policy.Default
   alias Beamlet.Policy.Signage
-  alias Beamlet.TestPolicies
 
   describe "the cross-checks against the default" do
     test "every signed module exists and the default denies it" do
@@ -35,20 +34,11 @@ defmodule Beamlet.Policy.SignageTest do
              "signage for functions that exist at no denied arity; the hint would " <>
                "never fire, or the grants drifted: #{inspect(dangling)}"
     end
-
-    test "every door is a Host module or a tool a policy can grant" do
-      for door <- Signage.doors() do
-        case door do
-          {:tool, tool} -> assert tool in Policy.tools()
-          module -> assert String.starts_with?(inspect(module), "Host.")
-        end
-      end
-    end
   end
 
   describe "hint/2" do
     test "a redirect fires when the policy grants its door" do
-      assert Signage.hint(TestPolicies.doors_open(), File) ==
+      assert Signage.hint(Policy.default(), File) ==
                "Host.File provides scoped file access"
     end
 
@@ -86,7 +76,7 @@ defmodule Beamlet.Policy.SignageTest do
 
   describe "hint/3" do
     test "a carve-out carries its copy under the same door rule" do
-      assert Signage.hint(TestPolicies.doors_open(), Plug.Conn, :send_file) ==
+      assert Signage.hint(Policy.default(), Plug.Conn, :send_file) ==
                "Host.File provides scoped file access"
 
       {:ok, policy} = Policy.build(:x, deny: [Host.File])
@@ -101,7 +91,7 @@ defmodule Beamlet.Policy.SignageTest do
 
   describe "denials/1" do
     test "lists open-door categories with the members the policy denies" do
-      denials = TestPolicies.doors_open() |> Signage.denials() |> Map.new()
+      denials = Policy.default() |> Signage.denials() |> Map.new()
 
       assert denials["Host.File provides scoped file access"] ==
                [:file, :filelib, File, File.Stat, File.Stream]

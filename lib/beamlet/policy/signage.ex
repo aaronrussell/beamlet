@@ -21,9 +21,6 @@ defmodule Beamlet.Policy.Signage do
 
   alias Beamlet.Policy
 
-  @typedoc "Where a redirect points: a module, the `define` tool, or nowhere."
-  @type door :: module() | {:tool, Policy.tool()} | nil
-
   # Copy follows "X is not permitted by your policy: ", one line, no
   # promises about what is planned.
   @categories [
@@ -131,17 +128,24 @@ defmodule Beamlet.Policy.Signage do
     end
   end
 
-  @doc "Every signed module."
+  @doc """
+  Every signed module.
+
+  Nothing at runtime reads the list: it exists for the suite's check
+  that every signed module is one the default denies, since a hint
+  for a granted module never fires.
+  """
   @spec modules() :: [module()]
   def modules, do: Map.keys(@modules)
 
-  @doc "Every signed `{module, function}` pair."
+  @doc """
+  Every signed `{module, function}` pair.
+
+  Nothing at runtime reads the list: it exists for the suite's check
+  that every signed function is denied at some arity.
+  """
   @spec functions() :: [{module(), atom()}]
   def functions, do: Map.keys(@functions)
-
-  @doc "Every door a redirect points at."
-  @spec doors() :: [door()]
-  def doors, do: for({_category, {_copy, door}} <- @categories, door != nil, do: door)
 
   defp lookup(policy, {:ok, category}) do
     {copy, door} = @categories[category]

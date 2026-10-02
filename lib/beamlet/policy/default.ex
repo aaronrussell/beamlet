@@ -609,7 +609,13 @@ defmodule Beamlet.Policy.Default do
   @spec framework_modules() :: [module()]
   def framework_modules, do: Map.keys(@web) ++ Map.keys(@data)
 
-  @doc "The recorded non-grants: reason copy and the modules it covers."
+  @doc """
+  The recorded non-grants: reason copy and the modules it covers.
+
+  Nothing at runtime consults it, since absence from the grants is
+  denial; it is the curation record the coverage check reads to prove
+  every documented platform module has a ruling.
+  """
   @spec not_granted() :: [{String.t(), [module()]}]
   def not_granted, do: @not_granted
 

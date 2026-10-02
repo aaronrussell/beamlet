@@ -259,7 +259,6 @@ defmodule Beamlet.CodeTest do
       ]
 
       assert {:ok, _summary} = define(sources, ctx.principal)
-      assert Code.deps()[basket] == [item]
 
       replacement = """
       defmodule #{ns}.Item do
@@ -668,8 +667,10 @@ defmodule Beamlet.CodeTest do
 
       assert apply(basket, :sample, []) == struct(item, name: "milk")
       assert Code.defined() == Enum.sort([item, basket])
-      assert Code.deps()[basket] == [item]
       assert Code.quarantined() == []
+
+      assert {:error, message} = Code.remove([item], ctx.principal)
+      assert message =~ "#{ns}.Basket depends on it at compile time"
     end
   end
 
@@ -817,7 +818,7 @@ defmodule Beamlet.CodeTest do
   end
 
   describe "runtime call records" do
-    test "plain calls and captures land in the calls map with name and arity", ctx do
+    test "plain calls and captures are recorded with name and arity", ctx do
       ns = unique_namespace()
       util = Module.concat([ns, Util])
       user = Module.concat([ns, User])
@@ -841,11 +842,11 @@ defmodule Beamlet.CodeTest do
       ]
 
       assert {:ok, _summary} = define(sources, ctx.principal)
-      assert Code.calls()[user] == %{util => [a: 0, b: 1]}
-      assert Code.calls()[util] == %{}
+      assert {:error, message} = Code.remove([util], ctx.principal)
+      assert message =~ "cannot remove #{ns}.Util — #{ns}.User calls a/0, b/1."
     end
 
-    test "the calls map rebuilds at boot", ctx do
+    test "the call records rebuild at boot", ctx do
       ns = unique_namespace()
       store = Module.concat([ns, Store])
       client = Module.concat([ns, Client])
@@ -872,7 +873,8 @@ defmodule Beamlet.CodeTest do
       unload([store, client])
       {:ok, _pid} = Supervisor.restart_child(Beamlet, Code)
 
-      assert Code.calls()[client] == %{store => [get: 1]}
+      assert {:error, message} = Code.remove([store], ctx.principal)
+      assert message =~ "#{ns}.Client calls get/1."
     end
   end
 
@@ -949,7 +951,8 @@ defmodule Beamlet.CodeTest do
 
       assert {:ok, _summary} = define(fixed, ctx.principal, replace: true)
       assert apply(client, :fetch, [:milk]) == {:ok, :milk}
-      assert Code.calls()[client] == %{store => [put: 1]}
+      assert {:error, message} = Code.remove([store], ctx.principal)
+      assert message =~ "#{ns}.Client calls put/1."
     end
 
     test "a compatible replace names its surviving runtime callers", ctx do
@@ -1129,8 +1132,7 @@ defmodule Beamlet.CodeTest do
       refute File.exists?(beam_file)
       assert Code.defined() == []
       assert Code.manifest() == %{}
-      assert Code.deps() == %{}
-      assert Code.calls() == %{}
+      assert define(code, ctx.principal) == {:ok, "Defined #{ns}.Toss (new)"}
     end
 
     test "a remove whose caller died while it was queued never runs", ctx do

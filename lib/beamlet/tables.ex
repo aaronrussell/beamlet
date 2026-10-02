@@ -55,15 +55,6 @@ defmodule Beamlet.Tables do
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_opts), do: %{id: __MODULE__, start: {__MODULE__, :upgrade, []}}
 
-  @spec current_version() :: pos_integer()
-  def current_version, do: @current
-
-  @spec version() :: integer()
-  def version do
-    %{rows: [[version]]} = Host.Repo.query!("PRAGMA user_version")
-    version
-  end
-
   @spec upgrade() :: :ignore
   def upgrade do
     case version() do
@@ -87,6 +78,11 @@ defmodule Beamlet.Tables do
                 "only #{@current}: it was last run by a newer Beamlet, so upgrade Beamlet " <>
                 "or restore the data dir from a backup"
     end
+  end
+
+  defp version do
+    %{rows: [[version]]} = Host.Repo.query!("PRAGMA user_version")
+    version
   end
 
   defp run_step({statements, to}) do

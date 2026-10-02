@@ -4,10 +4,8 @@ defmodule Beamlet.ScannerTest do
   alias Beamlet.Code.Entry
   alias Beamlet.Policy
   alias Beamlet.Scanner
-  alias Beamlet.TestPolicies
 
   @default Policy.default()
-  @doors_open TestPolicies.doors_open()
 
   defp policy(document), do: Policy.build(:x, document) |> then(fn {:ok, p} -> p end)
 
@@ -231,10 +229,10 @@ defmodule Beamlet.ScannerTest do
     end
 
     test "Phoenix.PubSub and Ecto.Migrator carry their stdlib redirects" do
-      assert scan_error(~s|Phoenix.PubSub.broadcast(Beamlet.PubSub, "t", :m)|, @doors_open) =~
+      assert scan_error(~s|Phoenix.PubSub.broadcast(Beamlet.PubSub, "t", :m)|, @default) =~
                "publish/subscribe goes through Host.PubSub"
 
-      assert scan_error(~s|Ecto.Migrator.run(Host.Repo, :up, all: true)|, @doors_open) =~
+      assert scan_error(~s|Ecto.Migrator.run(Host.Repo, :up, all: true)|, @default) =~
                "migrations are run through Host.Migrator"
     end
   end
@@ -475,7 +473,7 @@ defmodule Beamlet.ScannerTest do
                  def serve(conn, path), do: Plug.Conn.send_file(conn, 200, path)
                end
                """,
-               @doors_open
+               @default
              ) =~ "Plug.Conn.send_file/3 is not permitted by your policy — Host.File provides"
     end
 
@@ -536,7 +534,7 @@ defmodule Beamlet.ScannerTest do
             defdelegate rm(path), to: File
           end
           """,
-          @doors_open
+          @default
         )
 
       assert message =~ "line 4: File.rm/1 — File is not permitted"
@@ -858,7 +856,7 @@ defmodule Beamlet.ScannerTest do
     test "Ecto.Migration.execute passes; execute_file reads a real path" do
       assert :ok = scan(~s|Ecto.Migration.execute("create view v as select 1")|)
 
-      assert scan_error(~s|Ecto.Migration.execute_file("x.sql")|, @doors_open) =~
+      assert scan_error(~s|Ecto.Migration.execute_file("x.sql")|, @default) =~
                "Ecto.Migration.execute_file/1 is not permitted by your policy — " <>
                  "Host.File provides scoped file access"
     end
