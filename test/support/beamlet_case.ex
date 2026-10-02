@@ -165,6 +165,21 @@ defmodule Beamlet.Case do
     end
   end
 
+  @doc """
+  Makes every router build fail until the test exits.
+
+  No route row can break the build: a path Phoenix refuses fails the
+  row's validations. A glob in the prefix, which config refuses at
+  boot but not when changed after it, leaves every route's path with
+  a glob before its end, which Phoenix refuses.
+  """
+  @spec break_router_build() :: :ok
+  def break_router_build do
+    configured = Application.fetch_env!(:beamlet, :web)
+    Application.put_env(:beamlet, :web, Keyword.put(configured, :prefix, "/*broken"))
+    on_exit(fn -> Application.put_env(:beamlet, :web, configured) end)
+  end
+
   @doc "Restores the compiler's tracer list when the test exits."
   @spec preserve_compiler_tracers() :: :ok
   def preserve_compiler_tracers do

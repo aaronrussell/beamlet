@@ -281,9 +281,13 @@ defmodule Host.Router do
       Enum.any?(errors, fn {_field, {_message, opts}} -> opts[:constraint] == :unique end) ->
         conflict_error(attrs)
 
-      Keyword.has_key?(errors, :path) ->
+      match?({_message, [validation: :format]}, errors[:path]) ->
         "the path must start with / and contain only letters, digits, " <>
           "_ - . : * and / — got: #{inspect(attrs.path)}"
+
+      Keyword.has_key?(errors, :path) ->
+        {message, _opts} = errors[:path]
+        "#{attrs.path} cannot be routed: #{message}"
 
       true ->
         {field, {message, _opts}} = List.last(errors)

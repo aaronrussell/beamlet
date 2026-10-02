@@ -198,19 +198,20 @@ defmodule Host.RouterTest do
       hook = define_controller!(ctx)
       quietly(fn -> Host.Router.live("/rt/page", page) end)
 
+      break_router_build()
+
       log =
         quiet(fn ->
           capture_log(fn ->
-            assert_raise RuntimeError, ~r/could not mount \/\*rest\/more/, fn ->
-              Host.Router.post("/*rest/more", hook, :create)
+            assert_raise RuntimeError, ~r/could not mount \/rt\/hook/, fn ->
+              Host.Router.post("/rt/hook", hook, :create)
             end
           end)
         end)
 
       assert log =~ "the router failed to regenerate"
-      assert Routes.list(path: "/*rest/more") == []
-      assert %{status: 200, body: body} = Host.Router.call(:get, "/rt/page")
-      assert body =~ "page 1"
+      assert Routes.list(path: "/rt/hook") == []
+      assert ctx.conn |> get("/rt/page") |> html_response(200) =~ "page 1"
     end
   end
 
@@ -312,25 +313,26 @@ defmodule Host.RouterTest do
     end
 
     test "a define stands when the router fails to rebuild, with a warning", ctx do
-      page = define_page!(ctx, unique_namespace(), "page one")
-      hook = define_controller!(ctx)
-      quietly(fn -> Host.Router.live("/rt/kept", page) end)
-
-      Host.Repo.insert!(%Beamlet.Route{
-        kind: :controller,
-        verb: :post,
-        path: "/*rest/more",
-        module: inspect(hook),
-        action: "create",
-        principal: Principal.to_map(ctx.principal)
-      })
-
       ns = unique_namespace()
+      mod = define_page!(ctx, ns, "page one")
+      other = define_page!(ctx, unique_namespace(), "other")
+      quietly(fn -> Host.Router.live("/rt/kept", mod) end)
+      quietly(fn -> Host.Router.live("/rt/other", other) end)
+      break_router_build()
+
+      plain = """
+      defmodule #{ns}.PageLive do
+        @moduledoc "No longer a page."
+
+        @doc "Says hello."
+        def hello, do: :hello
+      end
+      """
 
       log =
         capture_log(fn ->
           quiet(fn ->
-            assert {:ok, summary} = Define.run([%{code: page_source(ns, "new")}], ctx.principal)
+            assert {:ok, summary} = Define.run([%{code: plain, replace: true}], ctx.principal)
 
             assert summary =~
                      "Warning: the router failed to rebuild, so your routes serve as they did " <>
@@ -338,10 +340,9 @@ defmodule Host.RouterTest do
           end)
         end)
 
-      purge_on_exit([Module.concat([ns, "PageLive"])])
       assert log =~ "the router failed to regenerate"
-      assert Elixir.Code.ensure_loaded?(Module.concat([ns, "PageLive"]))
-      assert %{status: 200} = Host.Router.call(:get, "/rt/kept")
+      assert mod.hello() == :hello
+      assert ctx.conn |> get("/rt/other") |> html_response(200) =~ "other"
     end
 
     test "print_routes marks a servable route the router has not picked up", ctx do
@@ -479,6 +480,16 @@ defmodule Host.RouterTest do
 
       assert_raise RuntimeError, ~r/contain only letters, digits/, fn ->
         Host.Router.live("/rt/page?x", mod)
+      end
+
+      assert Routes.list() == []
+    end
+
+    test "refuses a path the router cannot route, with Phoenix's reason", ctx do
+      mod = define_controller!(ctx)
+
+      assert_raise RuntimeError, ~r{^/\*rest/more cannot be routed: .*glob}, fn ->
+        Host.Router.post("/*rest/more", mod, :create)
       end
 
       assert Routes.list() == []

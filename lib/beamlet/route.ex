@@ -14,10 +14,11 @@ defmodule Beamlet.Route do
 
   `module` is the target's name in inspect form, `"Todo.PageLive"`,
   and `action` names the controller action, or the live action on a
-  page (`socket.assigns.live_action`), or nothing. The formats are
-  checked on insert and again at generation (`load_changeset/1`),
-  since agents can write the table with raw SQL; a row failing them
-  is left out of the router.
+  page (`socket.assigns.live_action`), or nothing. The formats, and
+  Plug's reading of the path, which refuses a glob anywhere but
+  last, are checked on insert and again at generation
+  (`load_changeset/1`), since agents can write the table with raw
+  SQL; a row failing them is left out of the router.
 
   `principal` is the provenance of the row, the principal that
   mounted it, stored as JSON in the shape `Beamlet.Principal.to_map/1`
@@ -132,8 +133,18 @@ defmodule Beamlet.Route do
     changeset
     |> validate_required([:kind, :path, :module])
     |> validate_format(:path, @path_format)
+    |> validate_change(:path, &validate_routable/2)
     |> validate_format(:module, @module_format)
     |> validate_kind()
+  end
+
+  # Plug's own reading of the path, the one Phoenix compiles the
+  # router with, so a path it refuses never reaches the build.
+  defp validate_routable(:path, path) do
+    Plug.Router.Utils.build_path_match(path)
+    []
+  rescue
+    exception in Plug.Router.InvalidSpecError -> [path: Exception.message(exception)]
   end
 
   defp validate_kind(changeset) do

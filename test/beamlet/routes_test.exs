@@ -191,6 +191,12 @@ defmodule Beamlet.RoutesTest do
       assert Route.load_changeset(route).valid?
     end
 
+    test "a path Phoenix refuses is not", ctx do
+      assert {:error, changeset} = Routes.create(%{ctx.live_attrs | path: "/*rest/more"})
+      assert %{path: [message]} = errors_on(changeset)
+      assert message =~ "glob"
+    end
+
     test "a row with a malformed path, module or action is not" do
       route = %Route{
         kind: :controller,
@@ -362,12 +368,9 @@ defmodule Beamlet.RoutesTest do
       assert {:ok, _route} = Routes.create(%{ctx.live_attrs | path: "/taken"})
     end
 
-    test "a broken generation is contained: boot logs and the previous router serves", ctx do
+    test "a raw row Phoenix cannot route is deleted, and the rest serve", ctx do
       add_hello!(ctx)
-      assert :ok = Routes.regenerate()
 
-      # Well-formed, so it passes the row checks, but Plug refuses a
-      # glob anywhere but last.
       Host.Repo.insert!(%Route{
         kind: :controller,
         verb: :get,
@@ -377,6 +380,48 @@ defmodule Beamlet.RoutesTest do
         principal: Beamlet.Principal.to_map(ctx.principal)
       })
 
+      log = capture_log(fn -> assert :ok = Routes.regenerate() end)
+
+      assert log =~ "deleted a malformed row"
+      assert log =~ "/*rest/more"
+      assert [%Route{path: "/hello/:id"}] = Routes.list()
+      {:ok, _view, _html} = live(ctx.conn, "/hello/1")
+    end
+
+    test "a raw row Ecto cannot load is skipped by every read and deleted at the build", ctx do
+      add_hello!(ctx)
+      now = DateTime.to_iso8601(DateTime.utc_now(:second))
+
+      for {kind, verb, path, principal} <- [
+            {"page", "get", "/a", "{}"},
+            {"controller", "fetch", "/b", "{}"},
+            {"live_view", "get", "/c", "not json"}
+          ] do
+        Host.Repo.query!(
+          "INSERT INTO __routes (kind, verb, path, module, principal, inserted_at) " <>
+            "VALUES (?, ?, ?, ?, ?, ?)",
+          [kind, verb, path, ctx.hello, principal, now]
+        )
+      end
+
+      assert [%Route{path: "/hello/:id"}] = Routes.list()
+      assert [] = Routes.list(modules: ["No.Such.Module"])
+
+      log = capture_log(fn -> assert :ok = Routes.regenerate() end)
+
+      assert log =~ "deleted a row that cannot be loaded"
+      assert log =~ ~s|kind: "page"|
+      assert log =~ ~s|verb: "fetch"|
+      assert log =~ ~s|principal: "not json"|
+      assert %{num_rows: 1} = Host.Repo.query!("SELECT * FROM __routes")
+      {:ok, _view, _html} = live(ctx.conn, "/hello/1")
+    end
+
+    test "a broken generation is contained: boot logs and the previous router serves", ctx do
+      add_hello!(ctx)
+      assert :ok = Routes.regenerate()
+
+      break_router_build()
       log = quiet(fn -> capture_log(fn -> assert :ignore = Routes.boot() end) end)
 
       assert log =~ "the router failed to regenerate"

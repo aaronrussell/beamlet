@@ -25,8 +25,10 @@ defmodule Beamlet.Routes do
   module brings its routes back. A row that fails `Beamlet.Route`'s
   validations could only have been written with raw SQL and nothing
   can make it valid again, so regeneration deletes it with a warning
-  recording the row. Boot regeneration never fails the boot: the worst case is
-  the empty placeholder serving 404s with an error in the log.
+  recording the row; so too a row Ecto cannot load at all, which
+  every read skips. Boot regeneration never fails the boot: the
+  worst case is the empty placeholder serving 404s with an error in
+  the log.
   """
 
   import Ecto.Query, only: [from: 2, where: 3]
@@ -59,19 +61,43 @@ defmodule Beamlet.Routes do
   The route rows in id order, the order they were mounted, which is
   the order the router matches them in. Filters narrow the list:
   `path:` to one path, `verb:` to one verb, `modules:` to rows
-  targeting any of the given module names in inspect form.
+  targeting any of the given module names in inspect form. A row
+  Ecto cannot load is left out.
   """
   @spec list([filter()]) :: [Route.t()]
   def list(filters \\ []) do
-    query = from(r in Route, order_by: r.id)
+    {routes, _unloadable} = read(filters)
+    routes
+  end
 
-    filters
-    |> Enum.reduce(query, fn
-      {:path, path}, query -> where(query, [r], r.path == ^path)
-      {:verb, verb}, query -> where(query, [r], r.verb == ^verb)
-      {:modules, modules}, query -> where(query, [r], r.module in ^modules)
-    end)
-    |> Host.Repo.all()
+  # The columns are read raw and each row loaded on its own: raw SQL
+  # can write a value no field loads (an unknown kind or verb, a
+  # principal that is not JSON), and loaded as a whole the query
+  # would raise for every reader.
+  defp read(filters) do
+    query =
+      from(r in "__routes",
+        order_by: r.id,
+        select: map(r, [:id, :kind, :verb, :path, :module, :action, :principal, :inserted_at])
+      )
+
+    rows =
+      filters
+      |> Enum.reduce(query, fn
+        {:path, path}, query -> where(query, [r], r.path == ^path)
+        {:verb, verb}, query -> where(query, [r], r.verb == ^Atom.to_string(verb))
+        {:modules, modules}, query -> where(query, [r], r.module in ^modules)
+      end)
+      |> Host.Repo.all()
+      |> Enum.map(&{&1, load(&1)})
+
+    {for({_raw, {:ok, route}} <- rows, do: route), for({raw, :error} <- rows, do: raw)}
+  end
+
+  defp load(raw) do
+    {:ok, Host.Repo.load(Route, raw)}
+  rescue
+    ArgumentError -> :error
   end
 
   @doc """
@@ -101,7 +127,9 @@ defmodule Beamlet.Routes do
   # Runs inside the code server's lane, so nothing here may call it:
   # servable?/1 reads the defined set from its table.
   defp render do
-    {rows, malformed} = Enum.split_with(list(), &Route.load_changeset(&1).valid?)
+    {routes, unloadable} = read([])
+    Enum.each(unloadable, &prune_unloadable/1)
+    {rows, malformed} = Enum.split_with(routes, &Route.load_changeset(&1).valid?)
     Enum.each(malformed, &prune/1)
     {servable, broken} = Enum.split_with(rows, &servable?/1)
     Enum.each(broken, &log_broken/1)
@@ -212,6 +240,11 @@ defmodule Beamlet.Routes do
     Host.Repo.delete!(route, allow_stale: true)
     fields = [:id, :kind, :verb, :path, :module, :action, :principal, :inserted_at]
     Logger.warning("routes: deleted a malformed row: #{inspect(Map.take(route, fields))}")
+  end
+
+  defp prune_unloadable(raw) do
+    Host.Repo.delete_all(from(r in "__routes", where: r.id == ^raw.id))
+    Logger.warning("routes: deleted a row that cannot be loaded: #{inspect(raw)}")
   end
 
   defp log_broken(route) do
