@@ -12,8 +12,6 @@
 @import "tailwindcss" source(none);
 @source "../../lib/beamlet/web";
 @source "../../lib/beamlet/oauth";
-/* The agent layout is styled by the CDN build, not this file. */
-@source not "../../lib/beamlet/web/layouts/beamlet.html.heex";
 
 @theme {
   --color-*: initial;

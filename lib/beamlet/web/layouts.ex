@@ -31,7 +31,72 @@ defmodule Beamlet.Web.Layouts do
   import Beamlet.Web.Components
   import Phoenix.Controller, only: [get_csrf_token: 0]
 
-  embed_templates "layouts/*"
+  @doc """
+  The root layout for agent pages: the LiveView wiring on
+  `/beamlet/live` and Tailwind from its CDN.
+  """
+  def beamlet(assigns) do
+    ~H"""
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="csrf-token" content={get_csrf_token()} />
+        <.live_title default="beamlet">{assigns[:page_title]}</.live_title>
+        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
+        </script>
+        <script type="module">
+          import {Socket} from "/beamlet/assets/phoenix/phoenix.mjs"
+          import {LiveSocket} from "/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js"
+
+          const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+          const liveSocket = new LiveSocket("/beamlet/live", Socket, {params: {_csrf_token: csrfToken}})
+          liveSocket.connect()
+          window.liveSocket = liveSocket
+        </script>
+      </head>
+      <body class="bg-white text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+        {@inner_content}
+      </body>
+    </html>
+    """
+  end
+
+  @doc """
+  The root layout for the app: the LiveView wiring on
+  `/beamlet/app/live` and the app's own stylesheet.
+  """
+  def app(assigns) do
+    ~H"""
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="csrf-token" content={get_csrf_token()} />
+        <.live_title default="beamlet">{assigns[:page_title]}</.live_title>
+        <link rel="stylesheet" href="/beamlet/assets/app.css" />
+        <script type="module">
+          import {Socket} from "/beamlet/assets/phoenix/phoenix.mjs"
+          import {LiveSocket} from "/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js"
+
+          const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+          const liveSocket = new LiveSocket("/beamlet/app/live", Socket, {params: {_csrf_token: csrfToken}})
+          liveSocket.connect()
+          window.liveSocket = liveSocket
+
+          window.addEventListener("beamlet:copy", (event) => {
+            navigator.clipboard.writeText(event.target.textContent.trim())
+          })
+        </script>
+      </head>
+      <body class="bg-page text-body antialiased">
+        {@inner_content}
+      </body>
+    </html>
+    """
+  end
 
   @doc """
   The layout for the sign-in and consent pages: the wordmark, the

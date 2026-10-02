@@ -287,23 +287,6 @@ defmodule Beamlet.Policy.Default do
   # turning them away teaches nothing.
   @package_names [:jason]
 
-  # Commented out while no shipped package needs a curated description:
-  # with none set, package_description/1 always returns nil and the
-  # compiler flags the fallback in Beamlet.Code.Discovery as dead code.
-  # A description is for the discovery listing where the package's own
-  # says nothing, written as {app, description: "..."} in @packages.
-  # Restore this, package_description/1 and its call in discovery
-  # together.
-  #
-  # @packages [:jason]
-  #
-  # @package_descriptions Map.new(@packages, fn
-  #                         {app, opts} -> {app, opts[:description]}
-  #                         app -> {app, nil}
-  #                       end)
-  #
-  # @package_names Map.keys(@package_descriptions)
-
   # The language's self-reference: __MODULE__ is always the module
   # being defined, granted by construction. Keyed by the sentinel the
   # scanner resolves it to; not a platform module, so outside the
@@ -616,12 +599,6 @@ defmodule Beamlet.Policy.Default do
   @doc "The packages granted whole, by OTP application name."
   @spec packages() :: [atom()]
   def packages, do: @package_names
-
-  # Commented out with @package_descriptions above.
-  #
-  # @doc "The curated description of a shipped package for the discovery listing, or nil to use the package's own."
-  # @spec package_description(atom()) :: String.t() | nil
-  # def package_description(app), do: Map.get(@package_descriptions, app)
 
   @doc """
   The framework modules: the curated web and data authoring surface,

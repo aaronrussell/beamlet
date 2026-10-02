@@ -332,8 +332,6 @@ defmodule Beamlet.Code.Discovery do
       {:package, app, primary} ->
         label = "#{inspect(primary)} (#{inspect(app)})"
 
-        # Default.package_description(app) || app_description(app) when a
-        # package carries a curated description again (Beamlet.Policy.Default).
         case app_description(app) do
           nil -> "  #{label}"
           summary -> "  #{label} — #{summary}"
