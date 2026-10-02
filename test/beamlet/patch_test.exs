@@ -1,6 +1,5 @@
 defmodule Beamlet.PatchTest do
-  # Loaded modules and the compiler tracer option are VM-global.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   import ExUnit.CaptureIO
 

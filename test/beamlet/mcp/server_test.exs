@@ -1,6 +1,5 @@
 defmodule Beamlet.MCP.ServerTest do
-  # The define test loads a module into the VM.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   alias Anubis.MCP.Error
   alias Anubis.Server.Frame

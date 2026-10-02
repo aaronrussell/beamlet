@@ -1,5 +1,5 @@
 defmodule Beamlet.OAuth.ClientsTest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   @moduletag :capture_log
 
@@ -118,6 +118,15 @@ defmodule Beamlet.OAuth.ClientsTest do
       assert Clients.fetch(@client_id) == {:error, :too_large}
     end
   end
+end
+
+defmodule Beamlet.OAuth.ClientsRedirectTest do
+  use ExUnit.Case, async: true
+
+  alias Beamlet.OAuth.Clients
+
+  @client_id "https://chat.example/client.json"
+  @redirect_uri "https://chat.example/callback"
 
   describe "redirect_uri_allowed?/2" do
     setup do

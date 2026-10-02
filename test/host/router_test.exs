@@ -1,7 +1,5 @@
 defmodule Host.RouterTest do
-  # The dynamic router is a VM-global module and mounts go through the
-  # code server, so nothing here can run async.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   import ExUnit.CaptureIO
   import ExUnit.CaptureLog

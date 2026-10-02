@@ -1,5 +1,5 @@
 defmodule Beamlet.OwnerTest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   alias Beamlet.Owner
   alias Beamlet.Repo

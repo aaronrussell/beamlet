@@ -1,6 +1,5 @@
 defmodule Beamlet.Code.AuditTest do
-  # Loaded modules and the compiler tracer option are VM-global.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   alias Beamlet.Code
   alias Beamlet.Code.Audit
@@ -28,6 +27,10 @@ defmodule Beamlet.Code.AuditTest do
 
   describe "boot" do
     test "initializes the repo and commits an initial snapshot of what it finds", ctx do
+      :ok = Supervisor.terminate_child(Beamlet, Code)
+      File.rm_rf!(ctx.code_dir)
+      {:ok, _pid} = Supervisor.restart_child(Beamlet, Code)
+
       assert File.dir?(Path.join(ctx.code_dir, ".git"))
       assert File.read!(Path.join(ctx.code_dir, ".gitignore")) == "/ebin/\n/.staging/\n"
       assert commit_count(ctx.code_dir) == 1

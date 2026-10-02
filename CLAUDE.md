@@ -78,7 +78,7 @@ Run the affected tests while working and `mix precommit` before claiming done.
 
 - The test suite is the signal that something works, not a connected client. Drive the MCP plug with `Plug.Test`; assert on tool results, teaching errors, and what appears in the data dir.
 - No test hits the network or a real model. Stub HTTP with `Req.Test`.
-- `start_supervised!/1` for every process; `use Beamlet.Case` starts a beamlet per test against the per-run data dir from `config/test.exs`. A test needing its own directory passes it to the component, not through config.
+- No test depends on what ran before it. `start_supervised!/1` for every process. A test that needs no beamlet uses `ExUnit.Case, async: true`. `use Beamlet.Case` starts a beamlet per test against the per-run data dir from `config/test.exs`, its code dir copied from the run's first boot; `use Beamlet.Case, shared: true` starts one per module, for tests that change only rows, which the sandbox isolates, and never define code, which the case checks. One beamlet runs per VM, so `Beamlet.Case` modules are never async. A test needing its own directory passes it to the component, not through config.
 - No `Process.sleep/1` for synchronisation: `assert_receive` on the event, `Process.monitor` for termination, `:sys.get_state/1` to flush a mailbox.
 - Test through public surfaces and assert on results, not on server state.
 

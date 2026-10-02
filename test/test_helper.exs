@@ -1,6 +1,7 @@
 data_dir = Application.fetch_env!(:beamlet, :data_dir)
 File.rm_rf!(data_dir)
 File.mkdir_p!(data_dir)
+File.rm_rf!(Beamlet.Case.code_template_dir())
 
 # The platform the image runs, which Beamlet.Policy.DefaultTest pins
 # the curated default against.

@@ -1,6 +1,5 @@
 defmodule Beamlet.Code.CompileArtifactTest do
-  # Loaded modules and the compiler options are VM-global.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   alias Beamlet.Code
 

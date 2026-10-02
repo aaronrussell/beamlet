@@ -1,5 +1,5 @@
 defmodule Host.HTTPTest do
-  use Beamlet.Case, async: false
+  use Beamlet.Case, shared: true
 
   alias Beamlet.Eval
 
@@ -144,27 +144,6 @@ defmodule Host.HTTPTest do
                  "not one on the public internet — to call a route your beamlet serves, " <>
                    "use Host.Router.call/4"
       end
-    end
-
-    test "a refusal of the beamlet's own host points at Host.Router.call/4, another's does not" do
-      config = Application.fetch_env!(:beamlet, Beamlet.TestEndpoint)
-      on_exit(fn -> Application.put_env(:beamlet, Beamlet.TestEndpoint, config) end)
-
-      stop_supervised!(Beamlet.TestEndpoint)
-
-      Application.put_env(
-        :beamlet,
-        Beamlet.TestEndpoint,
-        Keyword.put(config, :url, host: "beamlet.internal.test", port: 4000)
-      )
-
-      start_supervised!(Beamlet.TestEndpoint)
-
-      assert {:error, own} = blocked("http://beamlet.internal.test:4000/todos")
-      assert Exception.message(own) =~ "use Host.Router.call/4"
-
-      assert {:error, other} = blocked("http://nas.internal.test/")
-      refute Exception.message(other) =~ "Host.Router"
     end
 
     test "a host that does not resolve is refused in ReqSSRF's words" do
@@ -348,5 +327,37 @@ defmodule Host.HTTPTest do
   defp refused(fun) do
     Req.Test.stub(Host.HTTP, fn _conn -> flunk("a refused request reached the network") end)
     assert_raise(ArgumentError, fun).message
+  end
+end
+
+# Reconfigures and restarts the endpoint, so it needs a beamlet of its
+# own.
+defmodule Host.HTTPOwnHostTest do
+  use Beamlet.Case
+
+  test "a refusal of the beamlet's own host points at Host.Router.call/4, another's does not" do
+    config = Application.fetch_env!(:beamlet, Beamlet.TestEndpoint)
+    on_exit(fn -> Application.put_env(:beamlet, Beamlet.TestEndpoint, config) end)
+
+    stop_supervised!(Beamlet.TestEndpoint)
+
+    Application.put_env(
+      :beamlet,
+      Beamlet.TestEndpoint,
+      Keyword.put(config, :url, host: "beamlet.internal.test", port: 4000)
+    )
+
+    start_supervised!(Beamlet.TestEndpoint)
+
+    assert {:error, own} = blocked("http://beamlet.internal.test:4000/todos")
+    assert Exception.message(own) =~ "use Host.Router.call/4"
+
+    assert {:error, other} = blocked("http://nas.internal.test/")
+    refute Exception.message(other) =~ "Host.Router"
+  end
+
+  defp blocked(url) do
+    Req.Test.stub(Host.HTTP, fn _conn -> flunk("a blocked request reached the network") end)
+    Host.HTTP.get(url)
   end
 end

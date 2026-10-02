@@ -1,5 +1,5 @@
 defmodule Host.FileTest do
-  use Beamlet.Case, async: false
+  use Beamlet.Case, shared: true
 
   describe "containment" do
     test "a relative escape raises the teaching error" do

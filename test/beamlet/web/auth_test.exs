@@ -1,5 +1,5 @@
 defmodule Beamlet.Web.AuthTest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   import Plug.Conn
   import Plug.Test

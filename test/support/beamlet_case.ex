@@ -6,14 +6,31 @@ defmodule Beamlet.Case do
   per-run data dir and hands the path to the test as `data_dir`.
   Each test owns a sandbox connection on both repos, shared with
   every process in the VM, so rows written during a test roll back
-  when it ends while the schema migrated at boot stays. The code and
-  files dirs are wiped before the beamlet starts, so every test boots
-  with no defined modules, a fresh history and no files, and the
-  last test's dirs stay inspectable after the run.
+  when it ends while the schema migrated at boot stays.
+
+  By default every test gets a beamlet of its own, booted with no
+  defined modules, a fresh history and no files: the code dir is a
+  copy of the one the run's first boot wrote, so a boot finds a clean
+  repo and skips git's `init`, and the router in the VM is the
+  compiled-in placeholder. The last test's dirs stay inspectable
+  after the run.
+
+  A module whose tests change only rows, which the sandbox isolates,
+  shares one beamlet across its tests instead, started before the
+  first and stopped after the last:
+
+      use Beamlet.Case, shared: true
+
+  Each test still gets the policies built from its tags, an empty
+  OAuth client cache and code store, and an empty files dir. A shared
+  test must not define, patch or remove code, mount routes or restart
+  the beamlet's children: the defined and quarantined sets are checked
+  after each test, and a test that changed them fails, since the next
+  test would see what it left.
 
   Every test also gets the owner and one token, as `user` and `token`,
   created through `Beamlet.Owner` and `Beamlet.Tokens` so a test
-  authenticates the way production does; the owner's password is
+  authenticates the way production does; the owner's password comes as
   `password`. The token still carries its `secret`; `principal/1`
   turns it into the principal a request would carry, and `act_as/1`
   makes it the test process's ambient principal, as eval's runtime
@@ -25,15 +42,17 @@ defmodule Beamlet.Case do
   `Phoenix.ConnTest` and `Phoenix.LiveViewTest`; `@endpoint` is set.
 
   A test declares policies for its beamlet with a tag in the shape
-  config takes, put into config before the beamlet starts and removed
-  after, and likewise the web keys merged over the configured ones:
+  config takes, put into config before the policies are built and
+  removed after, and likewise the web keys merged over the configured
+  ones:
 
       @tag policies: [restricted: [tools: [:eval]]]
       @tag web: [prefix: "/pages"]
 
-  Tests that define modules touch VM-global state, loaded modules and
-  the compiler's tracer list, so they run `async: false` and use
-  `unique_namespace/0` and `purge_on_exit/1`.
+  One beamlet runs per VM, its processes and tables named, so a
+  module using this case is never async. Tests that define modules
+  use `unique_namespace/0` and `purge_on_exit/1`, since loaded modules
+  outlive the beamlet that defined them.
   """
 
   use ExUnit.CaseTemplate
@@ -44,12 +63,22 @@ defmodule Beamlet.Case do
   alias Beamlet.Tokens
   alias Ecto.Adapters.SQL.Sandbox
 
-  using do
+  using opts do
+    if opts[:async] do
+      raise ArgumentError, "Beamlet.Case cannot be async: one beamlet runs per VM"
+    end
+
     quote do
       @endpoint Beamlet.TestEndpoint
+      @moduletag beamlet: if(unquote(opts[:shared]), do: :shared, else: :per_test)
 
       import Beamlet.Case
     end
+  end
+
+  setup_all context do
+    if context.beamlet == :shared, do: boot!()
+    :ok
   end
 
   setup context do
@@ -64,11 +93,12 @@ defmodule Beamlet.Case do
       on_exit(fn -> Application.put_env(:beamlet, :web, configured) end)
     end
 
-    File.rm_rf!(Beamlet.Config.code_dir())
-    File.rm_rf!(Beamlet.Config.files_dir())
     preserve_compiler_tracers()
-    start_supervised!({Beamlet, []})
-    start_supervised!(Beamlet.TestEndpoint)
+
+    case context.beamlet do
+      :shared -> refresh_shared!()
+      :per_test -> boot!()
+    end
 
     for repo <- [Beamlet.Repo, Host.Repo] do
       owner = Sandbox.start_owner!(repo, shared: true)
@@ -80,6 +110,59 @@ defmodule Beamlet.Case do
     {:ok, token} = Tokens.create(name: "test")
 
     %{data_dir: Beamlet.Config.data_dir(), user: user, password: password, token: token}
+  end
+
+  @doc false
+  @spec code_template_dir() :: Path.t()
+  def code_template_dir, do: Beamlet.Config.data_dir() <> "_code_template"
+
+  # The template is the code dir the run's first boot wrote, so every
+  # later boot finds a repo with its initial snapshot and sweeps it
+  # rather than running git's init and first commit, three processes.
+  defp boot! do
+    template = code_template_dir()
+    File.rm_rf!(Beamlet.Config.code_dir())
+    if File.dir?(template), do: File.cp_r!(template, Beamlet.Config.code_dir())
+    File.rm_rf!(Beamlet.Config.files_dir())
+    restore_placeholder_router()
+
+    start_supervised!({Beamlet, []})
+    start_supervised!(Beamlet.TestEndpoint)
+
+    unless File.dir?(template), do: File.cp_r!(Beamlet.Config.code_dir(), template)
+  end
+
+  # A test that follows a routing test would otherwise boot with that
+  # test's router loaded.
+  defp restore_placeholder_router do
+    if Beamlet.DynamicRouter.__routes__() != [] do
+      :code.purge(Beamlet.DynamicRouter)
+      {:module, _} = :code.load_file(Beamlet.DynamicRouter)
+      :code.purge(Beamlet.DynamicRouter)
+    end
+  end
+
+  # What a shared beamlet holds per test beyond the sandbox: the
+  # policies built from this test's tags, the OAuth client cache and
+  # code store, and the files dir.
+  defp refresh_shared! do
+    for child <- [Beamlet.Policies, Beamlet.OAuth.Clients, Beamlet.OAuth.Codes] do
+      :ok = Supervisor.terminate_child(Beamlet, child)
+      {:ok, _pid} = Supervisor.restart_child(Beamlet, child)
+    end
+
+    File.rm_rf!(Beamlet.Config.files_dir())
+    File.mkdir_p!(Beamlet.Config.files_dir())
+
+    on_exit(fn ->
+      changed = Beamlet.Code.defined() ++ Enum.map(Beamlet.Code.quarantined(), & &1.file)
+
+      if changed != [] do
+        raise "this test shares its module's beamlet and left code behind " <>
+                "(#{inspect(changed)}); a test that defines code needs a beamlet of its " <>
+                "own: drop `shared: true` from the module or move the test"
+      end
+    end)
   end
 
   @doc "The principal a request with this token carries, built the way the plug builds it."

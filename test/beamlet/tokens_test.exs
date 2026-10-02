@@ -1,5 +1,5 @@
 defmodule Beamlet.TokensTest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   alias Beamlet.Token
   alias Beamlet.Tokens

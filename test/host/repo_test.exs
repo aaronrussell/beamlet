@@ -1,5 +1,5 @@
 defmodule Host.RepoTest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   test "ATTACH DATABASE is refused on the agent database" do
     system_db = Beamlet.Repo.config()[:database]

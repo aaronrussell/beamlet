@@ -1,8 +1,5 @@
 defmodule Host.MigratorTest do
-  # Migrations run through Host.Repo's shared sandbox connection (Ecto
-  # applies each one in a task of its own) and the code server touches
-  # VM-global state, so nothing here can run async.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   import ExUnit.CaptureIO
   import Ecto.Query

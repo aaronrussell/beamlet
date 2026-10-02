@@ -1,5 +1,5 @@
 defmodule Beamlet.Web.HomeLiveTest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest

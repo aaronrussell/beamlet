@@ -1,7 +1,5 @@
 defmodule Host.WebTest do
-  # Defined modules and the dynamic router are VM-global, so nothing
-  # here can run async.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   import ExUnit.CaptureIO
 

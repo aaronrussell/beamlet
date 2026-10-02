@@ -1,6 +1,5 @@
 defmodule Beamlet.CodeTest do
-  # Loaded modules and the compiler tracer option are VM-global.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   alias Beamlet.Code
 

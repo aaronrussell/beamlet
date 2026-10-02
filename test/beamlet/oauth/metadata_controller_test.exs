@@ -1,5 +1,5 @@
 defmodule Beamlet.OAuth.MetadataControllerTest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   import Phoenix.ConnTest
 

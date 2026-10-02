@@ -1,7 +1,5 @@
 defmodule Host.KVTest do
-  # Host.Repo's sandbox connection is shared with eval's task, so
-  # nothing here can run async.
-  use Beamlet.Case, async: false
+  use Beamlet.Case, shared: true
 
   alias Beamlet.Eval
 

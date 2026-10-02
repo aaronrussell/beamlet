@@ -1,7 +1,5 @@
 defmodule Beamlet.RoutesTest do
-  # The generated router is a VM-global module, so nothing here can
-  # run async.
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   import ExUnit.CaptureLog
   import Phoenix.ConnTest

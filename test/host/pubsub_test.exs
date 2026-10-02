@@ -1,5 +1,5 @@
 defmodule Host.PubSubTest do
-  use Beamlet.Case, async: false
+  use Beamlet.Case, shared: true
 
   alias Beamlet.Policy
   alias Beamlet.Scanner

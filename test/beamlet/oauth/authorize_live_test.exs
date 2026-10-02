@@ -1,5 +1,5 @@
 defmodule Beamlet.OAuth.AuthorizeLiveTest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   @moduletag :capture_log
 

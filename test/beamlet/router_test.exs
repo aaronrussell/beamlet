@@ -1,5 +1,5 @@
 defmodule Beamlet.RouterTest do
-  use Beamlet.Case, async: false
+  use Beamlet.Case
 
   import Phoenix.ConnTest
   import Plug.Conn

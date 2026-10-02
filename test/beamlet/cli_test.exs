@@ -1,5 +1,5 @@
 defmodule Beamlet.CLITest do
-  use Beamlet.Case
+  use Beamlet.Case, shared: true
 
   import ExUnit.CaptureIO
 
