@@ -2,7 +2,7 @@
 
 **Status:** Working note, deliberately light. It records what is settled and why, one decision at a time as the code lands. Nothing is carried over from `../omni_host` unexamined. History lives in git; this note keeps the decisions and the reasons that still bear on the next one, and an alternative only where someone would plausibly propose it again.
 
-**Last updated:** 2026-10-01 (policies as guardrails, not containment; private routes as owner-only; the threat model moved to `security.md`)
+**Last updated:** 2026-10-02 (the pre-release review: routes in mount order and refreshed on define, route rows pruned when Ecto or Phoenix cannot take them, the eval output device and limits, the code lane's waits, package lines from `.app`)
 
 ---
 
