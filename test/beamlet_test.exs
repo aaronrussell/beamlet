@@ -44,6 +44,13 @@ defmodule BeamletTest do
     assert_raise RuntimeError, ~r/newer Beamlet/, fn -> Beamlet.Tables.upgrade() end
   end
 
+  test "refuses an agent database at a negative furniture version" do
+    Host.Repo.query!("pragma user_version = -1")
+
+    assert_raise RuntimeError, ~r/furniture version -1/, fn -> Beamlet.Tables.upgrade() end
+    assert furniture() == ["__kv", "__routes"]
+  end
+
   defp furniture do
     %{rows: rows} =
       Host.Repo.query!(

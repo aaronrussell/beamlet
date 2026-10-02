@@ -204,11 +204,11 @@ defmodule Beamlet.Code.SourceTest do
   describe "select/3" do
     test "finds a function's block" do
       assert {:ok, %{label: "def total/1", range: 10..17, clauses: 2}} =
-               Source.select(@source, :total, 1)
+               Source.select(@source, "total", 1)
     end
 
     test "an unknown function lists the module's functions" do
-      assert {:error, :not_found, functions} = Source.select(@source, :total, 3)
+      assert {:error, :not_found, functions} = Source.select(@source, "total", 3)
 
       assert functions == [
                "total/1",
@@ -232,8 +232,8 @@ defmodule Beamlet.Code.SourceTest do
       end
       """
 
-      assert {:error, :scattered} = Source.select(source, :a, 1)
-      assert {:ok, %{range: 3..3}} = Source.select(source, :b, 0)
+      assert {:error, :scattered} = Source.select(source, "a", 1)
+      assert {:ok, %{range: 3..3}} = Source.select(source, "b", 0)
     end
   end
 
@@ -280,27 +280,27 @@ defmodule Beamlet.Code.SourceTest do
   describe "patch_select/4" do
     test "replaces a function's block, docs included" do
       assert {:ok, patched} =
-               Source.patch_select(@source, :one, 0, {:replace, "\n\n  def one, do: :one\n"})
+               Source.patch_select(@source, "one", 0, {:replace, "\n\n  def one, do: :one\n"})
 
       assert Source.lines(patched, 19..21) ==
                "  # a comment that stays put\n  def one, do: :one\n"
 
-      assert {:ok, %{range: 20..20, clauses: 1}} = Source.select(patched, :one, 0)
-      assert {:ok, %{range: 10..17}} = Source.select(patched, :total, 1)
+      assert {:ok, %{range: 20..20, clauses: 1}} = Source.select(patched, "one", 0)
+      assert {:ok, %{range: 10..17}} = Source.select(patched, "total", 1)
     end
 
     test "an empty replacement removes the block and leaves the neighbours" do
-      assert {:ok, patched} = Source.patch_select(@source, :one, 0, {:replace, ""})
-      assert {:error, :not_found, _functions} = Source.select(patched, :one, 0)
+      assert {:ok, patched} = Source.patch_select(@source, "one", 0, {:replace, ""})
+      assert {:error, :not_found, _functions} = Source.select(patched, "one", 0)
       assert Source.lines(patched, 18..20) == "\n  # a comment that stays put\n"
-      assert {:ok, %{range: 21..28}} = Source.select(patched, :card, 1)
+      assert {:ok, %{range: 21..28}} = Source.select(patched, "card", 1)
     end
 
     test "before inserts above the block's docs and after below its last clause" do
-      assert {:ok, patched} = Source.patch_select(@source, :total, 1, {:before, "def z, do: 0"})
+      assert {:ok, patched} = Source.patch_select(@source, "total", 1, {:before, "def z, do: 0"})
       assert Source.lines(patched, 10..12) == "def z, do: 0\n\n  @doc \"\"\""
 
-      assert {:ok, patched} = Source.patch_select(@source, :total, 1, {:after, "def z, do: 0"})
+      assert {:ok, patched} = Source.patch_select(@source, "total", 1, {:after, "def z, do: 0"})
 
       assert Source.lines(patched, 17..19) ==
                "  def total(%{} = m), do: m |> Map.values() |> Enum.sum()\n\ndef z, do: 0"
@@ -308,17 +308,17 @@ defmodule Beamlet.Code.SourceTest do
 
     test "an unknown function lists the module's functions" do
       assert {:error, :not_found, ["total/1" | _rest]} =
-               Source.patch_select(@source, :nope, 1, {:replace, ""})
+               Source.patch_select(@source, "nope", 1, {:replace, ""})
     end
 
     test "a scattered function and a source that does not parse are refused" do
       scattered = "defmodule A do\n  def a(1), do: 1\n  def b, do: 2\n  def a(2), do: 2\nend\n"
-      assert {:error, :scattered} = Source.patch_select(scattered, :a, 1, {:replace, ""})
+      assert {:error, :scattered} = Source.patch_select(scattered, "a", 1, {:replace, ""})
 
       assert {:error, {2, _message}} =
                Source.patch_select(
                  "defmodule A do\n  def x(, do: 1\nend\n",
-                 :x,
+                 "x",
                  0,
                  {:replace, ""}
                )

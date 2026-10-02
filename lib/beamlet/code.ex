@@ -720,9 +720,7 @@ defmodule Beamlet.Code do
     case Atom.to_string(mod) do
       "Elixir.Beamlet" -> true
       "Elixir.Beamlet." <> _rest -> true
-      "Elixir.Host" -> true
-      "Elixir.Host." <> _rest -> true
-      _other -> false
+      _other -> Scanner.host_module?(mod)
     end
   end
 

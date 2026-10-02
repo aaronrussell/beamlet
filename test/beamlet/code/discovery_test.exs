@@ -236,6 +236,11 @@ defmodule Beamlet.Code.DiscoveryTest do
       assert text =~ ~r/^\(\d+ functions not shown — not permitted by your policy\)$/m
     end
 
+    test "an unknown Erlang module is not a policy matter" do
+      assert {:error, message} = Discovery.doc(effective(), :nosuchmod)
+      assert message =~ "nothing named :nosuchmod exists on your beamlet"
+    end
+
     test "an unknown module is not a policy matter" do
       assert {:error, message} = Discovery.doc(effective(), No.Such.Module)
       assert message =~ "nothing named No.Such.Module exists on your beamlet"
@@ -393,6 +398,24 @@ defmodule Beamlet.Code.DiscoveryTest do
                "#{ns}.Torn does not parse — lib/torn.ex:1: missing terminator: end\n" <>
                  "    defmodule #{ns}.Torn do\n" <>
                  "Read it by line range instead: Host.Code.print_source(#{ns}.Torn, 1..4)"
+    end
+
+    test "a stray end is a parse error, not a crash", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Stray])
+      purge_on_exit([mod])
+
+      quarantine_source!(ctx.data_dir, "stray", """
+      defmodule #{ns}.Stray do
+        def size, do: 1
+        end
+      end
+      """)
+
+      assert {:error, message} = Discovery.outline(effective(), mod)
+
+      assert message =~
+               "#{ns}.Stray does not parse — lib/stray.ex:4: unexpected reserved word: end"
     end
 
     test "beamlet modules and unknown modules get source's errors" do

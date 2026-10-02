@@ -721,7 +721,7 @@ defmodule Beamlet.Scanner do
       Code.ensure_loaded?(module) ->
         "#{inspect(module)} is not permitted by your policy#{hint(Signage.hint(policy, module))}"
 
-      host_name?(module) ->
+      host_module?(module) ->
         "nothing named #{inspect(module)} exists on your beamlet — " <>
           "Host.Code.print_modules() lists the Host modules and Host.Code.print_docs(Module) " <>
           "their functions"
@@ -732,9 +732,19 @@ defmodule Beamlet.Scanner do
     end
   end
 
-  # A guessed Host module is a model looking for the stdlib, not a
-  # module it meant to define.
-  defp host_name?(module), do: match?(["Host" | _], Module.split(module))
+  @doc """
+  Whether `module` is `Host` or under it, by name alone: the stdlib's
+  namespace, whether or not anything by that name exists. Any atom is
+  accepted, Erlang module names included.
+  """
+  @spec host_module?(atom()) :: boolean()
+  def host_module?(module) when is_atom(module) do
+    case Atom.to_string(module) do
+      "Elixir.Host" -> true
+      "Elixir.Host." <> _rest -> true
+      _other -> false
+    end
+  end
 
   @doc """
   The copy for a function the policy denies of a module it grants in

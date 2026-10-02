@@ -131,28 +131,42 @@ defmodule Beamlet.Patch do
   defp module_of(patch, index) do
     case Map.get(patch, :module) do
       name when is_binary(name) and name != "" ->
-        module = Module.concat([name])
-
-        case Code.source_file(module) do
-          {:ok, file} ->
-            {:ok, module, file}
+        with module when module != nil <- existing_module(name),
+             {:ok, file} <- Code.source_file(module) do
+          {:ok, module, file}
+        else
+          nil ->
+            not_defined(index, name)
 
           :error ->
+            module = Module.concat([name])
+
             if Elixir.Code.ensure_loaded?(module) do
               {:error,
                "patch #{index}: #{inspect(module)} is part of your beamlet, not a defined " <>
                  "module — patch edits modules defined with define; " <>
                  "Host.Code.print_modules() shows them"}
             else
-              {:error,
-               "patch #{index}: #{inspect(module)} is not a defined module — " <>
-                 "Host.Code.print_modules() shows what is"}
+              not_defined(index, inspect(module))
             end
         end
 
       _missing ->
         {:error, "patch #{index} names no module — each patch names the module it edits"}
     end
+  end
+
+  # A module patch can edit is defined, so its atom exists; a name
+  # that is not one never becomes an atom.
+  defp existing_module(name) do
+    Module.safe_concat([name])
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp not_defined(index, name) do
+    {:error,
+     "patch #{index}: #{name} is not a defined module — Host.Code.print_modules() shows what is"}
   end
 
   defp anchor_of(patch, index) do
@@ -171,7 +185,7 @@ defmodule Beamlet.Patch do
       [:select] ->
         with text when is_binary(text) <- Map.fetch!(patch, :select),
              [name, arity] <- Regex.run(@select, text, capture: :all_but_first) do
-          {:ok, {:select, String.to_atom(name), String.to_integer(arity)}}
+          {:ok, {:select, name, String.to_integer(arity)}}
         else
           _other ->
             {:error,

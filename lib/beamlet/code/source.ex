@@ -74,17 +74,17 @@ defmodule Beamlet.Code.Source do
 
   @type op :: {:replace, String.t()} | {:before, String.t()} | {:after, String.t()}
 
-  @spec parse(String.t()) :: {:ok, Macro.t()} | {:error, {pos_integer(), String.t()}}
+  @spec parse(String.t()) :: {:ok, Macro.t()} | {:error, {non_neg_integer(), String.t()}}
   def parse(source) when is_binary(source) do
-    case Code.string_to_quoted(source, token_metadata: true, literal_encoder: &literal/2) do
-      {:ok, ast} -> {:ok, ast}
-      {:error, {meta, message, token}} -> {:error, {meta[:line] || 1, message <> token}}
-    end
+    {:ok, Code.string_to_quoted!(source, token_metadata: true, literal_encoder: &literal/2)}
+  rescue
+    e in [SyntaxError, TokenMissingError, MismatchedDelimiterError] ->
+      {:error, {e.line, e.description}}
   end
 
   defp literal(literal, meta), do: {:ok, {:__block__, meta, [literal]}}
 
-  @spec outline(String.t()) :: {:ok, [item()]} | {:error, {pos_integer(), String.t()}}
+  @spec outline(String.t()) :: {:ok, [item()]} | {:error, {non_neg_integer(), String.t()}}
   def outline(source) when is_binary(source) do
     with {:ok, ast} <- parse(source) do
       lines = String.split(source, "\n")
@@ -99,16 +99,16 @@ defmodule Beamlet.Code.Source do
     end
   end
 
-  @spec select(String.t(), atom(), arity()) ::
+  @spec select(String.t(), String.t(), arity()) ::
           {:ok, item()}
           | {:error, :not_found, [String.t()]}
           | {:error, :scattered}
-          | {:error, {pos_integer(), String.t()}}
-  def select(source, name, arity) when is_atom(name) and is_integer(arity) do
+          | {:error, {non_neg_integer(), String.t()}}
+  def select(source, name, arity) when is_binary(name) and is_integer(arity) do
     with {:ok, items} <- outline(source) do
       functions = Enum.filter(items, &function?/1)
 
-      case Enum.filter(functions, &(&1.name == name and &1.arity == arity)) do
+      case Enum.filter(functions, &(Atom.to_string(&1.name) == name and &1.arity == arity)) do
         [item] -> {:ok, item}
         [] -> {:error, :not_found, Enum.map(functions, &fa/1)}
         _several -> {:error, :scattered}
@@ -149,11 +149,11 @@ defmodule Beamlet.Code.Source do
 
   defp dedent(text), do: String.replace(text, ~r/^[ \t]+/m, "")
 
-  @spec patch_select(String.t(), atom(), arity(), op()) ::
+  @spec patch_select(String.t(), String.t(), arity(), op()) ::
           {:ok, String.t()}
           | {:error, :not_found, [String.t()]}
           | {:error, :scattered}
-          | {:error, {pos_integer(), String.t()}}
+          | {:error, {non_neg_integer(), String.t()}}
   def patch_select(source, name, arity, op) do
     with {:ok, item} <- select(source, name, arity) do
       first..last//1 = item.range

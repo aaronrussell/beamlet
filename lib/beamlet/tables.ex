@@ -19,7 +19,8 @@ defmodule Beamlet.Tables do
   # one transaction so a crash halfway reruns the step next time. A
   # file above the current version was written by a newer Beamlet
   # and fails the boot, since up-only steps have nothing to run and
-  # no way back. A synchronous child right after Host.Repo, so a
+  # no way back; a negative one, which only raw SQL writes, fails it
+  # too. A synchronous child right after Host.Repo, so a
   # failure fails the boot the way the system database's migrator
   # does. Raw SQL on Host.Repo can set user_version too; the policy
   # guards against accident, not adversaries.
@@ -69,13 +70,17 @@ defmodule Beamlet.Tables do
       @current ->
         :ignore
 
-      from when from < @current ->
+      from when from in 0..(@current - 1)//1 ->
         @steps
         |> Enum.with_index(1)
         |> Enum.drop(from)
         |> Enum.each(&run_step/1)
 
         :ignore
+
+      from when from < 0 ->
+        raise "the agent database is at furniture version #{from}, which no Beamlet " <>
+                "writes: restore the data dir from a backup"
 
       from ->
         raise "the agent database is at furniture version #{from} and this Beamlet knows " <>

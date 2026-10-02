@@ -64,7 +64,6 @@ Security minors from the review (2026-10-01), unscheduled, each small:
 - Refresh reuse goes unflagged: the compare-and-swap stops a race, but a thief who redeems first keeps the token. Detection, revoking a token when a rotated secret comes back, needs previous refresh hashes kept.
 - Anubis session state holds `req_headers`, so a session crash report could log the bearer (suspicion).
 - The server's `Plug.RewriteOn` trusts `x-forwarded-proto` from any client when no proxy sits in front.
-- `Beamlet.Patch` makes atoms from agent input without bound: `String.to_atom/1` on `select` names and `Module.concat/1` on module names, where the existing-atom forms would do. Under the stance this is a token holder taking the beamlet down, already accepted, but the fix is a line.
 
 Protocols, maybe (2026-09-30). Full support for agent-defined protocols and for agent implementations of library ones (`defprotocol`, `defimpl`, `@derive`), all refused by the scanner today. An agent's own protocol is the easy half: compiled at runtime it is never consolidated, so it dispatches dynamically and its implementations would work as loaded. Implementing a library protocol is the hard half, because Mix consolidates protocols at build into a fixed list of implementations and one loaded later is never dispatched to. Two routes, the choice open:
 

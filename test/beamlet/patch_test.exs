@@ -278,6 +278,36 @@ defmodule Beamlet.PatchTest do
                )
     end
 
+    test "a function an earlier patch adds can be selected by a later one", ctx do
+      {_ns, mod} = list_module(ctx)
+      name = "added_#{System.unique_integer([:positive])}"
+
+      assert {:ok, _summary} =
+               patch(
+                 [
+                   %{module: mod, select: "total/1", after: "@doc \"One.\"\ndef #{name}, do: 1"},
+                   %{
+                     module: mod,
+                     select: "#{name}/0",
+                     replace: "@doc \"Two.\"\ndef #{name}, do: 2"
+                   }
+                 ],
+                 ctx.principal
+               )
+
+      assert apply(mod, String.to_atom(name), []) == 2
+    end
+
+    test "an unknown function name makes no atom", ctx do
+      {_ns, mod} = list_module(ctx)
+      name = "never_seen_#{System.unique_integer([:positive])}"
+
+      assert patch_error([%{module: mod, select: "#{name}/0", replace: ""}], ctx.principal) =~
+               "has no function #{name}/0"
+
+      assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
+    end
+
     test "an unknown function lists the module's functions", ctx do
       {_ns, mod} = list_module(ctx)
 
@@ -615,6 +645,15 @@ defmodule Beamlet.PatchTest do
                )
     end
 
+    test "an unknown module name makes no atom", ctx do
+      name = "NeverSeen#{System.unique_integer([:positive])}.Mod"
+
+      assert patch_error([%{module: name, find: "a", replace: ""}], ctx.principal) ==
+               "patch 1: #{name} is not a defined module — Host.Code.print_modules() shows what is"
+
+      assert_raise ArgumentError, fn -> String.to_existing_atom("Elixir." <> name) end
+    end
+
     test "changing the defmodule line's name is refused", ctx do
       {ns, mod} = list_module(ctx)
 
@@ -756,6 +795,41 @@ defmodule Beamlet.PatchTest do
 
       assert Code.quarantined() == []
       assert apply(mod, :total, [[1, 2]]) == 3
+    end
+
+    test "a stray end refuses select with the parser's error and is repaired by find", ctx do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Stray])
+      purge_on_exit([mod])
+
+      quarantine(ctx, "lib/stray.ex", """
+      defmodule #{ns}.Stray do
+        @moduledoc "A stray end."
+        @doc "The size."
+        def size, do: 1
+        end
+      end
+      """)
+
+      assert [%{modules: [^mod]}] = Code.quarantined()
+
+      message = patch_error([%{module: mod, select: "size/0", replace: ""}], ctx.principal)
+
+      assert message =~
+               "patch 1 (#{inspect(mod)}, select size/0): #{inspect(mod)} does not parse, so " <>
+                 "select cannot find size/0 — lib/stray.ex:6: unexpected reserved word: end"
+
+      assert {:ok, summary} =
+               patch(
+                 [%{module: mod, find: "do: 1\n  end\n", replace: "do: 1\n"}],
+                 ctx.principal
+               )
+
+      assert summary ==
+               "Patched #{inspect(mod)}\n  - previous source did not parse, so nothing to compare"
+
+      assert Code.quarantined() == []
+      assert apply(mod, :size, []) == 1
     end
   end
 

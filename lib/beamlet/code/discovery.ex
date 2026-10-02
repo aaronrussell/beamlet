@@ -293,7 +293,7 @@ defmodule Beamlet.Code.Discovery do
       |> Enum.sort_by(&inspect/1)
       |> Enum.reduce({[], [], []}, fn mod, {host, fw, deps} ->
         cond do
-          host_module?(mod) -> {[mod | host], fw, deps}
+          Scanner.host_module?(mod) -> {[mod | host], fw, deps}
           MapSet.member?(framework, mod) -> {host, [mod | fw], deps}
           platform_module?(mod) -> {host, fw, deps}
           exception?(mod) -> {host, fw, deps}
@@ -363,8 +363,6 @@ defmodule Beamlet.Code.Discovery do
         "with replace: true, or Host.Code.remove it)"
     end
   end
-
-  defp host_module?(mod), do: String.starts_with?(Atom.to_string(mod), "Elixir.Host.")
 
   defp exception?(mod) do
     Code.ensure_loaded?(mod) and function_exported?(mod, :__struct__, 0) and

@@ -176,6 +176,12 @@ defmodule Beamlet.ScannerTest do
       assert message =~ "check the name, or define it first"
     end
 
+    test "an Erlang module that does not exist teaches define, not policy" do
+      message = scan_error(":nosuchmod.f()")
+      assert message =~ "nothing named :nosuchmod exists on your beamlet"
+      assert message =~ "check the name, or define it first"
+    end
+
     test "a guessed Host module is pointed at the listing, not at define" do
       message = scan_error("Host.help()")
       assert message =~ "nothing named Host exists on your beamlet"
