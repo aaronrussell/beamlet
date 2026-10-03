@@ -39,9 +39,11 @@ mix format --check-formatted
 mix precommit                    # compile --warnings-as-errors, unused
                                  # deps check, format, test; run before
                                  # claiming done
+cd server && mix precommit       # the same for the server, with its
+                                 # own tests
 ```
 
-Run the affected tests while working and `mix precommit` before claiming done.
+Run the affected tests while working and `mix precommit` before claiming done, and the server's too when a change reaches `server/` or what it serves.
 
 ## Rules
 
@@ -81,6 +83,7 @@ Run the affected tests while working and `mix precommit` before claiming done.
 - No test depends on what ran before it. `start_supervised!/1` for every process. A test that needs no beamlet uses `ExUnit.Case, async: true`. `use Beamlet.Case` starts a beamlet per test against the per-run data dir from `config/test.exs`, its code dir copied from the run's first boot; `use Beamlet.Case, shared: true` starts one per module, for tests that change only rows, which the sandbox isolates, and never define code, which the case checks. One beamlet runs per VM, so `Beamlet.Case` modules are never async. A test needing its own directory passes it to the component, not through config.
 - No `Process.sleep/1` for synchronisation: `assert_receive` on the event, `Process.monitor` for termination, `:sys.get_state/1` to flush a mailbox.
 - Test through public surfaces and assert on results, not on server state.
+- The server's tests in `server/test` cover only what the library's suite cannot reach: the real endpoint and router, its config and `runtime.exs`.
 
 ## Working on this project
 
