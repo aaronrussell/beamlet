@@ -15,6 +15,7 @@ defmodule Beamlet.Code.Entry do
 
   @type kind :: :module | :migration
 
+  @doc "Parses an entry's code, a syntax error as its line and description."
   @spec parse(String.t()) :: {:ok, Macro.t()} | {:error, {non_neg_integer(), String.t()}}
   def parse(code) when is_binary(code) do
     {:ok, Code.string_to_quoted!(code)}
@@ -23,6 +24,12 @@ defmodule Beamlet.Code.Entry do
       {:error, {e.line, e.description}}
   end
 
+  @doc """
+  The one top-level `defmodule` in parsed code, as its name and body.
+
+  Each way of not being exactly one literal module is its own error, so
+  define and patch can word the refusal in their own terms.
+  """
   @spec module(Macro.t()) ::
           {:ok, module(), Macro.t()}
           | {:error, :no_module | :not_literal | {:no_body, module()} | {:several, [String.t()]}}
@@ -57,6 +64,7 @@ defmodule Beamlet.Code.Entry do
 
   defp body([[{:do, body} | _rest]]), do: body
 
+  @doc "`:migration` when a module body uses `Ecto.Migration`, else `:module`."
   @spec kind(Macro.t()) :: kind()
   def kind(body) do
     if Enum.any?(block_forms(body), &migration_use?/1), do: :migration, else: :module
@@ -65,9 +73,15 @@ defmodule Beamlet.Code.Entry do
   defp migration_use?({:use, _meta, [{:__aliases__, _, [:Ecto, :Migration]} | _opts]}), do: true
   defp migration_use?(_form), do: false
 
-  # A migration's stored path carries the version the code server
-  # assigns in its lane, so a new migration locates by its name until
-  # then; a module already defined locates by its file.
+  @doc """
+  The path an entry's errors locate by, relative to the code dir: the
+  stored file of a module already defined, else the path its name
+  gives it.
+
+  A migration's stored path carries the version the code server
+  assigns in its lane, so a new migration locates by its name until
+  then.
+  """
   @spec path(module(), kind(), %{module() => Beamlet.Code.paths()}) :: Path.t()
   def path(module, kind, manifest) do
     case manifest do
@@ -79,8 +93,14 @@ defmodule Beamlet.Code.Entry do
     end
   end
 
-  # The path a module's name gives it, relative to the code dir. Four-
-  # digit padding is cosmetic; the version is parsed numerically.
+  @doc """
+  The path a module's name gives it, relative to the code dir:
+  `lib/shopping/list.ex`, or `migrations/0003_shopping_create_lists.ex`
+  for a migration with its version.
+
+  The four-digit padding is cosmetic; the version is parsed
+  numerically.
+  """
   @spec named_path(module(), kind(), pos_integer() | nil) :: Path.t()
   def named_path(module, kind, version \\ nil)
 
@@ -95,6 +115,12 @@ defmodule Beamlet.Code.Entry do
     end
   end
 
+  @doc """
+  Scans an entry against the policy, then checks its docs.
+
+  `opts[:context]` is how many source lines either side of a violation
+  the scanner quotes.
+  """
   @spec check(
           %{module: module(), body: Macro.t(), source: String.t(), path: Path.t()},
           Policy.t(),
@@ -108,10 +134,12 @@ defmodule Beamlet.Code.Entry do
     end
   end
 
+  @doc "The top-level forms of a body, one form or a block's list."
   @spec block_forms(Macro.t()) :: [Macro.t()]
   def block_forms({:__block__, _meta, forms}), do: forms
   def block_forms(form), do: [form]
 
+  @doc "The name and arity a function head defines, guards looked through."
   @spec function_name(Macro.t()) :: {:ok, atom(), arity()} | :error
   def function_name({:when, _meta, [head | _guards]}), do: function_name(head)
 

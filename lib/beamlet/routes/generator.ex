@@ -19,6 +19,10 @@ defmodule Beamlet.Routes.Generator do
 
   @router Beamlet.DynamicRouter
 
+  @doc """
+  The quoted `Beamlet.DynamicRouter` serving the rows under the
+  prefix, ready to compile.
+  """
   @spec quoted([Route.t()], String.t()) :: Macro.t()
   def quoted(routes, prefix) do
     scope_path = if prefix == "", do: "/", else: prefix

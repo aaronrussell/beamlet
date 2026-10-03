@@ -39,9 +39,10 @@ defmodule Beamlet.Code.Docs do
   ]
   @framework_roles [:live_view, :controller, :live_component]
 
-  # The summary convention ExDoc uses: the first paragraph, collapsed
-  # to one line, since a source line wrapped mid-sentence reads cut
-  # off.
+  @doc """
+  The first paragraph of a doc, collapsed to one line, as ex_doc
+  summarises: a source line wrapped mid-sentence reads cut off.
+  """
   @spec summary(String.t() | nil) :: String.t() | nil
   def summary(nil), do: nil
 
@@ -54,6 +55,10 @@ defmodule Beamlet.Code.Docs do
     |> String.trim()
   end
 
+  @doc """
+  Checks a define entry's module body against the docs gate, every
+  violation in one error.
+  """
   @spec check(module(), Macro.t()) :: :ok | {:error, String.t()}
   def check(module, body) do
     case check_module(module, body) do

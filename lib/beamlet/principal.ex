@@ -1,51 +1,51 @@
 defmodule Beamlet.Principal do
-  @moduledoc """
-  What a request acts as: the token behind it and the policy its code
-  runs under.
+  @moduledoc false
 
-  Built once per request by `Beamlet.MCP.Plug` from the token the
-  request presented, and never stored. Every eval, define, commit and
-  route keys on it: authorization asks what this principal may do,
-  provenance records which principal did it.
-
-      %Beamlet.Principal{token_id: 3, token_label: "laptop", policy: "default"}
-
-  The label and the id both, since a reader wants the label and a
-  program wants the id after a rename. The token is carried by its
-  label (`Beamlet.Token.label/1`): a `cli` token's name, or the host
-  of an `oauth` token's client id, so a commit reads `Token: laptop (3)`
-  or `Token: claude.ai (7)`.
-
-  Provenance is this struct written down. A commit the code server
-  makes carries it as git trailers (`to_trailers/1`), which git parses
-  natively, so `git log` can filter the history by token or policy
-  with no code of Beamlet's; a route row (`Beamlet.Route`) carries it
-  as JSON (`to_map/1`). Both encodings decode back to the struct.
-
-      Token: laptop (3)
-      Policy: default
-
-      {"token": {"id": 3, "label": "laptop"}, "policy": "default"}
-
-  A principal is a token acting through a tool. A web request has no
-  principal: a served route acts as nobody, and a future web identity
-  is the owner on the request, never a principal in the process.
-
-  Code an agent runs through `eval` takes no arguments, so it cannot
-  be handed the principal, and the stdlib functions it calls must
-  still know who is acting when they record it. The runtime puts the
-  principal in the evaluating process before the code runs
-  (`put_current/1`) and those functions read it back (`current/0`, or
-  `current!/1` to raise without one). Outside evaluated code, in a web
-  request or a test process, there is none and `current/0` is nil. A
-  tool that holds the principal itself passes it explicitly.
-
-  What the beamlet does on its own behalf, such as sweeping hand
-  edits into a commit at boot, is recorded under the system principal
-  (`system/0`): the token `beamlet` with id 0, which the database
-  never issues, under the `default` policy. The token name `beamlet`
-  is reserved so the record never names two things.
-  """
+  # What a request acts as: the token behind it and the policy its code
+  # runs under.
+  #
+  # Built once per request by `Beamlet.MCP.Plug` from the token the
+  # request presented, and never stored. Every eval, define, commit and
+  # route keys on it: authorization asks what this principal may do,
+  # provenance records which principal did it.
+  #
+  #     %Beamlet.Principal{token_id: 3, token_label: "laptop", policy: "default"}
+  #
+  # The label and the id both, since a reader wants the label and a
+  # program wants the id after a rename. The token is carried by its
+  # label (`Beamlet.Token.label/1`): a `cli` token's name, or the host
+  # of an `oauth` token's client id, so a commit reads `Token: laptop (3)`
+  # or `Token: claude.ai (7)`.
+  #
+  # Provenance is this struct written down. A commit the code server
+  # makes carries it as git trailers (`to_trailers/1`), which git parses
+  # natively, so `git log` can filter the history by token or policy
+  # with no code of Beamlet's; a route row (`Beamlet.Route`) carries it
+  # as JSON (`to_map/1`). Both encodings decode back to the struct.
+  #
+  #     Token: laptop (3)
+  #     Policy: default
+  #
+  #     {"token": {"id": 3, "label": "laptop"}, "policy": "default"}
+  #
+  # A principal is a token acting through a tool. A web request has no
+  # principal: a served route acts as nobody, and a future web identity
+  # is the owner on the request, never a principal in the process.
+  #
+  # Code an agent runs through `eval` takes no arguments, so it cannot
+  # be handed the principal, and the stdlib functions it calls must
+  # still know who is acting when they record it. The runtime puts the
+  # principal in the evaluating process before the code runs
+  # (`put_current/1`) and those functions read it back (`current/0`, or
+  # `current!/1` to raise without one). Outside evaluated code, in a web
+  # request or a test process, there is none and `current/0` is nil. A
+  # tool that holds the principal itself passes it explicitly.
+  #
+  # What the beamlet does on its own behalf, such as sweeping hand
+  # edits into a commit at boot, is recorded under the system principal
+  # (`system/0`): the token `beamlet` with id 0, which the database
+  # never issues, under the `default` policy. The token name `beamlet`
+  # is reserved so the record never names two things.
 
   alias Beamlet.Token
 

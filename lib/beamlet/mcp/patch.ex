@@ -1,5 +1,21 @@
 defmodule Beamlet.MCP.Patch do
-  @moduledoc false
+  @moduledoc """
+  The `patch` tool: targeted edits to the source of modules defined on
+  a beamlet.
+
+  Each use takes a list of patches. A patch names a module, an anchor
+  and an operation. The anchor is `find`, text occurring exactly once
+  in the module's source, or `select`, a function as `name/arity`
+  with its `@doc` and `@spec`; the operation is `replace`, `before` or
+  `after`. The patches apply in order, then the touched modules go
+  through everything `define` does, as one change: scanned, checked
+  for docs, compiled with the modules that depend on them and
+  committed. On any error nothing changes.
+
+  `patch` comes with `define`: a policy listing `:define` under
+  `tools` grants both (`Beamlet.Policy`). It shares define's
+  `timeout` (`Beamlet.MCP.Define`).
+  """
 
   use Anubis.Server.Component, type: :tool
 
@@ -45,6 +61,12 @@ defmodule Beamlet.MCP.Patch do
     end
   end
 
+  @doc """
+  The description a client lists for the tool, written for the model.
+
+  Built when it is read, from define's `timeout`, so it always states
+  the one in force.
+  """
   @impl true
   def description do
     limits = Beamlet.Config.define()

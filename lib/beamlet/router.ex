@@ -11,27 +11,23 @@ defmodule Beamlet.Router do
   connected mount re-matches the full browser URL against the router
   that served it, and a forward at a prefix strips that prefix from
   what the router sees; the routes agents mount are served at the
-  root, or under the prefix `config :beamlet, :web` names, and
-  `Beamlet.Routes` bakes that prefix into the generated router
-  instead.
+  root, or under the prefix `config :beamlet, :web` names, which the
+  router generated from them carries instead.
 
   Everything the beamlet owns lives under one segment, `/beamlet`,
   which an agent can never mount under: the MCP server at
-  `/beamlet/mcp` (`Beamlet.MCP.Plug`), the sign-in at
-  `/beamlet/login` (`Beamlet.Web.SessionLive`, posting to
-  `Beamlet.Web.SessionController`, which also owns `/beamlet/logout`),
-  the home page at `/beamlet` (`Beamlet.Web.HomeLive`, behind the
-  login), the OAuth endpoints at `/beamlet/authorize` (behind the
-  login too, `Beamlet.OAuth.AuthorizeLive`) and `/beamlet/token`
-  (`Beamlet.OAuth.TokenController`, which clients post to directly, so
-  no session and no CSRF check), and on the host's endpoint the
-  socket and asset paths below. The one exception is the pair of
-  OAuth discovery documents (`Beamlet.OAuth.MetadataController`),
-  which the specs fix under `/.well-known` at the root; they are exact
-  paths, matched ahead of the forward. Any other path under `/beamlet`
-  answers 404 here, whatever the route table holds. Everything else
-  forwards to the router generated from the routes agents mount
-  (`Beamlet.Routes`), so `/` is an agent's to build and answers 404
+  `/beamlet/mcp` (`Beamlet.MCP.Server`, behind the token check), the
+  sign-in at `/beamlet/login` and the sign-out at `/beamlet/logout`,
+  the home page at `/beamlet` (behind the login), the OAuth endpoints
+  at `/beamlet/authorize` (behind the login too) and `/beamlet/token`
+  (which clients post to directly, so no session and no CSRF check),
+  and on the host's endpoint the socket and asset paths below. The
+  one exception is the pair of OAuth discovery documents
+  (`Beamlet.OAuth`), which the specs fix under `/.well-known` at the
+  root; they are exact paths, matched ahead of the forward. Any other
+  path under `/beamlet` answers 404 here, whatever the route table
+  holds. Everything else forwards to the router generated from the
+  routes agents mount, so `/` is an agent's to build and answers 404
   until one does.
 
   The sign-in, the consent page and the home page are the app, the
@@ -59,7 +55,7 @@ defmodule Beamlet.Router do
   In the endpoint:
 
     * The LiveView socket for agent pages at `/beamlet/live`, the
-      path the `beamlet` layout (`Beamlet.Web.Layouts`) connects to:
+      path the `beamlet` layout of agent pages connects to:
       `socket "/beamlet/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]`.
     * The LiveView socket for the app at `/beamlet/app/live`, the
       path the `app` layout connects to, decoding the app's cookie:

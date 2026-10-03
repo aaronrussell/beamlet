@@ -1,40 +1,40 @@
 defmodule Beamlet.MCP.Plug do
-  @moduledoc """
-  The authenticated entry to a beamlet's MCP server.
+  @moduledoc false
 
-  `Beamlet.Router` mounts it at `/beamlet/mcp`, so a host that forwards to
-  that router has it:
-
-      forward "/", Beamlet.Router
-
-  Every request carries one of the beamlet's own tokens as a bearer
-  credential:
-
-      Authorization: Bearer <token>
-
-  The scheme is matched in any case, as HTTP has it.
-
-  The plug turns that secret into its token, puts the
-  `Beamlet.Principal` in the conn's assigns under `:principal`, and
-  hands the request to the MCP transport, which carries the assigns
-  into the frame every server callback receives. Identity is per
-  request: nothing is remembered between one request and the next.
-
-  This is where the beamlet's two OAuth roles meet the transport
-  (`Beamlet.OAuth`). A request with no token, another scheme, a secret
-  that matches no token, or an `oauth` token past its expiry is a 401
-  whose `Bearer` challenge names the protected resource metadata
-  document, which is how a chat client discovers that this beamlet is
-  its own authorization server and starts the flow. A token naming a
-  policy the beamlet does not declare, one removed from config since
-  the token was created, is a 403 with a line naming the token and
-  the policy: the credential is real but insufficient.
-
-  The transport waits `config :beamlet, mcp: [request_timeout: ...]`
-  for a request's answer (`Beamlet.Config.mcp/0`), read per request
-  since `init/1` runs when the router compiles, before any runtime
-  config is known.
-  """
+  # The authenticated entry to a beamlet's MCP server.
+  #
+  # `Beamlet.Router` mounts it at `/beamlet/mcp`, so a host that forwards to
+  # that router has it:
+  #
+  #     forward "/", Beamlet.Router
+  #
+  # Every request carries one of the beamlet's own tokens as a bearer
+  # credential:
+  #
+  #     Authorization: Bearer <token>
+  #
+  # The scheme is matched in any case, as HTTP has it.
+  #
+  # The plug turns that secret into its token, puts the
+  # `Beamlet.Principal` in the conn's assigns under `:principal`, and
+  # hands the request to the MCP transport, which carries the assigns
+  # into the frame every server callback receives. Identity is per
+  # request: nothing is remembered between one request and the next.
+  #
+  # This is where the beamlet's two OAuth roles meet the transport
+  # (`Beamlet.OAuth`). A request with no token, another scheme, a secret
+  # that matches no token, or an `oauth` token past its expiry is a 401
+  # whose `Bearer` challenge names the protected resource metadata
+  # document, which is how a chat client discovers that this beamlet is
+  # its own authorization server and starts the flow. A token naming a
+  # policy the beamlet does not declare, one removed from config since
+  # the token was created, is a 403 with a line naming the token and
+  # the policy: the credential is real but insufficient.
+  #
+  # The transport waits `config :beamlet, mcp: [request_timeout: ...]`
+  # for a request's answer (`Beamlet.Config.mcp/0`), read per request
+  # since `init/1` runs when the router compiles, before any runtime
+  # config is known.
 
   @behaviour Plug
 

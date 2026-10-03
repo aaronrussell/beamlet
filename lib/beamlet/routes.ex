@@ -1,35 +1,35 @@
 defmodule Beamlet.Routes do
-  @moduledoc """
-  The route table and the router derived from it.
+  @moduledoc false
 
-  Rows (`Beamlet.Route`) in the `__routes` table of the agent database
-  are the durable record of the URL surface agents build; the router
-  that serves them, `Beamlet.DynamicRouter`, is a derived artifact:
-  built from the rows as quoted form and compiled, both inside the
-  code server's lane (`Beamlet.Code.compile_artifact/2`), then
-  hot-swapped into the VM, never written to disk and never
-  committed. Reading the rows in the lane is what keeps two
-  regenerations racing from landing an older table over a newer
-  one. It is rebuilt at boot, by a synchronous child of `Beamlet`
-  right after the code server, and after every change to the table.
-
-  `create`, `delete` and `list` change or read the table and nothing
-  else. Regeneration is the caller's to compose, which is what
-  `Host.Router` does: insert, regenerate, and delete the row again
-  when regeneration fails. A row whose target is not a module defined
-  with `define`, is missing, quarantined or of the wrong shape is
-  left out at generation with a warning and answers 404; the row
-  stays in the table for inspection. A define can repair a target or
-  break one without touching the table, so `Beamlet.Define` and
-  `Beamlet.Patch` call `refresh/0` after theirs, and redefining the
-  module brings its routes back. A row that fails `Beamlet.Route`'s
-  validations could only have been written with raw SQL and nothing
-  can make it valid again, so regeneration deletes it with a warning
-  recording the row; so too a row Ecto cannot load at all, which
-  every read skips. Boot regeneration never fails the boot: the
-  worst case is the empty placeholder serving 404s with an error in
-  the log.
-  """
+  # The route table and the router derived from it.
+  #
+  # Rows (`Beamlet.Route`) in the `__routes` table of the agent database
+  # are the durable record of the URL surface agents build; the router
+  # that serves them, `Beamlet.DynamicRouter`, is a derived artifact:
+  # built from the rows as quoted form and compiled, both inside the
+  # code server's lane (`Beamlet.Code.compile_artifact/2`), then
+  # hot-swapped into the VM, never written to disk and never
+  # committed. Reading the rows in the lane is what keeps two
+  # regenerations racing from landing an older table over a newer
+  # one. It is rebuilt at boot, by a synchronous child of `Beamlet`
+  # right after the code server, and after every change to the table.
+  #
+  # `create`, `delete` and `list` change or read the table and nothing
+  # else. Regeneration is the caller's to compose, which is what
+  # `Host.Router` does: insert, regenerate, and delete the row again
+  # when regeneration fails. A row whose target is not a module defined
+  # with `define`, is missing, quarantined or of the wrong shape is
+  # left out at generation with a warning and answers 404; the row
+  # stays in the table for inspection. A define can repair a target or
+  # break one without touching the table, so `Beamlet.Define` and
+  # `Beamlet.Patch` call `refresh/0` after theirs, and redefining the
+  # module brings its routes back. A row that fails `Beamlet.Route`'s
+  # validations could only have been written with raw SQL and nothing
+  # can make it valid again, so regeneration deletes it with a warning
+  # recording the row; so too a row Ecto cannot load at all, which
+  # every read skips. Boot regeneration never fails the boot: the
+  # worst case is the empty placeholder serving 404s with an error in
+  # the log.
 
   import Ecto.Query, only: [from: 2, where: 3]
 

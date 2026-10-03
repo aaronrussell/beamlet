@@ -1,5 +1,33 @@
 defmodule Beamlet.MCP.Define do
-  @moduledoc false
+  @moduledoc """
+  The `define` tool: write modules into a beamlet, compiled and kept.
+
+  Each use takes a list of entries, one top-level `defmodule` each.
+  The modules are scanned against the token's policy, checked for
+  docs, compiled into the running beamlet, stored as source under the
+  data dir's `code/` and committed to its git history with the token
+  as provenance. They are callable at once and reloaded at boot. The
+  entries land together or not at all: on any error nothing changes,
+  and the error says what to fix.
+
+  Changing a module that exists needs `replace: true` on its entry.
+  `Beamlet.*` and `Host.*` are reserved, every module needs a
+  `@moduledoc` and every public function a `@doc`, since docs are how
+  the next agent finds it. A module that uses `Ecto.Migration` is
+  filed as a numbered migration and waits for `Host.Migrator`.
+
+  A token may use the tool when its policy lists `:define` under
+  `tools` (`Beamlet.Policy`), which grants `patch` with it; `default`
+  does.
+
+  ## Limits
+
+  One limit, set in config: `timeout` (30 seconds) is how long one
+  define may take to compile, since a define holds the beamlet's one
+  lane for code changes. `patch` shares it.
+
+      config :beamlet, define: [timeout: 30_000]
+  """
 
   use Anubis.Server.Component, type: :tool
 
@@ -19,6 +47,12 @@ defmodule Beamlet.MCP.Define do
     end
   end
 
+  @doc """
+  The description a client lists for the tool, written for the model.
+
+  Built when it is read, from the `timeout` above, so it always
+  states the one in force.
+  """
   @impl true
   def description do
     limits = Beamlet.Config.define()

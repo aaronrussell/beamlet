@@ -1,15 +1,15 @@
 defmodule Beamlet.Web.SessionController do
-  @moduledoc """
-  Sign in and sign out, the two actions that write the session:
-  `POST /beamlet/login` and `POST /beamlet/logout`.
+  @moduledoc false
 
-  The form itself is `Beamlet.Web.SessionLive`; it posts here because
-  a session cookie is written on an HTTP response. The email and
-  password are checked through `Beamlet.Owner.authenticate/2`; a
-  sign-in lands where `Beamlet.Web.Auth.require_auth/2` stored, or on
-  the home page, and a failure goes back to the form with a flash.
-  Nobody can sign in until `beamlet setup` has created the owner.
-  """
+  # Sign in and sign out, the two actions that write the session:
+  # `POST /beamlet/login` and `POST /beamlet/logout`.
+  #
+  # The form itself is `Beamlet.Web.SessionLive`; it posts here because
+  # a session cookie is written on an HTTP response. The email and
+  # password are checked through `Beamlet.Owner.authenticate/2`; a
+  # sign-in lands where `Beamlet.Web.Auth.require_auth/2` stored, or on
+  # the home page, and a failure goes back to the form with a flash.
+  # Nobody can sign in until `beamlet setup` has created the owner.
 
   use Phoenix.Controller, formats: []
 

@@ -34,6 +34,10 @@ defmodule Beamlet.Code.Tracer do
 
   @type ctx :: %{roots: MapSet.t(Path.t()), defined: MapSet.t(module()), ebin: charlist()}
 
+  @doc """
+  Installs the tracer for one compile, returning the tracers it was
+  added to, for `uninstall/1`.
+  """
   @spec install(ctx()) :: [module()]
   def install(ctx) do
     :ets.insert(@table, {:ctx, ctx})
@@ -42,6 +46,7 @@ defmodule Beamlet.Code.Tracer do
     previous
   end
 
+  @doc "Restores the tracers `install/1` returned and drops the context."
   @spec uninstall([module()]) :: :ok
   def uninstall(previous) do
     Code.put_compiler_option(:tracers, previous)
@@ -49,6 +54,10 @@ defmodule Beamlet.Code.Tracer do
     :ok
   end
 
+  @doc """
+  The compiler's callback: records an edge or call when the event comes
+  from a file of the compile in flight, and passes everything else.
+  """
   @spec trace(tuple(), Macro.Env.t()) :: :ok
   def trace(event, env) do
     case :ets.lookup(@table, :ctx) do

@@ -1,82 +1,82 @@
 defmodule Beamlet.Code do
-  @moduledoc """
-  The code server: the modules defined on your beamlet, their sources
-  and beams under the data dir, and the git history of both.
+  @moduledoc false
 
-  Everything an agent defines lives under `<data_dir>/code`:
-
-      code/
-        lib/         one source file per module, shopping/list.ex for Shopping.List
-        migrations/  one file per migration, 0001_shopping_create_lists.ex
-        ebin/        the compiled beams, with docs, rebuilt from the sources at boot
-        .git       the history: one commit per define, patch or remove
-        .staging   the modules being compiled, each at the path it will
-                   be stored at, gone when the define is done
-
-  Source is stored as the formatter lays it out, and a module's path
-  follows from its name, so every error and stack trace an agent
-  reads locates as `lib/shopping/list.ex:42`, a line of the stored
-  source that `Host.Code.print_source/1` prints.
-
-  The `define` and `patch` tools and `Host.Code.remove` are calls
-  into this process, so mutations serialize and two writers never
-  race the code dir. A patch is a define of the patched modules that
-  also carries a hash of the source each patch read, compared here
-  inside the lane, so a module that changed in between is refused
-  rather than overwritten. A define is all-or-nothing: the modules compile into the
-  VM first, and sources and beams are written only after every check
-  has passed; a failed compile, a timeout, or a client cancelling the
-  request rolls the VM back by reloading the previous beams, and
-  nothing on disk has changed. The one accepted window is that
-  compilation loads modules as it goes, so an eval running at the
-  same moment can observe a half-loaded new version for a few
-  milliseconds, and replacing a module an eval is still executing
-  old code of will kill that eval.
-
-  The defined modules are the ones each file declares with a
-  top-level `defmodule`. A macro can create more as a file compiles,
-  an inline embedded schema among them; those are generated, owned
-  by a module of their file. They load and keep their beams, but
-  cannot be defined or removed on their own, and they go when their
-  owner goes or stops producing them.
-
-  A module that uses `Ecto.Migration` is a migration: it is filed
-  under `migrations/` with the next version number, one past both
-  the files on disk and the versions the agent database records as
-  applied, and stays editable until `Host.Migrator` applies it. An
-  applied migration must be rolled back before it can be replaced or
-  removed, so the applied stack and the files never disagree.
-
-  Boot compiles the code dir, rebuilding the dependency map and the
-  beams. A module that fails to compile, a bad hand edit or a
-  beamlet upgrade, or one whose function clauses are scattered, is
-  quarantined: skipped, logged and held in the server's state, never
-  taking the beamlet down. Boot compiles carry no policy gate: the
-  scanner runs when code is submitted through the tools, and the
-  code dir's contents were either scanned on the way in or
-  hand-edited by the operator, who is trusted.
-
-  The dependency map has two halves, both between defined modules,
-  where a generated module counts as its owner on either end.
-  Compile-time edges, from structs, macros, imports and requires,
-  drive replace's dependent recompiles. Runtime call records, caller
-  to callee function and arity, drive remove's refusal and replace's
-  check that a dropped function is not still called. A plain remote
-  call resolves by name when it runs and is never stale, so it never
-  triggers a recompile. The map blocks only provable breakage:
-  removing a module something references, or replacing away a
-  function something still calls.
-
-  Git holds the history. Beamlet commits after every define, patch
-  and remove, with the token as the author (`laptop <laptop@beamlet>`) and
-  the principal as trailers (`Beamlet.Principal.to_trailers/1`), and
-  sweeps hand edits into a commit of their own at boot. Git is a
-  requirement: a beamlet whose PATH has no git does not start.
-
-  The defined set, the paths behind it and the quarantine are
-  published to a table this process owns, so a lookup (`defined/0`,
-  `manifest/0`, `quarantined/0`) never waits on a compile in progress.
-  """
+  # The code server: the modules defined on your beamlet, their sources
+  # and beams under the data dir, and the git history of both.
+  #
+  # Everything an agent defines lives under `<data_dir>/code`:
+  #
+  #     code/
+  #       lib/         one source file per module, shopping/list.ex for Shopping.List
+  #       migrations/  one file per migration, 0001_shopping_create_lists.ex
+  #       ebin/        the compiled beams, with docs, rebuilt from the sources at boot
+  #       .git       the history: one commit per define, patch or remove
+  #       .staging   the modules being compiled, each at the path it will
+  #                  be stored at, gone when the define is done
+  #
+  # Source is stored as the formatter lays it out, and a module's path
+  # follows from its name, so every error and stack trace an agent
+  # reads locates as `lib/shopping/list.ex:42`, a line of the stored
+  # source that `Host.Code.print_source/1` prints.
+  #
+  # The `define` and `patch` tools and `Host.Code.remove` are calls
+  # into this process, so mutations serialize and two writers never
+  # race the code dir. A patch is a define of the patched modules that
+  # also carries a hash of the source each patch read, compared here
+  # inside the lane, so a module that changed in between is refused
+  # rather than overwritten. A define is all-or-nothing: the modules compile into the
+  # VM first, and sources and beams are written only after every check
+  # has passed; a failed compile, a timeout, or a client cancelling the
+  # request rolls the VM back by reloading the previous beams, and
+  # nothing on disk has changed. The one accepted window is that
+  # compilation loads modules as it goes, so an eval running at the
+  # same moment can observe a half-loaded new version for a few
+  # milliseconds, and replacing a module an eval is still executing
+  # old code of will kill that eval.
+  #
+  # The defined modules are the ones each file declares with a
+  # top-level `defmodule`. A macro can create more as a file compiles,
+  # an inline embedded schema among them; those are generated, owned
+  # by a module of their file. They load and keep their beams, but
+  # cannot be defined or removed on their own, and they go when their
+  # owner goes or stops producing them.
+  #
+  # A module that uses `Ecto.Migration` is a migration: it is filed
+  # under `migrations/` with the next version number, one past both
+  # the files on disk and the versions the agent database records as
+  # applied, and stays editable until `Host.Migrator` applies it. An
+  # applied migration must be rolled back before it can be replaced or
+  # removed, so the applied stack and the files never disagree.
+  #
+  # Boot compiles the code dir, rebuilding the dependency map and the
+  # beams. A module that fails to compile, a bad hand edit or a
+  # beamlet upgrade, or one whose function clauses are scattered, is
+  # quarantined: skipped, logged and held in the server's state, never
+  # taking the beamlet down. Boot compiles carry no policy gate: the
+  # scanner runs when code is submitted through the tools, and the
+  # code dir's contents were either scanned on the way in or
+  # hand-edited by the operator, who is trusted.
+  #
+  # The dependency map has two halves, both between defined modules,
+  # where a generated module counts as its owner on either end.
+  # Compile-time edges, from structs, macros, imports and requires,
+  # drive replace's dependent recompiles. Runtime call records, caller
+  # to callee function and arity, drive remove's refusal and replace's
+  # check that a dropped function is not still called. A plain remote
+  # call resolves by name when it runs and is never stale, so it never
+  # triggers a recompile. The map blocks only provable breakage:
+  # removing a module something references, or replacing away a
+  # function something still calls.
+  #
+  # Git holds the history. Beamlet commits after every define, patch
+  # and remove, with the token as the author (`laptop <laptop@beamlet>`) and
+  # the principal as trailers (`Beamlet.Principal.to_trailers/1`), and
+  # sweeps hand edits into a commit of their own at boot. Git is a
+  # requirement: a beamlet whose PATH has no git does not start.
+  #
+  # The defined set, the paths behind it and the quarantine are
+  # published to a table this process owns, so a lookup (`defined/0`,
+  # `manifest/0`, `quarantined/0`) never waits on a compile in progress.
 
   use GenServer
 

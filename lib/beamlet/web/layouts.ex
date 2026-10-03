@@ -1,30 +1,30 @@
 defmodule Beamlet.Web.Layouts do
-  @moduledoc """
-  The layouts pages on a beamlet render inside: one root for the
-  pages agents build, one for the app, the beamlet's own pages.
+  @moduledoc false
 
-  Both roots carry the wiring a LiveView page needs: the CSRF token,
-  the LiveView JavaScript loaded as ES modules from the paths the
-  host's endpoint serves them at (`Beamlet.Assets`), and a socket
-  connection. They differ in the socket and in how a page is styled.
-
-  `beamlet/1` is for agent pages, which `Beamlet.Routes` puts on every
-  route agents mount. It connects to `/beamlet/live`, whose session is
-  the endpoint's, and loads Tailwind from its CDN, so a page can be
-  styled with utility classes and no build step, and says nothing
-  about how the page looks. Styling needs the internet; accepted for a
-  substrate with no bundler.
-
-  `app/1` is for the app: the sign-in, the consent page and the home
-  page. It connects to `/beamlet/app/live`, whose session is the app's
-  own (`Beamlet.Web.Auth`), and links the stylesheet built from
-  `assets/css/app.css` and shipped in `priv/static`. Inside it,
-  `split/1` is the layout for the pages a person arrives at from
-  elsewhere, the sign-in and the consent page: a panel with the
-  wordmark and a tagline beside the form. `shell/1` is the layout the
-  signed-in pages render inside: the top bar naming the beamlet and
-  the owner's email, with the sign-out.
-  """
+  # The layouts pages on a beamlet render inside: one root for the
+  # pages agents build, one for the app, the beamlet's own pages.
+  #
+  # Both roots carry the wiring a LiveView page needs: the CSRF token,
+  # the LiveView JavaScript loaded as ES modules from the paths the
+  # host's endpoint serves them at (`Beamlet.Assets`), and a socket
+  # connection. They differ in the socket and in how a page is styled.
+  #
+  # `beamlet/1` is for agent pages, which `Beamlet.Routes` puts on every
+  # route agents mount. It connects to `/beamlet/live`, whose session is
+  # the endpoint's, and loads Tailwind from its CDN, so a page can be
+  # styled with utility classes and no build step, and says nothing
+  # about how the page looks. Styling needs the internet; accepted for a
+  # substrate with no bundler.
+  #
+  # `app/1` is for the app: the sign-in, the consent page and the home
+  # page. It connects to `/beamlet/app/live`, whose session is the app's
+  # own (`Beamlet.Web.Auth`), and links the stylesheet built from
+  # `assets/css/app.css` and shipped in `priv/static`. Inside it,
+  # `split/1` is the layout for the pages a person arrives at from
+  # elsewhere, the sign-in and the consent page: a panel with the
+  # wordmark and a tagline beside the form. `shell/1` is the layout the
+  # signed-in pages render inside: the top bar naming the beamlet and
+  # the owner's email, with the sign-out.
 
   use Phoenix.Component
 

@@ -1,23 +1,23 @@
 defmodule Beamlet.Policy.Signage do
-  @moduledoc """
-  The teaching copy appended to a refusal, for the few names where
-  "not permitted by your policy" would leave an agent guessing.
+  @moduledoc false
 
-  A hint is one of two kinds. A **redirect** names the door the agent
-  would not guess: `File` is refused, `Host.File` is where scoped file
-  access lives. A **closure** says a whole family is withheld, so
-  the agent stops walking its siblings: refusing `Task` with no hint
-  invites `spawn`, then `GenServer`, then `:timer`. Everything else
-  denied gets the generic copy, and this overlay covers nothing on
-  its own; the rulings live in `Beamlet.Policy.Default`.
-
-  Signage is Beamlet-wide, and a lookup takes the policy so the copy
-  stays true for it. A module the policy grants is never refused, so
-  its hint never fires. A redirect is dropped when the policy
-  withholds its door, whether a `Host.*` module it denies or has not
-  yet got, or the `define` tool, because a pointer at a closed door
-  is the one hint that misleads.
-  """
+  # The teaching copy appended to a refusal, for the few names where
+  # "not permitted by your policy" would leave an agent guessing.
+  #
+  # A hint is one of two kinds. A **redirect** names the door the agent
+  # would not guess: `File` is refused, `Host.File` is where scoped file
+  # access lives. A **closure** says a whole family is withheld, so
+  # the agent stops walking its siblings: refusing `Task` with no hint
+  # invites `spawn`, then `GenServer`, then `:timer`. Everything else
+  # denied gets the generic copy, and this overlay covers nothing on
+  # its own; the rulings live in `Beamlet.Policy.Default`.
+  #
+  # Signage is Beamlet-wide, and a lookup takes the policy so the copy
+  # stays true for it. A module the policy grants is never refused, so
+  # its hint never fires. A redirect is dropped when the policy
+  # withholds its door, whether a `Host.*` module it denies or has not
+  # yet got, or the `define` tool, because a pointer at a closed door
+  # is the one hint that misleads.
 
   alias Beamlet.Policy
 

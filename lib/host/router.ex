@@ -41,6 +41,9 @@ defmodule Host.Router do
 
   @verbs [:get, :post, :put, :patch, :delete]
 
+  @typedoc "An HTTP verb a route answers."
+  @type verb :: :get | :post | :put | :patch | :delete
+
   @doc """
   Mounts a LiveView page at `path`, e.g. `live("/todos", Todo.PageLive)`.
 
@@ -204,7 +207,7 @@ defmodule Host.Router do
   real request: records and files the route creates persist, and
   the route acts as nobody, exactly as it does from a browser.
   """
-  @spec call(Route.verb(), String.t(), map() | String.t() | nil, keyword()) :: %{
+  @spec call(verb(), String.t(), map() | String.t() | nil, keyword()) :: %{
           status: pos_integer(),
           headers: %{String.t() => String.t()},
           body: term()

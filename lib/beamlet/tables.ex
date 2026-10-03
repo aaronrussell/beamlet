@@ -52,9 +52,17 @@ defmodule Beamlet.Tables do
 
   @current length(@steps)
 
+  @doc """
+  Runs `upgrade/0` as a synchronous child, so a failed step fails the
+  boot.
+  """
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(_opts), do: %{id: __MODULE__, start: {__MODULE__, :upgrade, []}}
 
+  @doc """
+  Runs the steps above the file's version in order, raising on a file
+  written by a newer Beamlet or with a negative version.
+  """
   @spec upgrade() :: :ignore
   def upgrade do
     case version() do

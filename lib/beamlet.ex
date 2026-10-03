@@ -15,7 +15,7 @@ defmodule Beamlet do
 
   Configuration is application config (`Beamlet.Config`). Starting
   checks the configured data dir exists, builds the declared policies
-  and loads the modules defined before (`Beamlet.Code`), and fails
+  and loads the modules defined before, and fails
   the boot loudly when the dir is missing, a policy is bad, git is
   not installed or no endpoint is configured. One beamlet runs per
   VM.

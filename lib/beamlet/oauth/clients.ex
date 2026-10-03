@@ -1,38 +1,38 @@
 defmodule Beamlet.OAuth.Clients do
-  @moduledoc """
-  How a beamlet learns who a client is: by fetching the client's
-  metadata document.
+  @moduledoc false
 
-  A client registers with a beamlet without registering. Its client
-  id is an https URL on its own domain, and that URL serves a JSON
-  document naming the client and the redirect URIs it may be sent
-  to. `fetch/1` fetches the document and checks it: the id must be
-  an https URL, the document's own `client_id` must equal it, and it
-  must list at least one redirect URI, each https, loopback http, or
-  a custom scheme such as `raycast:`. The consent page follows a
-  custom scheme through a link on the beamlet's own origin, so
-  schemes a browser runs or reads locally (`javascript`, `data`,
-  `vbscript`, `file`, `blob`) refuse the whole document. Nothing else
-  in the document is read; a display name is only what its author
-  says, so the consent page and the token label show the URL's host
-  instead.
-
-  Fetching a URL somebody else chose is how a server gets pointed at
-  its own network, so the fetch is guarded: `ReqSSRF` refuses any
-  scheme but https, a host written as an address, and a name that
-  does not resolve or resolves to a reserved or private address;
-  the beamlet itself follows no redirects, gives up after five
-  seconds and reads at most 64KB. A fetched document is cached for
-  an hour, so the consent page and the token exchange do not fetch
-  it again.
-
-  `redirect_uri_allowed?/2` is the matching rule: a redirect URI must
-  equal a listed one exactly, except that a listed loopback URI,
-  `http://localhost/callback` or `http://127.0.0.1/callback`, matches
-  either host on any port, which is what a client that opens a
-  listener on the person's machine needs (RFC 8252 § 7.3) and what
-  Claude Code sends.
-  """
+  # How a beamlet learns who a client is: by fetching the client's
+  # metadata document.
+  #
+  # A client registers with a beamlet without registering. Its client
+  # id is an https URL on its own domain, and that URL serves a JSON
+  # document naming the client and the redirect URIs it may be sent
+  # to. `fetch/1` fetches the document and checks it: the id must be
+  # an https URL, the document's own `client_id` must equal it, and it
+  # must list at least one redirect URI, each https, loopback http, or
+  # a custom scheme such as `raycast:`. The consent page follows a
+  # custom scheme through a link on the beamlet's own origin, so
+  # schemes a browser runs or reads locally (`javascript`, `data`,
+  # `vbscript`, `file`, `blob`) refuse the whole document. Nothing else
+  # in the document is read; a display name is only what its author
+  # says, so the consent page and the token label show the URL's host
+  # instead.
+  #
+  # Fetching a URL somebody else chose is how a server gets pointed at
+  # its own network, so the fetch is guarded: `ReqSSRF` refuses any
+  # scheme but https, a host written as an address, and a name that
+  # does not resolve or resolves to a reserved or private address;
+  # the beamlet itself follows no redirects, gives up after five
+  # seconds and reads at most 64KB. A fetched document is cached for
+  # an hour, so the consent page and the token exchange do not fetch
+  # it again.
+  #
+  # `redirect_uri_allowed?/2` is the matching rule: a redirect URI must
+  # equal a listed one exactly, except that a listed loopback URI,
+  # `http://localhost/callback` or `http://127.0.0.1/callback`, matches
+  # either host on any port, which is what a client that opens a
+  # listener on the person's machine needs (RFC 8252 § 7.3) and what
+  # Claude Code sends.
 
   use GenServer
 

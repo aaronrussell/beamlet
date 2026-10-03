@@ -94,18 +94,17 @@ defmodule Beamlet.MixProject do
 
   defp docs do
     [
-      main: "Beamlet",
+      main: "overview",
       source_url: @source_url,
       source_ref: "v#{@version}",
       homepage_url: @source_url,
-      extras: ["CHANGELOG.md"],
+      extras: ["docs/overview.md", "CHANGELOG.md"],
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       groups_for_modules: [
-        MCP: ~r/^Beamlet\.MCP/,
-        OAuth: ~r/^Beamlet\.OAuth/,
+        MCP: [Beamlet.MCP.Server, Beamlet.MCP.Define, Beamlet.MCP.Eval, Beamlet.MCP.Patch],
+        Web: [Beamlet.Router, Beamlet.Assets, Beamlet.Web.Auth, Beamlet.Web.ErrorView],
         "Host Stdlib": ~r/^Host\./
-      ],
-      groups_for_docs: []
+      ]
     ]
   end
 end

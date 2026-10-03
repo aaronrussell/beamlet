@@ -1,13 +1,13 @@
 defmodule Beamlet.Web.Components do
-  @moduledoc """
-  The pieces the app, the beamlet's own pages, is built from.
+  @moduledoc false
 
-  Each one is a Beamlet design system component in Tailwind classes
-  over the theme in `assets/css/app.css`: the wordmark, the button,
-  the labelled input, the flash, the code panel and the numbered
-  steps. A piece is added here when a second page needs it;
-  a page-specific piece stays in its page.
-  """
+  # The pieces the app, the beamlet's own pages, is built from.
+  #
+  # Each one is a Beamlet design system component in Tailwind classes
+  # over the theme in `assets/css/app.css`: the wordmark, the button,
+  # the labelled input, the flash, the code panel and the numbered
+  # steps. A piece is added here when a second page needs it;
+  # a page-specific piece stays in its page.
 
   use Phoenix.Component
 

@@ -6,8 +6,8 @@ defmodule Beamlet.Token do
   A `cli` token is minted with `beamlet tokens.create` and named
   there; the name is unique across the beamlet and is lowercase
   letters, digits, underscores and hyphens, since it lands in a git
-  trailer and author, and `beamlet` is reserved for the system
-  principal (`Beamlet.Principal.system/0`). It never expires and is
+  trailer and author, and `beamlet` is reserved for what the beamlet
+  records on its own behalf. It never expires and is
   revoked by deleting it. This is how the owner's own code connects.
 
   An `oauth` token is minted by the token endpoint after a person
@@ -27,7 +27,7 @@ defmodule Beamlet.Token do
   fields: they carry the values on the struct
   `Beamlet.Tokens.create/1` returns and are nil on every token loaded
   afterwards. The policy must be one the beamlet declares
-  (`Beamlet.Policies`); a token has `default` when it names none.
+  (`Beamlet.Policy`); a token has `default` when it names none.
   Rows are managed through `Beamlet.Tokens`.
   """
 

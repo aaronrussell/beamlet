@@ -3,10 +3,11 @@ defmodule Beamlet.MCP.Server do
   A beamlet's MCP server: the `define`, `eval` and `patch` tools over
   Streamable HTTP, for any MCP client.
 
-  Runs as a child of `Beamlet`. A host serves it at `/beamlet/mcp` by
-  forwarding to `Beamlet.Router`, which mounts the authenticating
-  plug there, and every request then carries one of the beamlet's
-  tokens (`Beamlet.MCP.Plug`):
+  The tools are `Beamlet.MCP.Define`, `Beamlet.MCP.Eval` and
+  `Beamlet.MCP.Patch`. The server runs as a child of `Beamlet`. A
+  host serves it at `/beamlet/mcp` by forwarding to `Beamlet.Router`,
+  which mounts the authenticating plug there, so every request
+  carries one of the beamlet's tokens as a bearer credential:
 
       forward "/", Beamlet.Router
 
@@ -73,6 +74,10 @@ defmodule Beamlet.MCP.Server do
   @impl true
   def init(_client_info, frame), do: {:ok, frame}
 
+  @doc """
+  The instructions a client receives on `initialize`, written for the
+  model.
+  """
   @impl true
   def server_instructions, do: @instructions
 

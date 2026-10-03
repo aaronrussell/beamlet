@@ -6,11 +6,10 @@ defmodule Beamlet.OAuth do
 
   A beamlet plays both OAuth roles at one origin. As the resource
   server it protects `/beamlet/mcp` and, on a request with no token,
-  names the protected resource metadata document in the 401 challenge
-  (`Beamlet.MCP.Plug`). As the authorization server it publishes its
-  endpoints in the authorization server metadata document. Both
-  documents are served by `Beamlet.OAuth.MetadataController` at the
-  well-known paths the specs fix at the root.
+  names the protected resource metadata document in the 401
+  challenge. As the authorization server it publishes its endpoints
+  in the authorization server metadata document. Both documents are
+  served at the well-known paths the specs fix at the root.
 
   Every URL here is built from the endpoint's `url` config at request
   time, the way `Host.Router.url/1` builds an agent's, so a beamlet
@@ -18,16 +17,14 @@ defmodule Beamlet.OAuth do
   `https://beamlet.example/beamlet/mcp` and nothing needs configuring
   twice.
 
-  The flow itself is four modules. A client identifies itself by an
-  https URL that serves its metadata document, which
-  `Beamlet.OAuth.Clients` fetches and checks. `GET /beamlet/authorize`
-  (`Beamlet.OAuth.AuthorizeLive`) validates the request, sends
-  a signed-out person to the login, and shows the consent page, where
-  the policy is chosen; consenting stores a code in
-  `Beamlet.OAuth.Codes` and sends the browser back to the client.
-  `POST /beamlet/token` (`Beamlet.OAuth.TokenController`) redeems the
-  code for an `oauth` token (`Beamlet.Token`) and later a refresh
-  token for a new pair. The lifetimes are `access_ttl/0` and
+  The flow: a client identifies itself by an https URL that serves
+  its metadata document, which the beamlet fetches and checks.
+  `GET /beamlet/authorize` validates the request, sends a signed-out
+  person to the login, and shows the consent page, where the policy
+  is chosen; consenting stores a short-lived code and sends the
+  browser back to the client. `POST /beamlet/token` redeems the code
+  for an `oauth` token (`Beamlet.Token`) and later a refresh token
+  for a new pair. The lifetimes are `access_ttl/0` and
   `refresh_ttl/0`, and every refresh sets both afresh, so a client in
   regular use never asks the person to consent again.
   """

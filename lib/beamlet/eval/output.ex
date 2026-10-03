@@ -10,9 +10,17 @@ defmodule Beamlet.Eval.Output do
 
   use GenServer
 
+  @doc """
+  Starts a device keeping the first `max` bytes printed, owned by the
+  caller and stopping when it does.
+  """
   @spec start(non_neg_integer()) :: {:ok, pid()}
   def start(max), do: GenServer.start(__MODULE__, {self(), max})
 
+  @doc """
+  Stops the device, returning the bytes kept and the count printed in
+  all.
+  """
   @spec close(pid()) :: {binary(), non_neg_integer()}
   def close(device), do: GenServer.call(device, :close)
 

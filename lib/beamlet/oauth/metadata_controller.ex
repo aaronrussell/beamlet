@@ -1,16 +1,16 @@
 defmodule Beamlet.OAuth.MetadataController do
-  @moduledoc """
-  Serves the two OAuth discovery documents at the root, where the
-  specs fix them.
+  @moduledoc false
 
-  The protected resource document answers at
-  `/.well-known/oauth-protected-resource`, the URL the 401 challenge
-  names, and at `/.well-known/oauth-protected-resource/beamlet/mcp`,
-  the form a client derives from the MCP URL and tries first. The
-  authorization server document answers at
-  `/.well-known/oauth-authorization-server`. The contents are
-  `Beamlet.OAuth`'s.
-  """
+  # Serves the two OAuth discovery documents at the root, where the
+  # specs fix them.
+  #
+  # The protected resource document answers at
+  # `/.well-known/oauth-protected-resource`, the URL the 401 challenge
+  # names, and at `/.well-known/oauth-protected-resource/beamlet/mcp`,
+  # the form a client derives from the MCP URL and tries first. The
+  # authorization server document answers at
+  # `/.well-known/oauth-authorization-server`. The contents are
+  # `Beamlet.OAuth`'s.
 
   use Phoenix.Controller, formats: [:json]
 

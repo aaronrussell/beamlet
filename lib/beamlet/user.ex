@@ -1,16 +1,16 @@
 defmodule Beamlet.User do
-  @moduledoc """
-  The beamlet's one user, its owner: the email and password that sign
-  in on the web.
+  @moduledoc false
 
-  A beamlet belongs to one person. The row is created by the first
-  `beamlet setup` and updated by every one after; the database holds
-  at most one. The email is the sign-in identifier, stored trimmed
-  and lowercased; it is never verified and never mailed. The password
-  is stored only as a hash. Credentials for agents are tokens
-  (`Beamlet.Token`), which belong to the beamlet rather than to this
-  row. Managed through `Beamlet.Owner`.
-  """
+  # The beamlet's one user, its owner: the email and password that sign
+  # in on the web.
+  #
+  # A beamlet belongs to one person. The row is created by the first
+  # `beamlet setup` and updated by every one after; the database holds
+  # at most one. The email is the sign-in identifier, stored trimmed
+  # and lowercased; it is never verified and never mailed. The password
+  # is stored only as a hash. Credentials for agents are tokens
+  # (`Beamlet.Token`), which belong to the beamlet rather than to this
+  # row. Managed through `Beamlet.Owner`.
 
   use Ecto.Schema
 

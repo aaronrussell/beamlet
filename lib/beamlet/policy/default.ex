@@ -570,8 +570,8 @@ defmodule Beamlet.Policy.Default do
   ## Not granted
 
   Denied by absence; the reason is recorded for the walk record only.
-  The few refusals that carry teaching copy are listed in
-  `Beamlet.Policy.Signage`.
+  The few refusals that carry teaching copy are what
+  `Beamlet.Policy.render/1` lists.
 
   #{@rendered_not_granted}
   """

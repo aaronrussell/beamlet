@@ -31,7 +31,7 @@ defmodule Beamlet.CLI do
   Each command takes its own switches and refuses any other.
 
   The commands are the public functions of `Beamlet.Owner`,
-  `Beamlet.Tokens` and `Beamlet.Policies` with plain text output, and
+  `Beamlet.Tokens` and the declared policies with plain text output, and
   `main/1` is the whole surface: it takes the arguments as a list,
   prints, and returns `:ok` or `:error`. In development `mix beamlet`
   hands it the arguments; a release ships a `bin/beamlet` script that

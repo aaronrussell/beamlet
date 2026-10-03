@@ -1,4 +1,13 @@
 defmodule BeamletServer.Endpoint do
+  @moduledoc false
+
+  # The server's endpoint, and the worked example of what a host's
+  # endpoint carries for a beamlet: a LiveView socket for agent pages
+  # under the host's session and one for the app under the app's own
+  # (Beamlet.Web.Auth), Beamlet.Assets ahead of the parsers and the
+  # router, and a parser list with no multipart. The router forwards
+  # everything to Beamlet.Router.
+
   use Phoenix.Endpoint, otp_app: :beamlet_server
 
   # The session will be stored in the cookie and signed,

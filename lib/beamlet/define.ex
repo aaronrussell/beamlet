@@ -1,51 +1,49 @@
 defmodule Beamlet.Define do
-  @moduledoc """
-  Define modules on your beamlet: the runtime behind the `define`
-  tool.
+  @moduledoc false
 
-  A define is a list of entries, one top-level `defmodule` each with
-  its own `replace` permission. Each entry is formatted, scanned
-  against the principal's policy (`Beamlet.Scanner`) and checked for
-  docs, then the set is handed to the code server (`Beamlet.Code`),
-  which compiles it into the running beamlet, writes one source file
-  per module and commits the change with the principal as provenance.
-  The modules are callable from `eval` and from other modules the
-  moment the define returns, and are reloaded at boot.
-
-  The entries' rules, each refused with a teaching error:
-
-  - One top-level `defmodule` per entry, and a module named by one
-    entry only. An expression is for `eval`; a nested module is
-    defined as its own entry.
-  - Every module has a `@moduledoc` and every public function a
-    `@doc`, because docs are how a module is found later.
-  - The policy applies inside module bodies exactly as it does in
-    `eval`, and a denied call is refused before anything compiles.
-  - `Beamlet.*` and `Host.*` are reserved; a name any loaded module
-    already has is refused; redefining a module defined before
-    needs `replace: true` on its entry, and that flag is harmless on
-    a new module.
-
-  Source is stored as the formatter lays it out, and it is formatted
-  before anything reads it, so every error locates by the module's
-  path and a line of its stored source: `lib/shopping/list.ex:4`.
-
-  The result is a summary, one line per module:
-
-      {:ok, "Defined Shopping.List (new)"} =
-        Beamlet.Define.run([%{code: code}], principal)
-
-  The entries land together or not at all. A replace recompiles the
-  module's dependents and names them; a dependent that no longer
-  compiles, or a caller of a function the replacement dropped, fails
-  the whole define with nothing changed.
-
-  One limit, set in config: `timeout` (30 seconds) is how long one
-  compile may take, since a define holds the code server's single
-  lane. On any error, a timeout included, nothing is changed.
-
-      config :beamlet, define: [timeout: 30_000]
-  """
+  # Define modules on your beamlet: the runtime behind the `define`
+  # tool.
+  #
+  # A define is a list of entries, one top-level `defmodule` each with
+  # its own `replace` permission. Each entry is formatted, scanned
+  # against the principal's policy (`Beamlet.Scanner`) and checked for
+  # docs, then the set is handed to the code server (`Beamlet.Code`),
+  # which compiles it into the running beamlet, writes one source file
+  # per module and commits the change with the principal as provenance.
+  # The modules are callable from `eval` and from other modules the
+  # moment the define returns, and are reloaded at boot.
+  #
+  # The entries' rules, each refused with a teaching error:
+  #
+  # - One top-level `defmodule` per entry, and a module named by one
+  #   entry only. An expression is for `eval`; a nested module is
+  #   defined as its own entry.
+  # - Every module has a `@moduledoc` and every public function a
+  #   `@doc`, because docs are how a module is found later.
+  # - The policy applies inside module bodies exactly as it does in
+  #   `eval`, and a denied call is refused before anything compiles.
+  # - `Beamlet.*` and `Host.*` are reserved; a name any loaded module
+  #   already has is refused; redefining a module defined before
+  #   needs `replace: true` on its entry, and that flag is harmless on
+  #   a new module.
+  #
+  # Source is stored as the formatter lays it out, and it is formatted
+  # before anything reads it, so every error locates by the module's
+  # path and a line of its stored source: `lib/shopping/list.ex:4`.
+  #
+  # The result is a summary, one line per module:
+  #
+  #     {:ok, "Defined Shopping.List (new)"} =
+  #       Beamlet.Define.run([%{code: code}], principal)
+  #
+  # The entries land together or not at all. A replace recompiles the
+  # module's dependents and names them; a dependent that no longer
+  # compiles, or a caller of a function the replacement dropped, fails
+  # the whole define with nothing changed.
+  #
+  # One limit, `timeout`, documented for the operator on
+  # Beamlet.MCP.Define. On any error, a timeout included, nothing is
+  # changed.
 
   alias Beamlet.Code
   alias Beamlet.Code.Entry

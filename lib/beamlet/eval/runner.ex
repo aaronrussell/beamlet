@@ -22,6 +22,11 @@ defmodule Beamlet.Eval.Runner do
           | {:error, :timeout | :killed | {atom(), term(), Exception.stacktrace()},
              %{output: output()}}
 
+  @doc """
+  Evaluates scanned code as the principal under the eval limits in
+  `opts`, returning what was printed beside the result or the reason
+  it stopped.
+  """
   @spec run(String.t(), Principal.t(), keyword()) :: outcome()
   def run(code, %Principal{} = principal, opts) do
     timeout = Keyword.fetch!(opts, :timeout)

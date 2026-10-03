@@ -1,48 +1,30 @@
 defmodule Beamlet.Eval do
-  @moduledoc """
-  Evaluate Elixir code on your beamlet: the runtime behind the `eval`
-  tool.
+  @moduledoc false
 
-  Each run is a fresh evaluation inside the beamlet's own VM, with
-  empty bindings and no prelude, so the code can call everything the
-  beamlet has, every module defined on it included, and nothing
-  carries over from one run to the next. The code is scanned against
-  the principal's policy first (`Beamlet.Scanner`), with the defined
-  modules granted by existence, then evaluated in a process of its
-  own with its output captured, as that principal
-  (`Beamlet.Principal.current/0`).
-
-  The result is text: whatever the code printed, then `=> ` and the
-  inspected value of the last expression. Anything that goes wrong is
-  text too, a refused call, a raised exception, a timeout, and keeps
-  the output printed before it, so the agent's loop is write, run,
-  read, fix.
-
-      {:ok, "hi\\n=> :ok"} = Beamlet.Eval.run(~s|IO.puts("hi")|, principal)
-      {:error, "** (ArithmeticError) bad argument" <> _} = Beamlet.Eval.run("1 / 0", principal)
-
-  ## Limits
-
-  Three limits, set in config, each protecting one thing:
-
-      config :beamlet,
-        eval: [timeout: 30_000, max_heap_bytes: 134_217_728, max_output: 32_768]
-
-  - `timeout` (30 seconds) protects the session. An MCP session runs
-    one request at a time, so a run that never ended would stall
-    every request behind it. The evaluation is stopped and the output
-    so far returned. The MCP request timeout (`Beamlet.Config.mcp/0`)
-    must be longer, so it is never the one that fires.
-  - `max_heap_bytes` (128MB) protects the beamlet: a runaway
-    allocation is stopped before it takes the VM down. Binaries the
-    code holds count, however large.
-  - `max_output` (32KB) protects the model's context. Only the first
-    32KB printed is ever held, and a longer result is cut with a line
-    saying how much was shown of how much. The result or error after
-    the output is kept whole when it fits, the output taking the room
-    left, since that line is what the agent acts on. 32KB is under
-    the point where Claude Code warns about a large tool result.
-  """
+  # Evaluate Elixir code on your beamlet: the runtime behind the `eval`
+  # tool.
+  #
+  # Each run is a fresh evaluation inside the beamlet's own VM, with
+  # empty bindings and no prelude, so the code can call everything the
+  # beamlet has, every module defined on it included, and nothing
+  # carries over from one run to the next. The code is scanned against
+  # the principal's policy first (`Beamlet.Scanner`), with the defined
+  # modules granted by existence, then evaluated in a process of its
+  # own with its output captured, as that principal
+  # (`Beamlet.Principal.current/0`).
+  #
+  # The result is text: whatever the code printed, then `=> ` and the
+  # inspected value of the last expression. Anything that goes wrong is
+  # text too, a refused call, a raised exception, a timeout, and keeps
+  # the output printed before it, so the agent's loop is write, run,
+  # read, fix.
+  #
+  #     {:ok, "hi\\n=> :ok"} = Beamlet.Eval.run(~s|IO.puts("hi")|, principal)
+  #     {:error, "** (ArithmeticError) bad argument" <> _} = Beamlet.Eval.run("1 / 0", principal)
+  #
+  # The limits are the operator's and documented on Beamlet.MCP.Eval:
+  # `timeout` protects the session, `max_heap_bytes` the beamlet and
+  # `max_output` the model's context.
 
   alias Beamlet.Code
   alias Beamlet.Config

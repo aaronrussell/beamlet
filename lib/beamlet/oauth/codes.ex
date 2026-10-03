@@ -1,16 +1,16 @@
 defmodule Beamlet.OAuth.Codes do
-  @moduledoc """
-  The pending authorization codes: what the consent page stored and
-  the token endpoint has not yet redeemed.
+  @moduledoc false
 
-  A code stands for one consent: this policy, this client, this
-  redirect URI, the PKCE challenge the client committed to, and the
-  resource and scope it asked for. It lives ten minutes, is redeemed
-  once, since `take/1` deletes it, and is worthless without the PKCE
-  secret. Codes live in memory, keyed by their hash as tokens are: a
-  restart mid-flow means the client hears `invalid_grant` and the
-  person clicks connect again.
-  """
+  # The pending authorization codes: what the consent page stored and
+  # the token endpoint has not yet redeemed.
+  #
+  # A code stands for one consent: this policy, this client, this
+  # redirect URI, the PKCE challenge the client committed to, and the
+  # resource and scope it asked for. It lives ten minutes, is redeemed
+  # once, since `take/1` deletes it, and is worthless without the PKCE
+  # secret. Codes live in memory, keyed by their hash as tokens are: a
+  # restart mid-flow means the client hears `invalid_grant` and the
+  # person clicks connect again.
 
   use GenServer
 

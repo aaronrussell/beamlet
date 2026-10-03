@@ -1,29 +1,29 @@
 defmodule Beamlet.Route do
-  @moduledoc """
-  One row of the URL surface agents build: a path served by a module
-  defined on the beamlet, through the router `Beamlet.Routes`
-  generates from these rows.
+  @moduledoc false
 
-  Two kinds. A `:live_view` row is an HTML page, served through the
-  browser pipeline with a session and CSRF protection; a
-  `:controller` row is an action for one HTTP verb, served through
-  the API pipeline with neither, so external services can call it. A
-  LiveView row stores `:get`, the verb it genuinely answers, so the
-  unique index on verb and path collides a page with a controller GET
-  at the same path while letting the other verbs share it.
-
-  `module` is the target's name in inspect form, `"Todo.PageLive"`,
-  and `action` names the controller action, or the live action on a
-  page (`socket.assigns.live_action`), or nothing. The formats, and
-  Plug's reading of the path, which refuses a glob anywhere but
-  last, are checked on insert and again at generation
-  (`load_changeset/1`), since agents can write the table with raw
-  SQL; a row failing them is left out of the router.
-
-  `principal` is the provenance of the row, the principal that
-  mounted it, stored as JSON in the shape `Beamlet.Principal.to_map/1`
-  gives and read back with `principal/1`.
-  """
+  # One row of the URL surface agents build: a path served by a module
+  # defined on the beamlet, through the router `Beamlet.Routes`
+  # generates from these rows.
+  #
+  # Two kinds. A `:live_view` row is an HTML page, served through the
+  # browser pipeline with a session and CSRF protection; a
+  # `:controller` row is an action for one HTTP verb, served through
+  # the API pipeline with neither, so external services can call it. A
+  # LiveView row stores `:get`, the verb it genuinely answers, so the
+  # unique index on verb and path collides a page with a controller GET
+  # at the same path while letting the other verbs share it.
+  #
+  # `module` is the target's name in inspect form, `"Todo.PageLive"`,
+  # and `action` names the controller action, or the live action on a
+  # page (`socket.assigns.live_action`), or nothing. The formats, and
+  # Plug's reading of the path, which refuses a glob anywhere but
+  # last, are checked on insert and again at generation
+  # (`load_changeset/1`), since agents can write the table with raw
+  # SQL; a row failing them is left out of the router.
+  #
+  # `principal` is the provenance of the row, the principal that
+  # mounted it, stored as JSON in the shape `Beamlet.Principal.to_map/1`
+  # gives and read back with `principal/1`.
 
   use Ecto.Schema
 

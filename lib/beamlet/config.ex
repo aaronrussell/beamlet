@@ -12,10 +12,10 @@ defmodule Beamlet.Config do
   defaults merged in, and never raise. A change is a restart.
 
   The data dir is the root everything a beamlet persists lives under:
-  the databases under `db/`, the defined modules under `code/`
-  (`Beamlet.Code`) and the files agent code keeps under `files/`
-  (`Host.File`). Policies are declared here too (`Beamlet.Policy`),
-  the limits on the two tools (`Beamlet.Eval`, `Beamlet.Define`), the
+  the databases under `db/`, the defined modules under `code/` and
+  the files agent code keeps under `files/` (`Host.File`). Policies
+  are declared here too (`Beamlet.Policy`), the limits on the tools
+  (`Beamlet.MCP.Eval`, `Beamlet.MCP.Define`), the
   MCP request timeout, the hosts agent HTTP may reach on private
   networks (`Host.HTTP`), and the web surface: the host's endpoint,
   which serves the routes agents mount (`Beamlet.Router`), and the
@@ -44,8 +44,8 @@ defmodule Beamlet.Config do
   `Beamlet` calls it before starting anything. The data dir must be
   set and absolute, since it holds state that must never silently
   depend on the working directory; the policies must be a keyword
-  list of name to document, each document checked by
-  `Beamlet.Policies` when it builds them; the eval, define and mcp
+  list of name to document, each document checked when the policies
+  are built; the eval, define and mcp
   limits must be known keys with positive integers, and the MCP
   request timeout longer than both tool timeouts; the http group's
   `allow` must be a list of host names, IP addresses and CIDR blocks;
@@ -98,7 +98,7 @@ defmodule Beamlet.Config do
 
   @doc """
   The eval limits, merged over the defaults: `timeout` 30 seconds,
-  `max_heap_bytes` 128MB, `max_output` 32KB (`Beamlet.Eval` says
+  `max_heap_bytes` 128MB, `max_output` 32KB (`Beamlet.MCP.Eval` says
   what each protects).
   """
   @spec eval() :: keyword()
@@ -106,7 +106,7 @@ defmodule Beamlet.Config do
 
   @doc """
   The define limits, merged over the defaults: `timeout` 30 seconds,
-  the time one compile may take (`Beamlet.Define`).
+  the time one compile may take (`Beamlet.MCP.Define`).
   """
   @spec define() :: keyword()
   def define, do: limits(:define, @define_defaults)
@@ -114,7 +114,7 @@ defmodule Beamlet.Config do
   @doc """
   The MCP limits, merged over the defaults: `request_timeout` 65
   seconds, how long the transport waits for a request's answer before
-  replying "Server unavailable" (`Beamlet.MCP.Plug`).
+  replying "Server unavailable".
   """
   @spec mcp() :: keyword()
   def mcp, do: limits(:mcp, @mcp_defaults)

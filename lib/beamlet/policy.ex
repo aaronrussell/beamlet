@@ -6,7 +6,7 @@ defmodule Beamlet.Policy do
   use: `eval`, and `define`, which is two tools in one, since the
   `define` and `patch` tools both write modules through the same
   pipeline under the same limit. **Rules** are the shape rules on the code
-  it submits (`Beamlet.Policy.Rules`). **Grants** are the modules and
+  it submits, both strict unless relaxed. **Grants** are the modules and
   functions its code may call: a module maps to everything, an
   `only` list or an `except` list, and a module absent from the
   table is denied.
@@ -92,7 +92,7 @@ defmodule Beamlet.Policy do
   @type t :: %__MODULE__{
           name: String.t(),
           tools: [tool()],
-          rules: Rules.t(),
+          rules: %Rules{},
           grants: grants()
         }
 
@@ -157,7 +157,7 @@ defmodule Beamlet.Policy do
 
   The other half of the effective grants: modules defined on the
   beamlet are granted by existence, so the runtimes merge the defined
-  set in before every scan (`Beamlet.Code.defined/0`), and `define`
+  set in before every scan, and `define`
   and `patch` grant the modules of one call to each other the same
   way.
   """
@@ -193,8 +193,7 @@ defmodule Beamlet.Policy do
 
   The only listable answer to "what is disallowed", since everything
   absent from the grants is denied: the rendering covers the denials
-  that carry teaching copy (`Beamlet.Policy.Signage`) rather than the
-  unbounded rest.
+  that carry teaching copy rather than the unbounded rest.
   """
   @spec render(t()) :: String.t()
   def render(%__MODULE__{} = policy) do

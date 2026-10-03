@@ -22,9 +22,14 @@ defmodule Beamlet.Migrations do
           applied_at: NaiveDateTime.t() | nil
         }
 
+  @doc "The versions Ecto has recorded as applied, in order."
   @spec applied_versions() :: [pos_integer()]
   def applied_versions, do: Ecto.Migrator.migrated_versions(Host.Repo, log: false)
 
+  @doc """
+  Every migration, defined or applied, by version: a defined one not
+  yet applied has no `applied_at`, an orphan has no `module`.
+  """
   @spec list() :: [entry()]
   def list do
     applied = applied_at_by_version()

@@ -38,6 +38,10 @@ defmodule Beamlet.Code.Discovery do
 
   @format_note "(documentation is in a format your beamlet cannot render)"
 
+  @doc """
+  The listing behind `print_modules`: the defined modules, quarantined
+  ones included, then what the policy grants, in sections.
+  """
   @spec list(Policy.t()) :: {:ok, String.t()}
   def list(%Policy{} = policy) do
     manifest = Beamlet.Code.manifest()
@@ -68,6 +72,10 @@ defmodule Beamlet.Code.Discovery do
     {:ok, text}
   end
 
+  @doc """
+  A module's documentation as `print_docs` prints it, or the teaching
+  error for a module the policy refuses or that has no docs.
+  """
   @spec doc(Policy.t(), module()) :: {:ok, String.t()} | {:error, String.t()}
   def doc(%Policy{} = policy, module) do
     with {:ok, target} <- resolve(policy, module),
@@ -76,6 +84,10 @@ defmodule Beamlet.Code.Discovery do
     end
   end
 
+  @doc """
+  One function's documentation, every arity when `arity` is `:any`,
+  leaving out what the policy does not grant.
+  """
   @spec doc(Policy.t(), module(), atom(), arity() | :any) ::
           {:ok, String.t()} | {:error, String.t()}
   def doc(%Policy{} = policy, module, fun, arity \\ :any) do
@@ -101,6 +113,7 @@ defmodule Beamlet.Code.Discovery do
     end
   end
 
+  @doc "The stored source of a defined module, whole."
   @spec source(Policy.t(), module()) :: {:ok, String.t()} | {:error, String.t()}
   def source(%Policy{} = policy, module) do
     with {:ok, _path, contents} <- read_source(policy, module, "print_source") do
@@ -121,6 +134,11 @@ defmodule Beamlet.Code.Discovery do
 
   @hidden_kinds [:doc, :attribute]
 
+  @doc """
+  A defined module's outline: one row per top-level item and the lines
+  it spans, a function's row covering all its clauses and the docs
+  above them.
+  """
   @spec outline(Policy.t(), module()) :: {:ok, String.t()} | {:error, String.t()}
   def outline(%Policy{} = policy, module) do
     with {:ok, path, contents} <- read_source(policy, module, "print_outline"),
@@ -129,6 +147,12 @@ defmodule Beamlet.Code.Discovery do
     end
   end
 
+  @doc """
+  A function's block from a defined module's source, verbatim.
+
+  Refuses a function whose clauses are scattered through the module,
+  since no one block holds it.
+  """
   @spec function(Policy.t(), module(), atom(), arity() | :any) ::
           {:ok, String.t()} | {:error, String.t()}
   def function(%Policy{} = policy, module, fun, arity) do
@@ -152,6 +176,10 @@ defmodule Beamlet.Code.Discovery do
     end
   end
 
+  @doc """
+  A range of lines from a defined module's source, verbatim, clamped to
+  its end.
+  """
   @spec lines(Policy.t(), module(), Range.t()) :: {:ok, String.t()} | {:error, String.t()}
   def lines(%Policy{} = policy, module, first..last//1) do
     with {:ok, _path, contents} <- read_source(policy, module, "print_source") do

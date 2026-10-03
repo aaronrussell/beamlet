@@ -18,7 +18,7 @@ defmodule Beamlet.Tokens do
   expires; an `oauth` token expires at `expires_at` and is refreshed
   by the token endpoint (`rotate/2`). A token names a policy and has
   `default` when it names none, and the name must be a policy the
-  beamlet declares (`Beamlet.Policies`).
+  beamlet declares (`Beamlet.Policy`).
 
   Operator-only. Nothing under `Host.*` reaches these functions. The
   command line over them is `Beamlet.CLI`, reached as `mix beamlet` in

@@ -74,6 +74,10 @@ defmodule Beamlet.Code.Source do
 
   @type op :: {:replace, String.t()} | {:before, String.t()} | {:after, String.t()}
 
+  @doc """
+  Parses source with the token metadata the outline reads line spans
+  from.
+  """
   @spec parse(String.t()) :: {:ok, Macro.t()} | {:error, {non_neg_integer(), String.t()}}
   def parse(source) when is_binary(source) do
     {:ok, Code.string_to_quoted!(source, token_metadata: true, literal_encoder: &literal/2)}
@@ -84,6 +88,10 @@ defmodule Beamlet.Code.Source do
 
   defp literal(literal, meta), do: {:ok, {:__block__, meta, [literal]}}
 
+  @doc """
+  Every top-level form of a module's source, in order, each with its
+  kind and the lines it spans.
+  """
   @spec outline(String.t()) :: {:ok, [item()]} | {:error, {non_neg_integer(), String.t()}}
   def outline(source) when is_binary(source) do
     with {:ok, ast} <- parse(source) do
@@ -99,6 +107,12 @@ defmodule Beamlet.Code.Source do
     end
   end
 
+  @doc """
+  A function's block by name and arity, attachments included.
+
+  When nothing matches, the error carries every function's `name/arity`
+  for the teaching copy.
+  """
   @spec select(String.t(), String.t(), arity()) ::
           {:ok, item()}
           | {:error, :not_found, [String.t()]}
@@ -116,6 +130,12 @@ defmodule Beamlet.Code.Source do
     end
   end
 
+  @doc """
+  Applies an operation at text occurring exactly once in the source.
+
+  `:indented` means the text matches once when leading whitespace is
+  ignored, the mismatch a model most often makes.
+  """
   @spec patch_find(String.t(), String.t(), op()) ::
           {:ok, String.t()} | {:error, :not_found | :indented | {:several, pos_integer()}}
   def patch_find(source, text, op) when is_binary(source) and is_binary(text) and text != "" do
@@ -149,6 +169,7 @@ defmodule Beamlet.Code.Source do
 
   defp dedent(text), do: String.replace(text, ~r/^[ \t]+/m, "")
 
+  @doc "Applies an operation to a function's block, by whole lines."
   @spec patch_select(String.t(), String.t(), arity(), op()) ::
           {:ok, String.t()}
           | {:error, :not_found, [String.t()]}
@@ -182,11 +203,16 @@ defmodule Beamlet.Code.Source do
 
   defp blank?(line), do: String.trim(line) == ""
 
+  @doc """
+  The number of lines in the source, a trailing newline not counting
+  as one more.
+  """
   @spec line_count(String.t()) :: non_neg_integer()
   def line_count(source) when is_binary(source) do
     source |> String.trim_trailing("\n") |> String.split("\n") |> length()
   end
 
+  @doc "A range of lines from the source, verbatim."
   @spec lines(String.t(), Range.t()) :: String.t()
   def lines(source, first..last//1) when is_binary(source) and first >= 1 and last >= first do
     source
@@ -195,6 +221,10 @@ defmodule Beamlet.Code.Source do
     |> Enum.join("\n")
   end
 
+  @doc """
+  The function-level diff between two versions of a module's source:
+  the functions removed, changed and new.
+  """
   @spec diff(String.t(), String.t()) :: diff()
   def diff(old, new) when is_binary(old) and is_binary(new) do
     with false <- old == new,
@@ -219,6 +249,10 @@ defmodule Beamlet.Code.Source do
     end
   end
 
+  @doc """
+  A diff as the lines a define, patch or commit body shows beneath the
+  module.
+  """
   @spec render_diff(diff()) :: [String.t()]
   def render_diff(:unchanged), do: ["  - unchanged"]
 
@@ -237,6 +271,7 @@ defmodule Beamlet.Code.Source do
     |> Enum.map(fn {verb, names} -> "  - #{verb} #{Enum.join(names, ", ")}" end)
   end
 
+  @doc "A function item as `name/arity`."
   @spec fa(item()) :: String.t()
   def fa(%{name: name, arity: arity}), do: "#{name}/#{arity}"
 

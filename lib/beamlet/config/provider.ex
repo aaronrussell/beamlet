@@ -35,7 +35,7 @@ defmodule Beamlet.Config.Provider do
   No file means no change, silently. A file that fails to evaluate
   fails the boot, naming the file and the line; a policy it declares
   badly fails the boot the way any declared policy does
-  (`Beamlet.Policies`). The release's `eval` command runs config
+  (`Beamlet.Policy`). The release's `eval` command runs config
   providers too, so `beamlet policies` on the container reads the
   file afresh and either lists what it declares or prints what is
   wrong with it, without a restart; the running beamlet picks the

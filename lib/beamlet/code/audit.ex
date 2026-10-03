@@ -34,6 +34,10 @@ defmodule Beamlet.Code.Audit do
     {"GIT_CONFIG_VALUE_1", "false"}
   ]
 
+  @doc """
+  Raises with a teaching message when git is not on the `PATH`, so a
+  beamlet without it fails at boot rather than at its first define.
+  """
   @spec check!() :: :ok
   def check! do
     if System.find_executable("git") == nil do
@@ -44,6 +48,13 @@ defmodule Beamlet.Code.Audit do
     :ok
   end
 
+  @doc """
+  Brings the code dir's history up to date at boot.
+
+  A code dir with no repository gets one and an initial snapshot; one
+  that has a repository gets its hand edits swept into a commit. Both
+  are recorded under the system principal.
+  """
   @spec after_boot(Path.t()) :: :ok
   def after_boot(code_dir) do
     if init_repo(code_dir),
@@ -51,6 +62,12 @@ defmodule Beamlet.Code.Audit do
       else: sweep(code_dir)
   end
 
+  @doc """
+  Commits a define, naming each module new or replaced in the subject.
+
+  `diffs` holds the source diff of each replaced module, rendered into
+  the body; the principal goes into the trailers.
+  """
   @spec record_define(Path.t(), [module()], [module()], map(), Principal.t()) :: :ok
   def record_define(code_dir, modules, replaced, diffs, %Principal{} = principal) do
     subject =
@@ -63,12 +80,14 @@ defmodule Beamlet.Code.Audit do
     commit(code_dir, subject, diff_body(modules, diffs), principal)
   end
 
+  @doc "Commits a patch, with each module's source diff in the body."
   @spec record_patch(Path.t(), [module()], map(), Principal.t()) :: :ok
   def record_patch(code_dir, modules, diffs, %Principal{} = principal) do
     subject = "patch: " <> Enum.map_join(modules, ", ", &inspect/1)
     commit(code_dir, subject, diff_body(modules, diffs), principal)
   end
 
+  @doc "Commits the removal of modules."
   @spec record_remove(Path.t(), [module()], Principal.t()) :: :ok
   def record_remove(code_dir, modules, %Principal{} = principal) do
     commit(code_dir, "remove: " <> Enum.map_join(modules, ", ", &inspect/1), nil, principal)

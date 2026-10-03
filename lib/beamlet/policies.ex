@@ -1,24 +1,24 @@
 defmodule Beamlet.Policies do
-  @moduledoc """
-  The policies on your beamlet, built at boot and looked up by name.
+  @moduledoc false
 
-  `default` is always present. The rest come from application config
-  (`Beamlet.Policy` documents the shape), each built on the default
-  when the beamlet starts. A bad declaration fails the boot with an
-  error naming the policy and the key at fault, so a running beamlet
-  never carries a policy it could not build. Declare and restart;
-  there is no reload.
-
-      Beamlet.Policies.names()
-      #=> ["default", "explorer"]
-
-      Beamlet.Policies.fetch("explorer")
-      #=> {:ok, %Beamlet.Policy{name: "explorer", tools: [:eval], ...}}
-
-  Runs as a child of `Beamlet`, owning a table that dies with it.
-  Lookups read the table directly, so a request never waits on this
-  process.
-  """
+  # The policies on your beamlet, built at boot and looked up by name.
+  #
+  # `default` is always present. The rest come from application config
+  # (`Beamlet.Policy` documents the shape), each built on the default
+  # when the beamlet starts. A bad declaration fails the boot with an
+  # error naming the policy and the key at fault, so a running beamlet
+  # never carries a policy it could not build. Declare and restart;
+  # there is no reload.
+  #
+  #     Beamlet.Policies.names()
+  #     #=> ["default", "explorer"]
+  #
+  #     Beamlet.Policies.fetch("explorer")
+  #     #=> {:ok, %Beamlet.Policy{name: "explorer", tools: [:eval], ...}}
+  #
+  # Runs as a child of `Beamlet`, owning a table that dies with it.
+  # Lookups read the table directly, so a request never waits on this
+  # process.
 
   use GenServer
 

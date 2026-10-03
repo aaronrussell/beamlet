@@ -10,8 +10,8 @@ defmodule Beamlet.Assets do
   bundles, so there is no JavaScript build to run, and the stylesheet
   for the app, the beamlet's own pages, from the package's
   `priv/static`, built from `assets/css/app.css` with
-  `mix assets.build` and shipped built. The root layouts (`Beamlet.Web.Layouts`) reference exactly
-  these:
+  `mix assets.build` and shipped built. The root layouts reference
+  exactly these:
 
     * `/beamlet/assets/phoenix/phoenix.mjs` from `:phoenix`
     * `/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js` from

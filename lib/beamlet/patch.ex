@@ -1,46 +1,46 @@
 defmodule Beamlet.Patch do
-  @moduledoc """
-  Patch modules on your beamlet: the runtime behind the `patch`
-  tool.
+  @moduledoc false
 
-  A patch names a module, one anchor and one operation, as the tool
-  passes them:
-
-      %{module: "Shopping.List", select: "total/1", replace: "..."}
-      %{module: "Shopping.List", find: "def total(items)", before: "..."}
-
-  `find` is text occurring exactly once in the module's stored
-  source; `select` is a function as `name/arity`, whose block is all
-  its clauses and the `@doc` and `@spec` above them. `replace` swaps
-  the anchor, empty to remove it; `before` and `after` insert around
-  it. The patches apply in order to in-memory copies of the sources,
-  each seeing the text the previous ones left, and the touched
-  modules then run the define pipeline as a replace
-  (`Beamlet.Define`): formatted, scanned against the principal's
-  policy, checked for docs, compiled with their dependents and
-  committed as one `patch:` commit. On any error nothing changes.
-
-  A module must be defined or quarantined. A quarantined module
-  whose source does not parse is patchable by `find`, since a
-  one-line fix is the natural recovery, and may take several
-  patches to parse again; `select` needs a source that parses.
-
-  The stale-read guard: each module's source is hashed as read, and
-  the code server refuses to write over a module that changed in
-  between, so two writers never lose an update silently. The retry
-  is a fresh read and the same patches.
-
-  The result is one line per module with what changed beneath it:
-
-      {:ok, "Patched Shopping.List\\n  - changed total/1"} =
-        Beamlet.Patch.run(patches, principal)
-
-  Every error is a teaching error naming the patch that caused it,
-  `patch 2 (Shopping.List, select total/1): ...`, and an error from
-  the pipeline quotes the failing line with two lines either side,
-  since the patched text exists nowhere the agent can read.
-  `opts[:timeout]` is define's compile timeout.
-  """
+  # Patch modules on your beamlet: the runtime behind the `patch`
+  # tool.
+  #
+  # A patch names a module, one anchor and one operation, as the tool
+  # passes them:
+  #
+  #     %{module: "Shopping.List", select: "total/1", replace: "..."}
+  #     %{module: "Shopping.List", find: "def total(items)", before: "..."}
+  #
+  # `find` is text occurring exactly once in the module's stored
+  # source; `select` is a function as `name/arity`, whose block is all
+  # its clauses and the `@doc` and `@spec` above them. `replace` swaps
+  # the anchor, empty to remove it; `before` and `after` insert around
+  # it. The patches apply in order to in-memory copies of the sources,
+  # each seeing the text the previous ones left, and the touched
+  # modules then run the define pipeline as a replace
+  # (`Beamlet.Define`): formatted, scanned against the principal's
+  # policy, checked for docs, compiled with their dependents and
+  # committed as one `patch:` commit. On any error nothing changes.
+  #
+  # A module must be defined or quarantined. A quarantined module
+  # whose source does not parse is patchable by `find`, since a
+  # one-line fix is the natural recovery, and may take several
+  # patches to parse again; `select` needs a source that parses.
+  #
+  # The stale-read guard: each module's source is hashed as read, and
+  # the code server refuses to write over a module that changed in
+  # between, so two writers never lose an update silently. The retry
+  # is a fresh read and the same patches.
+  #
+  # The result is one line per module with what changed beneath it:
+  #
+  #     {:ok, "Patched Shopping.List\\n  - changed total/1"} =
+  #       Beamlet.Patch.run(patches, principal)
+  #
+  # Every error is a teaching error naming the patch that caused it,
+  # `patch 2 (Shopping.List, select total/1): ...`, and an error from
+  # the pipeline quotes the failing line with two lines either side,
+  # since the patched text exists nowhere the agent can read.
+  # `opts[:timeout]` is define's compile timeout.
 
   alias Beamlet.Code
   alias Beamlet.Code.Entry

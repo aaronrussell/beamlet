@@ -21,6 +21,7 @@ defmodule Beamlet.Code.Format do
     @external_resource Path.join(Mix.Project.deps_paths()[dep], ".formatter.exs")
   end
 
+  @doc "Formats agent source as it is stored, with a trailing newline."
   @spec format(String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def format(source) when is_binary(source) do
     formatted =

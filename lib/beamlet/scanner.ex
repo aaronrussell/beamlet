@@ -1,38 +1,38 @@
 defmodule Beamlet.Scanner do
-  @moduledoc """
-  The scan every piece of submitted code passes before it runs or
-  compiles: the one place a policy's rules and grants are enforced.
+  @moduledoc false
 
-  The scanner walks the unexpanded AST and refuses, with teaching
-  errors, what the policy does not admit. Grants decide names: every
-  module and function the code reaches for must be granted, aliases
-  are expanded first so `alias File, as: Storage` launders nothing,
-  and a module may name itself. Rules decide shape: call targets must
-  be literal modules unless the policy allows dynamic dispatch, a
-  module may not define macros unless the policy allows them, `eval`
-  code may not define modules, and a `define` entry is its one
-  `defmodule` and nothing beside it.
-  The targets of `alias`, `import`, `require` and `use`, and the
-  data-position targets the compiler expands (`defdelegate to:`, the
-  compile hooks, `@compile`) stay literal under any policy, and
-  `@compile` may name no parse or core transform. `@derive` is
-  refused, as `defimpl` is: protocols are consolidated at build, so
-  an implementation added at runtime is never dispatched to. Every
-  violation is collected and reported together, each with its
-  locator and the offending line quoted beneath it.
-
-  Struct literals are not checked against the grants. A struct is a
-  map with a `__struct__` key, which `struct/2` or a plain map
-  literal builds under any name, so refusing `%File.Stream{}` steers
-  nothing; and a macro-generated module, an inline embedded schema,
-  is named in its parent's own source before it exists.
-
-  This is an anti-accident guardrail, not a security boundary. The
-  approximations are deliberate: alias and import tracking is
-  file-global in source order, macros of granted modules expand after
-  the scan and unscanned, and a no-parens dot on a variable
-  (`user.name`) is read as map field access and passes.
-  """
+  # The scan every piece of submitted code passes before it runs or
+  # compiles: the one place a policy's rules and grants are enforced.
+  #
+  # The scanner walks the unexpanded AST and refuses, with teaching
+  # errors, what the policy does not admit. Grants decide names: every
+  # module and function the code reaches for must be granted, aliases
+  # are expanded first so `alias File, as: Storage` launders nothing,
+  # and a module may name itself. Rules decide shape: call targets must
+  # be literal modules unless the policy allows dynamic dispatch, a
+  # module may not define macros unless the policy allows them, `eval`
+  # code may not define modules, and a `define` entry is its one
+  # `defmodule` and nothing beside it.
+  # The targets of `alias`, `import`, `require` and `use`, and the
+  # data-position targets the compiler expands (`defdelegate to:`, the
+  # compile hooks, `@compile`) stay literal under any policy, and
+  # `@compile` may name no parse or core transform. `@derive` is
+  # refused, as `defimpl` is: protocols are consolidated at build, so
+  # an implementation added at runtime is never dispatched to. Every
+  # violation is collected and reported together, each with its
+  # locator and the offending line quoted beneath it.
+  #
+  # Struct literals are not checked against the grants. A struct is a
+  # map with a `__struct__` key, which `struct/2` or a plain map
+  # literal builds under any name, so refusing `%File.Stream{}` steers
+  # nothing; and a macro-generated module, an inline embedded schema,
+  # is named in its parent's own source before it exists.
+  #
+  # This is an anti-accident guardrail, not a security boundary. The
+  # approximations are deliberate: alias and import tracking is
+  # file-global in source order, macros of granted modules expand after
+  # the scan and unscanned, and a no-parens dot on a variable
+  # (`user.name`) is read as map field access and passes.
 
   alias Beamlet.Policy
   alias Beamlet.Policy.Signage

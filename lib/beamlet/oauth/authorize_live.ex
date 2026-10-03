@@ -1,31 +1,31 @@
 defmodule Beamlet.OAuth.AuthorizeLive do
-  @moduledoc """
-  The authorization endpoint, `/beamlet/authorize`: where a client
-  sends the browser, and where the person consents.
+  @moduledoc false
 
-  The page sits behind the login, so the beamlet knows who is
-  consenting before it reads anything the client sent, and fetches
-  the client's document (`Beamlet.OAuth.Clients`) only for a signed-in
-  person. Mounting validates the request and shows the consent form;
-  the decision either stores a code (`Beamlet.OAuth.Codes`) and sends
-  the browser back to the client, or sends it back with
-  `access_denied`. The request lives in the page's own state between
-  the two, so nothing the form carries can be tampered with. The
-  policies on offer are every one the beamlet declares
-  (`Beamlet.Policies`), `default` preselected.
-
-  A request the beamlet cannot safely redirect for, an unknown
-  client or a redirect URI its document does not list, is an error
-  page. Every other fault is answered the way the client expects:
-  a redirect carrying `error`, `error_description`, the client's
-  `state` and this beamlet's `iss`.
-
-  The way back to the client depends on its redirect URI. An http or
-  https one is a plain redirect. A custom scheme, which is how a
-  desktop app such as Raycast receives its code, is a page that sends
-  the browser on and says the app has been opened, since a redirect
-  there opens the app and leaves the tab on whatever page it was on.
-  """
+  # The authorization endpoint, `/beamlet/authorize`: where a client
+  # sends the browser, and where the person consents.
+  #
+  # The page sits behind the login, so the beamlet knows who is
+  # consenting before it reads anything the client sent, and fetches
+  # the client's document (`Beamlet.OAuth.Clients`) only for a signed-in
+  # person. Mounting validates the request and shows the consent form;
+  # the decision either stores a code (`Beamlet.OAuth.Codes`) and sends
+  # the browser back to the client, or sends it back with
+  # `access_denied`. The request lives in the page's own state between
+  # the two, so nothing the form carries can be tampered with. The
+  # policies on offer are every one the beamlet declares
+  # (`Beamlet.Policies`), `default` preselected.
+  #
+  # A request the beamlet cannot safely redirect for, an unknown
+  # client or a redirect URI its document does not list, is an error
+  # page. Every other fault is answered the way the client expects:
+  # a redirect carrying `error`, `error_description`, the client's
+  # `state` and this beamlet's `iss`.
+  #
+  # The way back to the client depends on its redirect URI. An http or
+  # https one is a plain redirect. A custom scheme, which is how a
+  # desktop app such as Raycast receives its code, is a page that sends
+  # the browser on and says the app has been opened, since a redirect
+  # there opens the app and leaves the tab on whatever page it was on.
 
   use Phoenix.LiveView
 

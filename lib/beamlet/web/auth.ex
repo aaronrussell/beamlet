@@ -3,7 +3,7 @@ defmodule Beamlet.Web.Auth do
   The web sign-in: who the browser is, kept in the app's own session.
 
   The one person who signs in is the owner (`Beamlet.Owner`), and a
-  signed-in browser is their `Beamlet.User` on a request with no token
+  signed-in browser is their user on a request with no token
   and no policy, since a browser authors no code.
 
   The app keeps a cookie of its own, apart from the endpoint's session
@@ -11,7 +11,7 @@ defmodule Beamlet.Web.Auth do
   unreadable by page scripts. `Beamlet.Router` plugs it into its
   browser pipeline, and the app's LiveView socket at
   `/beamlet/app/live` decodes it. The session holds the secret of a
-  `Beamlet.Session` row in the system database, and every request
+  session row in the system database, and every request
   turns it back into the user through
   `Beamlet.Owner.authenticate_session/1`. Nothing agent code can write
   signs anyone in: an agent page's session is a different cookie, and
@@ -102,7 +102,7 @@ defmodule Beamlet.Web.Auth do
   the session's secret, and the id the app's LiveView sockets on it
   take.
   """
-  @spec log_in(Plug.Conn.t(), User.t()) :: Plug.Conn.t()
+  @spec log_in(Plug.Conn.t(), %User{}) :: Plug.Conn.t()
   def log_in(conn, %User{}) do
     {:ok, %Session{id: id, secret: secret}} = Owner.create_session()
 

@@ -1,7 +1,7 @@
 defmodule Beamlet.Owner do
   @moduledoc """
-  The beamlet's owner: the one user (`Beamlet.User`), their password,
-  and the browsers they are signed in on (`Beamlet.Session`).
+  The beamlet's owner: the one user, their password, and the browsers
+  they are signed in on.
 
   A beamlet belongs to one person. `beamlet setup` creates the user on
   its first run and updates it on every one after; there is no second
@@ -29,8 +29,20 @@ defmodule Beamlet.Owner do
   alias Beamlet.Session
   alias Beamlet.User
 
+  @typedoc """
+  The owner: `email` and the password's hash. `password` is virtual
+  and never loaded.
+  """
+  @type user :: %User{}
+
+  @typedoc """
+  A browser signed in as the owner. `secret` is virtual, set only on
+  the struct `create_session/0` returns.
+  """
+  @type session :: %Session{}
+
   @doc "The owner, or `{:error, :not_found}` before the first `beamlet setup`."
-  @spec find() :: {:ok, User.t()} | {:error, :not_found}
+  @spec find() :: {:ok, user()} | {:error, :not_found}
   def find do
     case Repo.one(User) do
       nil -> {:error, :not_found}
@@ -42,7 +54,7 @@ defmodule Beamlet.Owner do
   Creates the owner from an email and a password. A beamlet has one,
   so a second create fails on `id` and the answer is `update/2`.
   """
-  @spec create(map() | keyword()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  @spec create(map() | keyword()) :: {:ok, user()} | {:error, Ecto.Changeset.t()}
   def create(attrs) do
     %User{}
     |> User.changeset(Map.new(attrs))
@@ -54,7 +66,7 @@ defmodule Beamlet.Owner do
   every session, so a browser signed in with the old one is signed
   out; a new email keeps them.
   """
-  @spec update(User.t(), map() | keyword()) :: {:ok, User.t()} | {:error, Ecto.Changeset.t()}
+  @spec update(user(), map() | keyword()) :: {:ok, user()} | {:error, Ecto.Changeset.t()}
   def update(%User{} = user, attrs) do
     changeset = User.changeset(user, Map.new(attrs))
 
@@ -75,7 +87,7 @@ defmodule Beamlet.Owner do
   longer than the owner can have fails the same way without being
   hashed, since hashing cost grows with its length.
   """
-  @spec authenticate(term(), term()) :: {:ok, User.t()} | {:error, :invalid_credentials}
+  @spec authenticate(term(), term()) :: {:ok, user()} | {:error, :invalid_credentials}
   def authenticate(email, password) when is_binary(email) and is_binary(password) do
     email = User.normalize_email(email)
 
@@ -100,7 +112,7 @@ defmodule Beamlet.Owner do
   Creates a session, for a web sign-in. The returned session carries
   its `secret`; nothing else ever will.
   """
-  @spec create_session() :: {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
+  @spec create_session() :: {:ok, session()} | {:error, Ecto.Changeset.t()}
   def create_session do
     secret = Secret.generate()
 
@@ -114,7 +126,7 @@ defmodule Beamlet.Owner do
   not the secret of a stored session, including one that was signed
   out, is `{:error, :unknown_session}`.
   """
-  @spec authenticate_session(term()) :: {:ok, User.t()} | {:error, :unknown_session}
+  @spec authenticate_session(term()) :: {:ok, user()} | {:error, :unknown_session}
   def authenticate_session(secret) when is_binary(secret) do
     hash = Secret.hash(secret)
 
