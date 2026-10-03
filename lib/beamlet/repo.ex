@@ -1,14 +1,19 @@
 defmodule Beamlet.Repo do
   @moduledoc """
-  The system database: what Beamlet itself keeps about a beamlet,
-  the owner, their sessions and the tokens, apart from anything
-  agents build.
+  The system database, which holds the owner, their sessions and the
+  tokens.
 
-  Lives at `db/beamlet.db` under the data dir and is migrated at boot
-  from this package's priv dir, so an embedding host never runs a
-  migration step for it. Adapter options go under
-  `config :beamlet, Beamlet.Repo`; the path is derived, not
-  configured.
+  It lives at `db/beamlet.db` in the data dir. The beamlet creates
+  and migrates it when it starts, so there is no `mix ecto.migrate`
+  step.
+
+  To tune it, pass adapter options in config:
+
+      config :beamlet, Beamlet.Repo, pool_size: 10
+
+  It takes any `Ecto.Adapters.SQLite3` option except `:database` and
+  `:journal_mode`, which the beamlet sets itself. `Host.Repo`, the
+  agent database, takes options under its own name in the same way.
   """
 
   use Ecto.Repo, otp_app: :beamlet, adapter: Ecto.Adapters.SQLite3

@@ -1,28 +1,22 @@
 defmodule Beamlet.Tokens do
   @moduledoc """
-  Tokens: the credentials agents present, each the owner's delegation
-  to one client, carrying the policy its requests run under
-  (`Beamlet.Token`).
+  Creates, updates, lists and deletes tokens from code.
 
-  A token is one of two kinds: `cli`, named and minted here from the
-  command line, or `oauth`, minted when the owner consents in a chat
-  client. Creating a token is the one moment its secret is visible:
+  These are what `beamlet tokens.*` runs. Creating a token is the
+  only time its secret is visible:
 
-      {:ok, token} = Beamlet.Tokens.create(%{name: "laptop"})
+      {:ok, token} = Beamlet.Tokens.create(name: "laptop", policy: "explorer")
       token.secret
       #=> "wJalrXUtnFEMI_K7MDENG_bPxRfiCYEXAMPLEKEY_q0"
 
-  The secret is what a client sends as its bearer credential. Only its
-  hash is stored, so `authenticate/1` is how a request finds its
-  token, and a lost secret means a new token. A `cli` token never
-  expires; an `oauth` token expires at `expires_at` and is refreshed
-  by the token endpoint (`rotate/2`). A token names a policy and has
-  `default` when it names none, and the name must be a policy the
-  beamlet declares (`Beamlet.Policy`).
+  A client sends the secret as a bearer token.
 
-  Operator-only. Nothing under `Host.*` reaches these functions. The
-  command line over them is `Beamlet.CLI`, reached as `mix beamlet` in
-  development.
+  `update/2` renames a `cli` token or changes its policy. It refuses
+  `oauth` tokens. `delete/1` works on either kind, and the token's
+  next request fails.
+
+  The authenticate and rotate functions serve the MCP endpoint and
+  the OAuth token endpoint. Most callers will not need them.
   """
 
   import Ecto.Query
@@ -32,13 +26,15 @@ defmodule Beamlet.Tokens do
   alias Beamlet.Token
 
   @doc """
-  Creates a token. `kind` picks the shape and is `cli` when absent: a
-  `cli` token takes `name` and an optional `policy`; an `oauth` token
-  takes `client`, `policy`, `expires_at` and `refresh_expires_at`.
-  The policy must be one the beamlet declares.
+  Creates a token.
+
+  `kind` is `:cli` unless given. A `cli` token takes `name` and an
+  optional `policy`. An `oauth` token takes `client`, `policy`,
+  `expires_at` and `refresh_expires_at`. The policy must be one the
+  beamlet declares.
 
   The returned token carries its `secret`, and an `oauth` token its
-  `refresh_secret` too; nothing else ever will.
+  `refresh_secret` too. Nothing else ever will.
   """
   @spec create(map() | keyword()) :: {:ok, Token.t()} | {:error, Ecto.Changeset.t()}
   def create(attrs) do
@@ -56,11 +52,10 @@ defmodule Beamlet.Tokens do
   end
 
   @doc """
-  Updates a `cli` token's name or policy; the policy must be one the
-  beamlet declares. The secret cannot change; create a new token
-  instead. An `oauth` token is not editable: its client is verified
-  identity and its policy was chosen at consent, so the answer is
-  `{:error, :oauth_token}`.
+  Updates a `cli` token's name or policy.
+
+  The secret cannot change, so create a new token instead. An `oauth`
+  token cannot be updated and answers `{:error, :oauth_token}`.
   """
   @spec update(Token.t(), map() | keyword()) ::
           {:ok, Token.t()} | {:error, Ecto.Changeset.t() | :oauth_token}
@@ -72,7 +67,11 @@ defmodule Beamlet.Tokens do
     |> Repo.update()
   end
 
-  @doc "Deletes a token. Requests presenting its secret fail from then on."
+  @doc """
+  Deletes a token.
+
+  Requests presenting its secret fail from then on.
+  """
   @spec delete(Token.t()) :: {:ok, Token.t()} | {:error, Ecto.Changeset.t()}
   def delete(%Token{} = token), do: Repo.delete(token)
 
@@ -94,7 +93,7 @@ defmodule Beamlet.Tokens do
 
   Anything that is not the secret of a stored token, including a
   deleted token's secret or a value that never was one, is
-  `{:error, :unknown_token}`; the secret of an `oauth` token past its
+  `{:error, :unknown_token}`. The secret of an `oauth` token past its
   expiry is `{:error, :expired_token}`.
   """
   @spec authenticate(term()) :: {:ok, Token.t()} | {:error, :unknown_token | :expired_token}
@@ -113,7 +112,7 @@ defmodule Beamlet.Tokens do
   token endpoint.
 
   Anything that is not the refresh secret of a stored token, a `cli`
-  token's secret among them, is `{:error, :unknown_token}`; a refresh
+  token's secret among them, is `{:error, :unknown_token}`. A refresh
   secret past `refresh_expires_at` is `{:error, :expired_token}`.
   """
   @spec authenticate_refresh(term()) ::
@@ -128,12 +127,13 @@ defmodule Beamlet.Tokens do
   def authenticate_refresh(_other), do: {:error, :unknown_token}
 
   @doc """
-  Rotates an `oauth` token in place: new secrets, and the expiries
-  `attrs` carries (`expires_at` and `refresh_expires_at`). The row
-  and its id stay, so provenance keeps pointing at the same token;
-  the old secrets stop authenticating at once. The returned token
-  carries the new `secret` and `refresh_secret`. A `cli` token has
-  nothing to rotate and answers `{:error, :cli_token}`.
+  Rotates an `oauth` token in place, with new secrets and expiries.
+
+  `attrs` carries `expires_at` and `refresh_expires_at`. The row and
+  its id stay, so provenance keeps pointing at the same token. The
+  old secrets stop working at once, and the returned token carries
+  the new `secret` and `refresh_secret`. A `cli` token answers
+  `{:error, :cli_token}`.
 
   A refresh secret redeems once. The rotation only lands while the
   row still holds the refresh secret `token` was loaded with, so of

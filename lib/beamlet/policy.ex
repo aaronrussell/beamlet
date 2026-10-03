@@ -1,73 +1,78 @@
 defmodule Beamlet.Policy do
   @moduledoc """
-  A policy: what a token's requests may do on your beamlet.
+  A policy decides what a token's requests may do on your beamlet.
 
-  Three parts. **Tools** are which of the MCP tools the token may
-  use: `eval`, and `define`, which is two tools in one, since the
-  `define` and `patch` tools both write modules through the same
-  pipeline under the same limit. **Rules** are the shape rules on the code
-  it submits, both strict unless relaxed. **Grants** are the modules and
-  functions its code may call: a module maps to everything, an
-  `only` list or an `except` list, and a module absent from the
-  table is denied.
-
-  Beamlet ships one policy, `default` (`Beamlet.Policy.Default`
-  records its rulings). A token runs under it when it names no
-  policy, and every other policy builds on it. Declare the others in
-  application config and restart; there is no reload:
+  Declare policies in config, by name:
 
       config :beamlet,
         policies: [
           explorer: [
             tools: [:eval],
-            rules: [allow_dynamic_dispatch: true],
-            allow: [Task, {File, only: [read: 1]}],
-            deny: [Host.Repo, Host.HTTP]
+            allow: [{Host.Code, except: [remove: 1]}],
+            deny: [Host.HTTP]
           ]
         ]
 
-  Applied to the default in this order:
+  Then give one to a token, with `beamlet tokens.create laptop
+  --policy explorer` or on the consent page when a chat client
+  connects. A token with no policy named gets `default`.
 
-  - `tools` replaces the default's list when given. An empty list is
-    accepted.
-  - `rules` merges: a rule given overrides, a rule absent stays
-    strict, an unknown rule fails the boot.
-  - `allow` replaces the module's entry wholesale, the default's
-    included, so `allow: [Kernel]` re-enables `apply`. `only:` and
-    `except:` are relative to the module's full surface.
-  - `deny` removes the module's entry. It applies after `allow`, so
-    a module in both is denied. Denying a module nothing grants is a
-    no-op.
+  A policy keeps an agent to what you meant it to do. It is a
+  guardrail, not a sandbox: code set on escaping it may succeed.
 
-  Every module named must be loadable on the beamlet and every
-  function under `only:` or `except:` must exist at that arity, so a
-  typo fails the boot rather than granting nothing. A module named
-  twice in one key is an error. Agent-defined modules are granted by
-  existence and never need an `allow`. Policy names follow the token
-  name rule, lowercase letters, digits, underscores and hyphens;
-  `default` is reserved.
+  ## Keys
 
-  Tools and grants are independent: a policy with `tools: [:eval]`
-  cannot define or patch modules but can still remove them through
-  `Host.Code.remove/1`, since the default grants `Host.Code` whole.
-  A token that should not tear modules down gets
-  `allow: [{Host.Code, except: [remove: 1]}]`.
+  Every policy starts from `default` and changes only what it names.
 
-  ## What a relaxed rule reaches
+    * `:tools` - The MCP tools the token gets: `:eval`, `:define` or
+      both. `:define` brings the `patch` tool with it. Replaces the
+      default's list, which has both.
 
-  The pool of defined modules is shared by every token, so a rule
-  relaxed for one policy is felt by all:
+    * `:rules` - Relaxes the rules on the code the token submits.
+      There are two, `allow_defmacro` and `allow_dynamic_dispatch`,
+      both off unless set to `true`.
 
-  - `allow_defmacro: true` lets the token define macros. A macro
-    expands inside whichever module uses it, under that author's
-    policy, so whatever this policy grants reaches every other token
-    through the macros it writes.
-  - `allow_dynamic_dispatch: true` lets call targets be computed
-    (`mod.fun()` with `mod` a variable), which the scanner cannot
-    resolve. The grants then stop meaning what they say for this
-    policy's code, since any loaded module is one variable away.
+    * `:allow` - Modules the token's code may call. A module alone
+      grants all of it. `{Mod, only: [fun: 1]}` grants just the
+      functions listed, and `{Mod, except: [fun: 1]}` all but those.
+      An entry replaces whatever the default grants for that module,
+      so `allow: [Kernel]` brings back `apply/2` and the rest the
+      default holds back.
 
-  Give either to a token you would trust with the whole beamlet.
+    * `:deny` - Modules the token's code may not call at all. A
+      module in both `allow` and `deny` is denied.
+
+  Tools and grants are separate. Without the `except`, `explorer`
+  above could not define modules but could still delete them with
+  `Host.Code.remove/1`.
+
+  Modules agents define need no `allow`. Every token can call them,
+  whichever token defined them.
+
+  ## Applying and reading
+
+  Every module and function a policy names must exist, so a typo
+  stops the boot instead of granting nothing. A change takes a
+  restart. A policy in the data dir's `config.exs` replaces any
+  policy of the same name declared elsewhere
+  (`Beamlet.Config.Provider`).
+
+  `beamlet policies.show explorer` prints what a policy allows. Agent
+  code reads its own with `Host.Code.print_policy/0`.
+
+  > #### Relaxed rules reach every token {: .warning}
+  >
+  > `allow_defmacro` lets the token write macros. A macro writes code
+  > into every module that uses it, so other tokens end up running
+  > code this token wrote.
+  >
+  > `allow_dynamic_dispatch` lets code compute what it calls, as in
+  > `mod.fun()` with `mod` a variable. Beamlet cannot check such a
+  > call, so any module is within reach. Other tokens reach it too,
+  > through the modules this token defines.
+  >
+  > Give either only to a token you would trust with the whole
+  > beamlet.
   """
 
   alias Beamlet.Policy.Default
@@ -430,7 +435,7 @@ defmodule Beamlet.Policy do
         "(none)"
 
       granted ->
-        case tool_list(default()) -- granted do
+        case tool_list(%__MODULE__{tools: @tools}) -- granted do
           [] -> Enum.join(granted, ", ")
           withheld -> "#{Enum.join(granted, ", ")} (not granted: #{Enum.join(withheld, ", ")})"
         end

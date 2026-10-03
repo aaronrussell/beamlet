@@ -253,4 +253,13 @@ defmodule Beamlet.Policy.DefaultTest do
   defp documented?(module) do
     match?({:docs_v1, _, _, _, %{}, _, _}, Code.fetch_docs(module))
   end
+
+  describe "the moduledoc" do
+    test "shows the policy as an agent reads it" do
+      {:docs_v1, _anno, _language, _format, %{"en" => doc}, _meta, _docs} =
+        Code.fetch_docs(Default)
+
+      assert doc =~ Policy.render(Policy.default())
+    end
+  end
 end

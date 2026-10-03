@@ -1,34 +1,25 @@
 defmodule Beamlet.Token do
   @moduledoc """
-  A token: the owner's delegation to one client, of one of two kinds,
-  carrying the policy its requests run under.
+  The credential one client uses to reach your beamlet.
 
-  A `cli` token is minted with `beamlet tokens.create` and named
-  there; the name is unique across the beamlet and is lowercase
-  letters, digits, underscores and hyphens, since it lands in a git
-  trailer and author, and `beamlet` is reserved for what the beamlet
-  records on its own behalf. It never expires and is
-  revoked by deleting it. This is how the owner's own code connects.
+  A token is one of two kinds:
 
-  An `oauth` token is minted by the token endpoint after a person
-  consents in a chat client. `client` holds the client id URL verbatim,
-  the identity the redirect was verified against; a client document's
-  display name is never stored, since anyone can host a document that
-  says "ChatGPT". It carries `expires_at`, and a refresh secret with
-  its own expiry that the client redeems for a new pair.
+    * `cli` - Named, and created with `beamlet tokens.create` or
+      `Beamlet.Tokens.create/1`. It never expires and lasts until you
+      delete it.
 
-  The kind is a column rather than a reading of which fields are
-  null. `label/1` is the display form of either kind, the name or the
-  client URL's host, and is what the principal and the provenance
-  trailers carry.
+    * `oauth` - Created when a chat client connects and you consent.
+      It is known by the client's URL, and it expires and refreshes
+      as `Beamlet.OAuth` describes.
 
-  The secrets are random, shown once when the token is created and
-  stored only as hashes. `secret` and `refresh_secret` are virtual
-  fields: they carry the values on the struct
-  `Beamlet.Tokens.create/1` returns and are nil on every token loaded
-  afterwards. The policy must be one the beamlet declares
-  (`Beamlet.Policy`); a token has `default` when it names none.
-  Rows are managed through `Beamlet.Tokens`.
+  Each token has a policy, `default` unless another was named.
+
+  The secret is set only on the struct that creating the token
+  returns. The beamlet keeps just a hash, so `secret` is `nil` on
+  every token loaded afterwards, and a lost secret means a new token.
+
+  `label/1` is the name the beamlet shows for a token: a `cli`
+  token's name, or an `oauth` token's client host.
   """
 
   use Ecto.Schema
@@ -52,7 +43,12 @@ defmodule Beamlet.Token do
   @typedoc "A token's kind: `cli`, minted from the command line, or `oauth`, minted at consent."
   @type kind :: :cli | :oauth
 
-  @typedoc "A stored token; the secrets are set only on the struct returned by create."
+  @typedoc """
+  A token as stored.
+
+  The secrets are set only on the struct `Beamlet.Tokens.create/1`
+  returns.
+  """
   @type t :: %__MODULE__{
           id: pos_integer() | nil,
           kind: kind(),
@@ -70,9 +66,11 @@ defmodule Beamlet.Token do
         }
 
   @doc """
-  Changeset for creating or updating a `cli` token: name and policy.
-  The name is unique across the beamlet, the policy must be declared
-  on the beamlet, and the hash is set by the store, never cast.
+  Changeset for creating or updating a `cli` token.
+
+  It casts the name and policy. The name must be unique on the
+  beamlet and the policy one it declares. The hash is set by
+  `Beamlet.Tokens`, never cast.
   """
   @spec cli_changeset(t(), map()) :: Ecto.Changeset.t()
   def cli_changeset(token, attrs) do
@@ -87,9 +85,10 @@ defmodule Beamlet.Token do
   end
 
   @doc """
-  Changeset for creating an `oauth` token: the client id, the policy
-  chosen at consent, and both expiries. The hashes are set by the
-  store, never cast.
+  Changeset for creating an `oauth` token.
+
+  It casts the client id, the policy chosen at consent and both
+  expiries. The hashes are set by `Beamlet.Tokens`, never cast.
   """
   @spec oauth_changeset(t(), map()) :: Ecto.Changeset.t()
   def oauth_changeset(token, attrs) do
@@ -101,9 +100,10 @@ defmodule Beamlet.Token do
   end
 
   @doc """
-  Changeset for refreshing an `oauth` token: both expiries anew. The
-  client and policy stay as consented, and the hashes are set by the
-  store.
+  Changeset for refreshing an `oauth` token.
+
+  It casts both expiries. The client and policy stay as consented,
+  and the hashes are set by `Beamlet.Tokens`.
   """
   @spec rotate_changeset(t(), map()) :: Ecto.Changeset.t()
   def rotate_changeset(%__MODULE__{kind: :oauth} = token, attrs) do

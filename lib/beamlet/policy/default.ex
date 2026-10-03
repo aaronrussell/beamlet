@@ -5,9 +5,9 @@ defmodule Beamlet.Policy.Default do
   # the teaching copy for a refusal in Beamlet.Policy.Signage. The
   # coverage test in default_test.exs proves every documented platform
   # module is either granted or recorded as not granted, and the golden
-  # fixture pins the composed table. The moduledoc below is rendered
-  # from the data at compile time, so the printed record cannot drift
-  # from it.
+  # fixture pins the composed table. The moduledoc below embeds the
+  # policy as an agent reads it, rendered from the data at compile
+  # time.
 
   # ── Grants ────────────────────────────────────────────────────────
 
@@ -450,144 +450,37 @@ defmodule Beamlet.Policy.Default do
 
   # ── The rendered record ───────────────────────────────────────────
 
-  @join_names fn modules ->
-    modules |> Enum.map(&inspect/1) |> Enum.sort() |> Enum.join(", ")
-  end
-
-  @join_fas fn fas ->
-    fas |> Enum.sort() |> Enum.map_join(", ", fn {fun, arity} -> "#{fun}/#{arity}" end)
-  end
-
-  @join_partials fn table, join_fas ->
-    table
-    |> Enum.filter(fn {_mod, entry} -> entry != :all end)
-    |> Enum.sort_by(fn {mod, _entry} -> inspect(mod) end)
-    |> Enum.map_join("\n", fn
-      {mod, {:only, fas}} -> "  * `#{inspect(mod)}`: only #{join_fas.(fas)}"
-      {mod, {:except, fas}} -> "  * `#{inspect(mod)}`: all except #{join_fas.(fas)}"
-    end)
-  end
-
-  @rendered_not_granted Enum.map_join(@not_granted, "\n", fn {reason, modules} ->
-                          "  * #{reason}:\n    #{@join_names.(modules)}"
-                        end)
-
+  # Rendered from the curated table rather than grants/0, which this
+  # module cannot call while it compiles. The packages add only whole
+  # grants, which the rendering never lists, so the text is the same.
   @moduledoc """
-  The policy Beamlet ships: every name-based ruling of the curation
-  pass, as data.
+  The policy Beamlet ships, which every token starts from.
 
-  `default` is what a token runs under when it names no policy and
-  the base every declared policy builds on (`Beamlet.Policy`). This
-  module is deliberately logic-free: `Beamlet.Policy` composes and
-  enforces the rulings, the coverage test proves every documented
-  platform module is either granted here or recorded as not granted,
-  and the golden fixture pins the composed table. Everything below
-  this paragraph is rendered from the data at compile time and cannot
-  drift from it.
+  `default` grants everyday Elixir, a few Erlang modules, the Phoenix
+  and Ecto modules agents build pages and data with, and the `Host.*`
+  stdlib. It leaves out what reaches past the beamlet directly: the
+  filesystem, processes, the environment and loading code. Agent code
+  does those through `Host.*` instead. To change any of it, declare a
+  policy (`Beamlet.Policy`).
 
-  ## Granted: Elixir
+  ## The policy
 
-  #{@join_names.(for {mod, :all} <- @elixir, do: mod)}
+  This is `default` as an agent reads it with
+  `Host.Code.print_policy/0`, and as
+  `beamlet policies.show default` prints it.
 
-  Partial grants:
-
-  #{@join_partials.(@elixir, @join_fas)}
-
-  Exception structs (granted as a family, derived by their
-  `__exception__` marker; inert data, and rescuing `File.Error`
-  does not grant `File`):
-
-  #{@join_names.(@elixir_exceptions)}
-
-  ## Granted: Erlang
-
-  Gap-filling only: where an Elixir module covers the same ground,
-  the Erlang module is not granted.
-
-  #{@join_names.(for {mod, :all} <- @erlang, do: mod)}
-
-  #{@join_partials.(@erlang, @join_fas)}
-
-  ## Granted: web
-
-  The route-authoring surface: curated grants for the modules agents
-  write LiveViews and controllers against, never the whole Phoenix
-  family, whose remaining modules stay denied by default without
-  enumeration.
-
-  #{@join_names.(for {mod, :all} <- @web, do: mod)}
-
-  Partial grants:
-
-  #{@join_partials.(@web, @join_fas)}
-
-  ## Granted: data
-
-  The data-authoring surface: the Ecto modules agents write schemas,
-  changesets, queries and migrations against. `Ecto.Repo` is not
-  among them; `Host.Repo` is the one repo agent code reaches.
-
-  #{@join_names.(for {mod, :all} <- @data, do: mod)}
-
-  Partial grants:
-
-  #{@join_partials.(@data, @join_fas)}
-
-  Ecto's exception structs, granted as a family like Elixir's:
-
-  #{@join_names.(@data_exceptions)}
-
-  ## Granted: HTTP
-
-  What `Host.HTTP` returns and raises. Req itself is not granted:
-  `Host.HTTP` is where the outbound guard and the refusal of options
-  that bypass it live, and a request made through Req directly would
-  pass neither.
-
-  #{@join_names.(Map.keys(@http))}
-
-  Req's exception structs, granted as a family:
-
-  #{@join_names.(@http_exceptions)}
-
-  ## Granted: host stdlib
-
-  Each `Host.*` module joins here as it lands.
-
-  #{@join_names.(Map.keys(@host))}
-
-  Partial grants:
-
-  #{@join_partials.(@host, @join_fas)}
-
-  ## Granted: packages
-
-  Expanded to per-module entries when the table is built, `@moduledoc
-  false` modules excluded:
-
-  #{@join_names.(@package_names)}
-
-  ## Not granted
-
-  Denied by absence; the reason is recorded for the walk record only.
-  The few refusals that carry teaching copy are what
-  `Beamlet.Policy.render/1` lists.
-
-  #{@rendered_not_granted}
+  ```text
+  #{Beamlet.Policy.render(%Beamlet.Policy{name: "default", grants: @granted})}
+  ```
   """
 
   alias Beamlet.Policy
 
   @doc """
-  The default's grants: the curated table plus every shipped package
-  expanded into per-module entries.
+  The default's grant table, with each package expanded into its
+  modules.
 
-  Expansion runs when called, against whatever the beamlet has
-  loaded, and excludes modules marked `@moduledoc false`: the policy
-  gates only agent-written code, so granting a package's internals
-  buys nothing but an invitation past its author's public line.
-  Modules with no moduledoc at all stay granted, since an undocumented
-  package must still expand.
+  A package's modules marked `@moduledoc false` are left out.
   """
   @spec grants() :: Policy.grants()
   def grants do
@@ -601,20 +494,17 @@ defmodule Beamlet.Policy.Default do
   def packages, do: @package_names
 
   @doc """
-  The framework modules: the curated web and data authoring surface,
-  granted module by module because the rest of their applications is
-  machinery. Discovery lists them apart from the packages granted
-  whole.
+  The Phoenix and Ecto modules granted one by one, as listed under
+  web and data.
   """
   @spec framework_modules() :: [module()]
   def framework_modules, do: Map.keys(@web) ++ Map.keys(@data)
 
   @doc """
-  The recorded non-grants: reason copy and the modules it covers.
+  The modules left out on purpose, grouped by reason.
 
-  Nothing at runtime consults it, since absence from the grants is
-  denial; it is the curation record the coverage check reads to prove
-  every documented platform module has a ruling.
+  Nothing at runtime reads it. A module is denied by being absent
+  from the grants.
   """
   @spec not_granted() :: [{String.t(), [module()]}]
   def not_granted, do: @not_granted

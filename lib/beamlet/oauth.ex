@@ -1,32 +1,27 @@
 defmodule Beamlet.OAuth do
   @moduledoc """
-  The facts a beamlet publishes about itself as an OAuth server: its
-  issuer, the resource it protects, and the two metadata documents a
-  client reads before it connects.
+  How chat clients connect to your beamlet with OAuth.
 
-  A beamlet plays both OAuth roles at one origin. As the resource
-  server it protects `/beamlet/mcp` and, on a request with no token,
-  names the protected resource metadata document in the 401
-  challenge. As the authorization server it publishes its endpoints
-  in the authorization server metadata document. Both documents are
-  served at the well-known paths the specs fix at the root.
+  You give the client your beamlet's MCP URL, such as
+  `https://beamlet.example/beamlet/mcp`. The client sends you to your
+  beamlet, where you sign in and choose a policy. That is the whole
+  setup: there is no client to register and no secret to copy. The
+  home page has the steps for each client. Clients without OAuth use
+  a token from `beamlet tokens.create` instead.
 
-  Every URL here is built from the endpoint's `url` config at request
-  time, the way `Host.Router.url/1` builds an agent's, so a beamlet
-  reached at `https://beamlet.example` protects
-  `https://beamlet.example/beamlet/mcp` and nothing needs configuring
-  twice.
+  The client receives an access token that lives for a day, and
+  refreshes it when it runs out. Each refresh keeps the connection
+  for another thirty days, so a client you use at least once a month
+  never asks you to sign in again.
 
-  The flow: a client identifies itself by an https URL that serves
-  its metadata document, which the beamlet fetches and checks.
-  `GET /beamlet/authorize` validates the request, sends a signed-out
-  person to the login, and shows the consent page, where the policy
-  is chosen; consenting stores a short-lived code and sends the
-  browser back to the client. `POST /beamlet/token` redeems the code
-  for an `oauth` token (`Beamlet.Token`) and later a refresh token
-  for a new pair. The lifetimes are `access_ttl/0` and
-  `refresh_ttl/0`, and every refresh sets both afresh, so a client in
-  regular use never asks the person to consent again.
+  `beamlet tokens` lists these tokens by the client's host. To cut a
+  client off, or to change its policy, delete its token and connect
+  again.
+
+  Every OAuth URL is built from the address your beamlet is reached
+  at: `BEAMLET_URL` on the standalone server, or the endpoint's `url`
+  config when embedded. If that address is wrong, clients cannot
+  connect.
   """
 
   alias Beamlet.Config
