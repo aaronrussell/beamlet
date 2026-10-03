@@ -1,26 +1,23 @@
 defmodule Beamlet.MixProject do
   use Mix.Project
 
+  @version "0.1.0-rc.1"
+  @source_url "https://github.com/aaronrussell/beamlet"
+
   def project do
     [
       app: :beamlet,
-      version: "0.1.0-rc.1",
+      name: "Beamlet",
+      version: @version,
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      docs: docs(),
+      package: pkg()
     ]
   end
-
-  def cli do
-    [
-      preferred_envs: [precommit: :test]
-    ]
-  end
-
-  defp elixirc_paths(:test), do: ["lib", "test/support"]
-  defp elixirc_paths(_), do: ["lib"]
 
   # Run "mix help compile.app" to learn about applications.
   def application do
@@ -29,25 +26,9 @@ defmodule Beamlet.MixProject do
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
-  defp deps do
+  def cli do
     [
-      {:anubis_mcp, "~> 2.0"},
-      {:ecto_sql, "~> 3.14"},
-      {:ecto_sqlite3, "~> 0.24"},
-      {:exqlite, "~> 0.41"},
-      {:inet_cidr, "~> 1.0"},
-      {:jason, "~> 1.4"},
-      {:lazy_html, "~> 0.1", only: :test},
-      {:pbkdf2_elixir, "~> 2.3"},
-      {:phoenix, "~> 1.8"},
-      {:phoenix_html, "~> 4.3"},
-      {:phoenix_live_view, "~> 1.2"},
-      {:phoenix_pubsub, "~> 2.1"},
-      {:plug, "~> 1.20"},
-      {:req, "~> 0.6"},
-      {:req_ssrf, "~> 0.2"},
-      {:tailwind, "~> 0.5", only: [:dev, :test], runtime: false}
+      preferred_envs: [precommit: :test]
     ]
   end
 
@@ -70,6 +51,61 @@ defmodule Beamlet.MixProject do
         "format",
         "test"
       ]
+    ]
+  end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
+  # Run "mix help deps" to learn about dependencies.
+  defp deps do
+    [
+      {:anubis_mcp, "~> 2.0"},
+      {:ecto_sql, "~> 3.14"},
+      {:ecto_sqlite3, "~> 0.24"},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false, warn_if_outdated: true},
+      {:exqlite, "~> 0.41"},
+      {:inet_cidr, "~> 1.0"},
+      {:jason, "~> 1.4"},
+      {:lazy_html, "~> 0.1", only: :test},
+      {:pbkdf2_elixir, "~> 2.3"},
+      {:phoenix, "~> 1.8"},
+      {:phoenix_html, "~> 4.3"},
+      {:phoenix_live_view, "~> 1.2"},
+      {:phoenix_pubsub, "~> 2.1"},
+      {:plug, "~> 1.20"},
+      {:req, "~> 0.6"},
+      {:req_ssrf, "~> 0.2"},
+      {:tailwind, "~> 0.5", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp pkg do
+    [
+      description: "TODO",
+      licenses: ["Apache-2.0"],
+      maintainers: ["Aaron Russell"],
+      files: ~w(lib priv/repo priv/static .formatter.exs mix.exs CHANGELOG.md LICENSE README.md),
+      links: %{
+        "GitHub" => @source_url
+      }
+    ]
+  end
+
+  defp docs do
+    [
+      main: "Beamlet",
+      source_url: @source_url,
+      source_ref: "v#{@version}",
+      homepage_url: @source_url,
+      extras: ["CHANGELOG.md"],
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
+      groups_for_modules: [
+        MCP: ~r/^Beamlet\.MCP/,
+        OAuth: ~r/^Beamlet\.OAuth/,
+        "Host Stdlib": ~r/^Host\./
+      ],
+      groups_for_docs: []
     ]
   end
 end
