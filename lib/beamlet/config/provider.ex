@@ -61,9 +61,24 @@ defmodule Beamlet.Config.Provider do
     file = Config.Provider.resolve_config_path!(path)
 
     if File.regular?(file) do
-      Config.Reader.merge(config, read!(file))
+      merge(config, read!(file))
     else
       config
+    end
+  end
+
+  # A policy the file names replaces that policy whole, rather than
+  # merging rule by rule with the one before it. Policies that are not
+  # a keyword list are left to Beamlet.Config.validate!/0 to report.
+  defp merge(config, file_config) do
+    merged = Config.Reader.merge(config, file_config)
+    before = get_in(config, [:beamlet, :policies]) || []
+    file_policies = get_in(file_config, [:beamlet, :policies])
+
+    if Keyword.keyword?(before) and Keyword.keyword?(file_policies) do
+      put_in(merged, [:beamlet, :policies], Keyword.merge(before, file_policies))
+    else
+      merged
     end
   end
 

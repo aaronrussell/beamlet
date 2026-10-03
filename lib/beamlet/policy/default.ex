@@ -13,14 +13,14 @@ defmodule Beamlet.Policy.Default do
 
   # Partial grants carry their slice rationale: Function.capture
   # builds funs from names (dynamic dispatch); List and String lose
-  # their atom constructors, which turn data into module names; IO
-  # is granted for output only (device-directed IO reaches arbitrary
-  # processes); Macro keeps its string helpers, which name tables and files from
-  # module names, and loses everything that builds or expands code;
-  # Path is pure string manipulation, safe because Host.File re-checks
-  # every path it receives, except wildcard, which touches the real
-  # filesystem; System keeps its clock/VM introspection and loses
-  # shell, env, and lifecycle control.
+  # their atom constructors, which turn data into module names; IO is
+  # granted for output only (device-directed IO reaches arbitrary
+  # processes); Macro keeps its string helpers, which name tables and
+  # files from module names, and loses everything that builds or
+  # expands code; Path is pure string manipulation, safe because
+  # Host.File re-checks every path it receives, except wildcard, which
+  # touches the real filesystem; System keeps its clock/VM
+  # introspection and loses shell, env, and lifecycle control.
   @elixir %{
     Access => :all,
     Atom => :all,
@@ -254,8 +254,8 @@ defmodule Beamlet.Policy.Default do
   # controls (put_dynamic_repo redirects every call to any running
   # repo by name, the system repo included; start_link, stop and
   # disconnect_all touch the pool). Raw SQL is granted: the agent
-  # database is the agent's to break, and the one statement that
-  # reached past it, ATTACH DATABASE, is refused by the SQLite
+  # database is the agent's to break, and the statements that reach
+  # past it, ATTACH DATABASE and VACUUM INTO, are refused by the SQLite
   # authorizer on every connection (Host.Repo.init/2).
   @host %{
     Host.Code => :all,

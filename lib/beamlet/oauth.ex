@@ -42,7 +42,7 @@ defmodule Beamlet.OAuth do
   @spec refresh_ttl() :: pos_integer()
   def refresh_ttl, do: @refresh_ttl
 
-  @doc "Both expiries counted from now, as the attrs minting and rotation take."
+  @doc false
   @spec expiries() :: %{expires_at: DateTime.t(), refresh_expires_at: DateTime.t()}
   def expiries do
     now = DateTime.utc_now(:second)
@@ -53,11 +53,10 @@ defmodule Beamlet.OAuth do
     }
   end
 
-  @doc """
-  A request parameter as the endpoints read it: the value when it is a
-  non-empty string, nil otherwise, so a missing, empty or malformed
-  parameter is one case.
-  """
+  # A request parameter as the endpoints read it: the value when it is
+  # a non-empty string, nil otherwise, so a missing, empty or malformed
+  # parameter is one case.
+  @doc false
   @spec present(term()) :: String.t() | nil
   def present(value) when is_binary(value) and value != "", do: value
   def present(_other), do: nil

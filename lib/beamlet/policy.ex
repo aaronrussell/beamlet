@@ -152,25 +152,23 @@ defmodule Beamlet.Policy do
     end
   end
 
-  @doc """
-  The policy with every module in `modules` granted whole.
-
-  The other half of the effective grants: modules defined on the
-  beamlet are granted by existence, so the runtimes merge the defined
-  set in before every scan, and `define`
-  and `patch` grant the modules of one call to each other the same
-  way.
-  """
+  # The policy with every module in `modules` granted whole. The other
+  # half of the effective grants: modules defined on the beamlet are
+  # granted by existence, so the runtimes merge the defined set in
+  # before every scan, and `define` and `patch` grant the modules of
+  # one call to each other the same way.
+  @doc false
   @spec grant(t(), [module()]) :: t()
   def grant(%__MODULE__{grants: grants} = policy, modules) do
     %{policy | grants: Map.merge(grants, Map.new(modules, &{&1, :all}))}
   end
 
-  @doc "Whether the module is granted at all (structs, require, use)."
+  # Whether the module is granted at all, for structs, require and use.
+  @doc false
   @spec allowed?(t(), module()) :: boolean()
   def allowed?(%__MODULE__{grants: grants}, module), do: Map.has_key?(grants, module)
 
-  @doc "Whether the function is granted under the module's entry."
+  @doc false
   @spec allowed?(t(), module(), atom(), arity()) :: boolean()
   def allowed?(%__MODULE__{grants: grants}, module, fun, arity) do
     case grants do
@@ -181,7 +179,7 @@ defmodule Beamlet.Policy do
     end
   end
 
-  @doc "The module's entry, or `:error` when the module is denied."
+  @doc false
   @spec fetch(t(), module()) :: {:ok, entry()} | :error
   def fetch(%__MODULE__{grants: grants}, module), do: Map.fetch(grants, module)
 

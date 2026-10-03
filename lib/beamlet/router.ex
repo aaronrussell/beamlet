@@ -96,6 +96,7 @@ defmodule Beamlet.Router do
   import Phoenix.LiveView.Router
   import Beamlet.Web.Auth, only: [fetch_current_user: 2, require_auth: 2]
 
+  @doc false
   pipeline :browser do
     plug :accepts, ["html"]
     plug Plug.Session, Beamlet.Web.Auth.session_options()
@@ -107,6 +108,7 @@ defmodule Beamlet.Router do
     plug :fetch_current_user
   end
 
+  @doc false
   pipeline :auth do
     plug :require_auth
   end

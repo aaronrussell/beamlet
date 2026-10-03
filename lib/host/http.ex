@@ -17,8 +17,9 @@ defmodule Host.HTTP do
         {:error, exception} -> {:error, Exception.message(exception)}
       end
 
-  To stream a large body, pass an `into` function. It receives each
-  chunk and returns `{:cont, acc}` to go on or `{:halt, acc}` to stop:
+  To stream a large body, pass an `into` function; `into: :self` is
+  refused. The function receives each chunk and returns
+  `{:cont, acc}` to go on or `{:halt, acc}` to stop:
 
       Host.HTTP.get!(url,
         into: fn {:data, chunk}, acc ->

@@ -70,6 +70,37 @@ defmodule Beamlet.Config.ProviderTest do
              ]
     end
 
+    test "a policy the file names replaces that policy whole", %{config_file: file} do
+      File.write!(file, """
+      import Config
+      config :beamlet, policies: [explorer: [tools: [:eval]]]
+      """)
+
+      config = [
+        beamlet: [
+          policies: [
+            reader: [tools: []],
+            explorer: [tools: [:eval, :define], rules: [allow_dynamic_dispatch: true]]
+          ]
+        ]
+      ]
+
+      assert Provider.load(config, file) == [
+               beamlet: [policies: [reader: [tools: []], explorer: [tools: [:eval]]]]
+             ]
+    end
+
+    test "leaves policies that are not a keyword list for validation", %{config_file: file} do
+      File.write!(file, """
+      import Config
+      config :beamlet, policies: :explorer
+      """)
+
+      config = [beamlet: [policies: [reader: [tools: []]]]]
+
+      assert Provider.load(config, file) == [beamlet: [policies: :explorer]]
+    end
+
     test "resolves a path from an environment variable", %{dir: dir, config_file: file} do
       File.write!(file, "import Config\nconfig :beamlet, eval: [timeout: 5]\n")
       variable = "BEAMLET_PROVIDER_TEST_#{System.unique_integer([:positive])}"

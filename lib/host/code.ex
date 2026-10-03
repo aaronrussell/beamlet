@@ -8,11 +8,10 @@ defmodule Host.Code do
   `:ok`. A failure raises with a teaching message, like any other
   error, and everything printed before it survives.
 
-  Explore with `eval`, then build with `define` and edit with
-  `patch`: anything worth calling again belongs in a module. Each
-  `eval` starts clean, so
-  read what exists first. Other agents and clients share the same
-  pool of modules, and this is how you see its current state. A
+  Explore with `eval`, then build with `define` and edit with `patch`:
+  anything worth calling again belongs in a module. Each `eval` starts
+  clean, so read what exists first. Other agents and clients share the
+  same pool of modules, and this is how you see its current state. A
   defined module is read whole with `print_source/1`, or in pieces:
   `print_outline/1` for its shape, then `print_source/2` and
   `print_source/3` for one function or a range of lines.
@@ -36,10 +35,10 @@ defmodule Host.Code do
   with `define`, the `Host.*` modules your beamlet provides, the
   framework modules you write pages and data against, and the
   libraries it ships. Standard Elixir and Erlang are not listed; they
-  are available unless your policy says otherwise
-  (`print_policy/0`). Migrations and routes have listings of their
-  own, `Host.Migrator.print_migrations/0` and
-  `Host.Router.print_routes/0`, which the footer points at.
+  are available unless your policy says otherwise (`print_policy/0`).
+  Migrations and routes have listings of their own,
+  `Host.Migrator.print_migrations/0` and `Host.Router.print_routes/0`,
+  which the footer points at.
   """
   @spec print_modules() :: :ok
   def print_modules, do: print(Discovery.list(policy!(:print_modules)))
@@ -97,13 +96,12 @@ defmodule Host.Code do
   One row per item, e.g. `10-17  def total/1 (2 clauses)`: a
   function's row covers all its clauses and the `@doc`, `@spec`,
   `@impl`, `attr` and `slot` directly above them, which is exactly
-  what a `patch` `select` touches; a type's row covers its
-  `@typedoc`. `use`, `import`, `alias`, `defstruct` and
-  any other top-level form show by their first line. The moduledoc
-  and attributes holding values have no row, so a gap between rows
-  is one of those: read it by line range. Read the outline first,
-  then the piece you need with `print_source/2` or `print_source/3`.
-  Serves defined modules only.
+  what a `patch` `select` touches; a type's row covers its `@typedoc`.
+  `use`, `import`, `alias`, `defstruct` and any other top-level form
+  show by their first line. The moduledoc and attributes holding
+  values have no row, so a gap between rows is one of those: read it
+  by line range. Read the outline first, then the piece you need with
+  `print_source/2` or `print_source/3`. Serves defined modules only.
   """
   @spec print_outline(module()) :: :ok
   def print_outline(module) when is_atom(module) do
@@ -132,9 +130,9 @@ defmodule Host.Code do
   of its lines, e.g. `print_source(Shopping.List, :total)` or
   `print_source(Shopping.List, 40..80)`.
 
-  A function prints as its whole block, all clauses and the docs
-  above them, exactly as stored, so text copied from it is what a
-  `patch` `find` matches. A range is inclusive and counts from line 1, as
+  A function prints as its whole block, all clauses and the docs above
+  them, exactly as stored, so text copied from it is what a `patch`
+  `find` matches. A range is inclusive and counts from line 1, as
   `print_outline/1` shows; an end past the last line prints to the
   end.
   """

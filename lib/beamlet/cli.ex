@@ -1,16 +1,38 @@
 defmodule Beamlet.CLI do
+  @commands [
+    {"setup", "", "set the owner's email and password", []},
+    {"tokens", "", "list tokens", []},
+    {"tokens.create", "NAME [--policy POLICY]", "create a CLI token, printing its secret once",
+     [policy: :keep]},
+    {"tokens.update", "ID [--name NEW_NAME] [--policy POLICY]",
+     "rename a CLI token or change its policy", [name: :string, policy: :keep]},
+    {"tokens.delete", "ID", "delete a token", []},
+    {"policies", "", "list policies", []},
+    {"policies.show", "POLICY", "show what a policy permits", []},
+    {"reset", "", "wipe everything agents built: agent database, code, files", []}
+  ]
+
+  @command_table Enum.map_join(@commands, "\n", fn {command, args, description, _switches} ->
+                   "  #{String.trim("#{command} #{args}")}\n      #{description}"
+                 end)
+
+  @usage """
+  Usage: beamlet COMMAND [ARGS]
+
+  Set up the owner and manage tokens and policies on your beamlet.
+  Token names are lowercase letters, digits, underscores and hyphens;
+  tokens are addressed by the id `beamlet tokens` prints.
+
+  #{@command_table}
+  """
+
   @moduledoc """
   The command line for setting up the owner and managing tokens and
   policies on your beamlet.
 
-      beamlet setup                                 set the owner's email and password
-      beamlet tokens                                list tokens
-      beamlet tokens.create NAME [--policy POLICY]  create a CLI token
-      beamlet tokens.update ID [--name NEW_NAME] [--policy POLICY]
-      beamlet tokens.delete ID                      delete a token
-      beamlet policies                              list policies
-      beamlet policies.show POLICY                  show what a policy permits
-      beamlet reset                                 wipe everything agents built
+  ```text
+  #{@command_table}
+  ```
 
   `setup` is the same command on every run. It asks for the owner's
   email, offering the current one, then a password twice; a blank
@@ -61,29 +83,6 @@ defmodule Beamlet.CLI do
   alias Beamlet.Token
   alias Beamlet.Tokens
   alias Beamlet.User
-
-  @commands [
-    {"setup", "", "set the owner's email and password", []},
-    {"tokens", "", "list tokens", []},
-    {"tokens.create", "NAME [--policy POLICY]", "create a CLI token, printing its secret once",
-     [policy: :keep]},
-    {"tokens.update", "ID [--name NEW_NAME] [--policy POLICY]",
-     "rename a CLI token or change its policy", [name: :string, policy: :keep]},
-    {"tokens.delete", "ID", "delete a token", []},
-    {"policies", "", "list policies", []},
-    {"policies.show", "POLICY", "show what a policy permits", []},
-    {"reset", "", "wipe everything agents built: agent database, code, files", []}
-  ]
-
-  @usage """
-  Usage: beamlet COMMAND [ARGS]
-
-  Set up the owner and manage tokens and policies on your beamlet.
-  Token names are lowercase letters, digits, underscores and hyphens;
-  tokens are addressed by the id `beamlet tokens` prints.
-
-  #{Enum.map_join(@commands, "\n", fn {command, args, description, _switches} -> "  #{String.trim("#{command} #{args}")}\n      #{description}" end)}
-  """
 
   @doc """
   Runs one command from its arguments, printing the outcome.

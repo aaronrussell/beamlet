@@ -45,11 +45,13 @@ defmodule Host.Router do
   @type verb :: :get | :post | :put | :patch | :delete
 
   @doc """
-  Mounts a LiveView page at `path`, e.g. `live("/todos", Todo.PageLive)`.
+  Mounts a LiveView page at `path`, e.g.
+  `live("/todos", Todo.PageLive)`.
 
-  Prints the route and the URL it is served at. The module must be a LiveView (`use Host.Web, :live_view`). An
-  optional live action arrives as `socket.assigns.live_action`, not
-  in the mount params, so one LiveView can serve several paths:
+  Prints the route and the URL it is served at. The module must be a
+  LiveView (`use Host.Web, :live_view`). An optional live action
+  arrives as `socket.assigns.live_action`, not in the mount params, so
+  one LiveView can serve several paths:
   `live("/todos/new", Todo.PageLive, :new)`.
   """
   @spec live(String.t(), module(), atom() | nil) :: :ok
@@ -70,18 +72,21 @@ defmodule Host.Router do
   end
 
   @doc """
-  Mounts a controller action for GET at `path`, e.g. `get("/report", Report.Api, :show)`.
+  Mounts a controller action for GET at `path`, e.g.
+  `get("/report", Report.Api, :show)`.
 
-  The action is called as `show(conn, params)`; the route and its
-  URL are printed. Controller routes answer JSON/webhook-style requests: no session,
-  no CSRF, so external services can call them directly. The module
-  must be a Phoenix controller (`use Host.Web, :controller`).
+  The action is called as `show(conn, params)`; the route and its URL
+  are printed. Controller routes answer JSON/webhook-style requests:
+  no session, no CSRF, so external services can call them directly.
+  The module must be a Phoenix controller
+  (`use Host.Web, :controller`).
   """
   @spec get(String.t(), module(), atom()) :: :ok
   def get(path, module, action), do: mount_action(:get, path, module, action)
 
   @doc """
-  Mounts a controller action for POST at `path`, e.g. `post("/hooks/github", Hooks.Github, :create)`.
+  Mounts a controller action for POST at `path`, e.g.
+  `post("/hooks/github", Hooks.Github, :create)`.
 
   Prints the route and its URL, the one external services should
   call. See `get/3` for what a controller route is.
@@ -191,12 +196,13 @@ defmodule Host.Router do
   end
 
   @doc """
-  Calls a mounted route and returns its response, e.g. `call(:get, "/todos")`.
+  Calls a mounted route and returns its response, e.g.
+  `call(:get, "/todos")`.
 
-  Or `call(:post, "/hooks/github", %{"action" => "opened"})`.
-  `path` is the path you mounted. `data` is a map or a string: on
-  GET a map becomes the query string; on other verbs a map is sent
-  as a JSON body and a string as the raw body. Pass
+  Or `call(:post, "/hooks/github", %{"action" => "opened"})`. `path`
+  is the path you mounted. `data` is a map or a string: on GET a map
+  becomes the query string; on other verbs a map is sent as a JSON
+  body and a string as the raw body. Pass
   `headers: [{"x-hub-signature", sig}]` to add request headers.
 
   Returns `%{status: 201, headers: %{"content-type" => ...}, body: ...}`.
