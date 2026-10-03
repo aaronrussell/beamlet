@@ -3,21 +3,21 @@ defmodule Beamlet.Web.Auth do
   The web sign-in: who the browser is, kept in the app's own session.
 
   The one person who signs in is the owner (`Beamlet.Owner`), and a
-  signed-in browser is their user on a request with no token
-  and no policy, since a browser authors no code.
+  signed-in browser is their user on a request with no token and no
+  policy, since a browser authors no code.
 
   The app keeps a cookie of its own, apart from the endpoint's session
   that agent pages use: `session_options/0`, scoped to `/beamlet` and
   unreadable by page scripts. `Beamlet.Router` plugs it into its
   browser pipeline, and the app's LiveView socket at
   `/beamlet/app/live` decodes it. The session holds the secret of a
-  session row in the system database, and every request
-  turns it back into the user through
-  `Beamlet.Owner.authenticate_session/1`. Nothing agent code can write
-  signs anyone in: an agent page's session is a different cookie, and
-  a cookie forged with the endpoint's `secret_key_base` still needs a
-  secret that matches a row. A new email keeps the owner signed in; a
-  new password signs every browser out.
+  session row in the system database, and every request turns it back
+  into the user through `Beamlet.Owner.authenticate_session/1`.
+  Nothing agent code can write signs anyone in: an agent page's
+  session is a different cookie, and a cookie forged with the
+  endpoint's `secret_key_base` still needs a secret that matches a
+  row. A new email keeps the owner signed in; a new password signs
+  every browser out.
 
   Two plugs for `Beamlet.Router`'s browser pipeline:
   `fetch_current_user/2` assigns `:current_user`, nil when nobody is
@@ -36,9 +36,9 @@ defmodule Beamlet.Web.Auth do
   `log_in/2` and `log_out/1` are what the session controller calls:
   the first creates a session, the second deletes it, and both renew
   the cookie so a sign-in never keeps one handed out before it. A
-  sign-out also disconnects the app's LiveViews on that session, so
-  a page open in another tab goes to the login rather than acting on
-  a session that is gone. A new password set from the command line
+  sign-out also disconnects the app's LiveViews on that session, so a
+  page open in another tab goes to the login rather than acting on a
+  session that is gone. A new password set from the command line
   disconnects nothing, since the command runs in a VM of its own: an
   open page keeps its socket until it reconnects, and is sent to the
   login then.
