@@ -815,6 +815,89 @@ defmodule Beamlet.CodeTest do
       assert {:error, message} = Code.remove([kinds], ctx.principal)
       assert message =~ "cannot remove #{ns}.Kinds — #{ns}.Order calls all/0"
     end
+
+    defp basket(ns, body) do
+      """
+      defmodule #{ns}.Basket do
+        @moduledoc "A basket."
+        @doc "A sample."
+        def sample, do: #{body}
+      end
+      """
+    end
+
+    test "a struct of an embed is a compile-time edge to its owner", ctx do
+      ns = unique_namespace()
+      order = Module.concat([ns, Order])
+      purge_on_exit([order, Module.concat([ns, Order, Item]), Module.concat([ns, Basket])])
+      assert {:ok, _summary} = define(order(ns), ctx.principal)
+      assert {:ok, _summary} = define(basket(ns, ~s(%#{ns}.Order.Item{name: "x"})), ctx.principal)
+
+      renamed = String.replace(order(ns), "field :name", "field :title")
+      renamed = String.replace(renamed, "{name: name}", "{title: name}")
+
+      assert {:error, message} = quiet(fn -> define(renamed, ctx.principal, replace: true) end)
+      assert message =~ "replacing #{ns}.Order broke its dependent #{ns}.Basket"
+
+      assert {:error, message} = Code.remove([order], ctx.principal)
+      assert message =~ "cannot remove #{ns}.Order — #{ns}.Basket depends on it at compile time"
+    end
+
+    test "an edge to an embed defined in the same call holds, and survives a restart", ctx do
+      ns = unique_namespace()
+      order = Module.concat([ns, Order])
+      purge_on_exit([order, Module.concat([ns, Order, Item]), Module.concat([ns, Basket])])
+
+      # The attribute waits for the embed to load, so the struct after
+      # it is traced against a loaded module no one has named.
+      basket = """
+      defmodule #{ns}.Basket do
+        @moduledoc "A basket."
+        @fields #{ns}.Order.Item.__schema__(:fields)
+
+        @doc "A sample."
+        def sample, do: {@fields, %#{ns}.Order.Item{name: "x"}}
+      end
+      """
+
+      assert {:ok, _summary} = define([order(ns), basket], ctx.principal)
+
+      refusal =
+        "cannot remove #{ns}.Order — #{ns}.Basket calls #{ns}.Order.Item.__schema__/1 " <>
+          "and depends on it at compile time."
+
+      assert {:error, message} = Code.remove([order], ctx.principal)
+      assert message =~ refusal
+
+      quiet(fn -> restart_code_server() end)
+      assert {:error, message} = Code.remove([order], ctx.principal)
+      assert message =~ refusal
+    end
+
+    test "a call to an embed is a call to its owner's module", ctx do
+      ns = unique_namespace()
+      order = Module.concat([ns, Order])
+      purge_on_exit([order, Module.concat([ns, Order, Item]), Module.concat([ns, Basket])])
+      assert {:ok, _summary} = define(order(ns), ctx.principal)
+
+      assert {:ok, _summary} =
+               define(basket(ns, "#{ns}.Order.Item.__schema__(:fields)"), ctx.principal)
+
+      assert {:error, message} = Code.remove([order], ctx.principal)
+
+      assert message =~
+               "cannot remove #{ns}.Order — #{ns}.Basket calls #{ns}.Order.Item.__schema__/1"
+
+      assert {:ok, summary} = define(order(ns), ctx.principal, replace: true)
+      assert summary =~ "Note: called at runtime by #{ns}.Basket (#{ns}.Order.Item.__schema__/1)"
+
+      dropped = order(ns, "Entry")
+      assert {:error, message} = define(dropped, ctx.principal, replace: true)
+
+      assert message =~
+               "replacing #{ns}.Order broke its caller #{ns}.Basket — #{ns}.Basket calls " <>
+                 "#{ns}.Order.Item.__schema__/1, which the replacement no longer defines"
+    end
   end
 
   describe "runtime call records" do

@@ -179,6 +179,24 @@ defmodule Beamlet.OAuth.TokenControllerTest do
              |> assert_error("invalid_grant") =~ "resource"
     end
 
+    test "a code for a policy no longer declared is invalid_grant and mints nothing" do
+      verifier = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+      code =
+        Beamlet.OAuth.Codes.store(%{
+          policy: "retired",
+          client_id: @client_id,
+          redirect_uri: @redirect_uri,
+          code_challenge: Base.url_encode64(:crypto.hash(:sha256, verifier), padding: false),
+          resource: @resource,
+          scope: nil
+        })
+
+      before = Tokens.list()
+      assert code |> exchange(verifier) |> assert_error("invalid_grant") =~ "no longer declared"
+      assert Tokens.list() == before
+    end
+
     test "missing fields are invalid_request naming them", %{conn: conn} do
       {code, _verifier} = authorize(conn)
       conn = token_request(%{grant_type: "authorization_code", code: code})

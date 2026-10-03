@@ -2,7 +2,7 @@
 
 **Status:** The work agreed, anchored to versions, in order. Each step gets a planning pass that pins its spec before implementation. What is settled lives in `design.md`. Beamlet is beta until 1.0; a 0.x minor may change any surface and says so in the changelog.
 
-**Last updated:** 2026-10-02 (the pre-release review fixed under step 12; its leftovers under steps 13 and 14 and in Deferred)
+**Last updated:** 2026-10-03 (orphaned compile workers, found by the step 13 test review, deferred)
 
 ---
 
@@ -77,6 +77,16 @@ Suspicions from the pre-release review (2026-10-02), unreproduced, each with a r
 - A failure past the commit point in `Beamlet.Code.commit/2`, such as a `File.rename!` on a full disk, raises in the server after some files have moved, so the restart boots a partial define.
 - `Host.Migrator.migrate/0` prints "Applied" when `Ecto.Migrator.up/4` answers `:already_up`, as two evals migrating at once would.
 - `Host.Router.unmount/2` deletes the rows before regenerating, so when regeneration fails the routes stay served until the next one, though the rows are gone and the error says they were unmounted.
+
+Orphaned compile workers (2026-10-03), confirmed by the step 13 test review and deferred because nothing in normal use triggers it. A define compiles in a task under `Beamlet.TaskSupervisor`, and the parallel compiler inside it runs each module body in a worker it monitors rather than links. When the task dies, the `{:exit, reason}` branch of `Beamlet.Code.compile/3`, the server rolls back and replies "nothing was changed", but the workers run on, and `stop/1` cannot reach them because it finds them through the dead task's monitors. The orphan then does one of two things. It finishes its module, loads it, and blocks forever in `elixir_module:make_module_available/3` waiting for the dead compiler's ack: a leaked process and a module loaded that is not defined. Or it fails, and the `catch` in `elixir_module:compile/7` purges and deletes the module, which on a replace is the previous version the rollback has just restored: the module is gone from the VM until the next boot, its source and beam intact. The task dying takes a bug in the compiler or a kill from outside; agent code cannot reach the compiler's process under the default policy. Timeout and cancel go through `stop/1`, which does kill the workers, except one spawned between its `Process.info(pid, :monitors)` and `Task.shutdown`, a window of microseconds at a moment the compiler has usually spawned them all. The fix, about 20 to 40 lines replacing how `stop/1` finds the workers, then killing and awaiting them on every failure path before the rollback: either each worker records its pid from the tracer, which runs in every compiling process, leaving a race for a worker that has not traced yet; or the failure path scans processes for `:elixir_compiler_info` naming the task, with no race but leaning on a private key of Elixir's. Either way the rollback must also unload modules a killed worker had already loaded, which the dead task's `each_module` callback never recorded. Two tests come back with it, in `code_test.exs` under `define/3`. The seam is a module body that kills its own compile:
+
+```elixir
+{compiler, _worker} = :erlang.get(:elixir_compiler_info)
+send(:crash_probe, {:worker, self()})
+Process.exit(compiler, :kill)
+```
+
+with the test registered as `:crash_probe` and the entries handed to `Beamlet.Code.define/3` unscanned. Each test awaits the worker's `DOWN` before looking. A new module: the reply is `{:error, "define failed (:killed) — nothing was changed"}`, and no file is under `lib/`, nothing is defined or loaded, and the server is alive. A replace of a module defining `version/0` as 1 with one defining it as 2 after the kill: the same reply, `version()` still 1, the file unchanged. Today the first fails on the loaded module and the leaked worker, the second on the module being gone, six runs of six.
 
 Protocols, maybe (2026-09-30). Full support for agent-defined protocols and for agent implementations of library ones (`defprotocol`, `defimpl`, `@derive`), all refused by the scanner today. An agent's own protocol is the easy half: compiled at runtime it is never consolidated, so it dispatches dynamically and its implementations would work as loaded. Implementing a library protocol is the hard half, because Mix consolidates protocols at build into a fixed list of implementations and one loaded later is never dispatched to. Two routes, the choice open:
 

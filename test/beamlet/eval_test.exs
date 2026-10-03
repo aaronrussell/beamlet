@@ -57,6 +57,24 @@ defmodule Beamlet.EvalTest do
       assert String.ends_with?(output, "\n=> :ok")
       assert byte_size(output) < 33_000
     end
+
+    # Every shape of output request reaches the device, not only the
+    # one IO.puts makes: latin-1 bytes, an io_lib format the device
+    # calls back, and chardata it cannot translate.
+    @tag policies: [printer: [allow: [IO, :io]]]
+    test "takes every kind of output request" do
+      {:ok, token} = Tokens.create(name: "printer", policy: "printer")
+      principal = principal(token)
+
+      assert {:ok, "café\n\n=> :ok"} =
+               Eval.run(~s|IO.binwrite(<<"caf", 0xE9, "\\n">>)|, principal)
+
+      assert {:ok, "1 + 1 = 2\n\n=> :ok"} =
+               Eval.run(~s|:io.format("~p + ~p = ~p~n", [1, 1, 2])|, principal)
+
+      code = ~s|try do IO.write([:bad]) rescue ArgumentError -> IO.puts("still printing") end|
+      assert {:ok, "still printing\n\n=> :ok"} = Eval.run(code, principal)
+    end
   end
 
   describe "errors" do

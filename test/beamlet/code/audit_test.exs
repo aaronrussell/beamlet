@@ -210,6 +210,41 @@ defmodule Beamlet.Code.AuditTest do
     end
   end
 
+  describe "a code dir that has lost its repo" do
+    @describetag :tmp_dir
+
+    # The code dir nests inside a repo of its own, as the test data dir
+    # nests inside the project's, and its .git goes after boot.
+    setup %{tmp_dir: tmp_dir} do
+      outer = Path.join(tmp_dir, "outer")
+      File.mkdir_p!(outer)
+      git!(outer, ["init", "-q", "-b", "main"])
+      git!(outer, ~w(-c user.name=t -c user.email=t@t commit -q --allow-empty -m outer))
+
+      code_dir = Path.join(outer, "data/code")
+      :ok = Supervisor.terminate_child(Beamlet, Code)
+      start_supervised!({Code, code_dir: code_dir})
+      File.rm_rf!(Path.join(code_dir, ".git"))
+      %{outer: outer, outer_head: git!(outer, ["rev-parse", "HEAD"])}
+    end
+
+    test "a define lands, logs the lost history, and commits nowhere else", ctx do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, Orphan])])
+      source = "defmodule #{ns}.Orphan do\n  @moduledoc \"No history.\"\nend\n"
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, _summary} = Code.define([entry(source)], ctx.principal)
+        end)
+
+      assert log =~ "code audit: git commit failed, history not recorded"
+      assert Code.defined() == [Module.concat([ns, Orphan])]
+      assert git!(ctx.outer, ["rev-parse", "HEAD"]) == ctx.outer_head
+      assert git!(ctx.outer, ["diff", "--cached", "--name-only"]) == ""
+    end
+  end
+
   describe "without git" do
     @describetag :tmp_dir
 

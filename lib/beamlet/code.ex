@@ -56,7 +56,8 @@ defmodule Beamlet.Code do
   code dir's contents were either scanned on the way in or
   hand-edited by the operator, who is trusted.
 
-  The dependency map has two halves, both between defined modules.
+  The dependency map has two halves, both between defined modules,
+  where a generated module counts as its owner on either end.
   Compile-time edges, from structs, macros, imports and requires,
   drive replace's dependent recompiles. Runtime call records, caller
   to callee function and arity, drive remove's refusal and replace's
@@ -436,10 +437,7 @@ defmodule Beamlet.Code do
   end
 
   defp compile(state, run, caller_ref) do
-    ctx = %{
-      roots: MapSet.new(run.files),
-      defined: MapSet.union(known_module_names(state), MapSet.new(run.entry_modules))
-    }
+    ctx = %{roots: MapSet.new(run.files), defined: known_in_run(state, run), ebin: ebin(state)}
 
     outcome =
       with_compiler_env(ctx, fn ->
@@ -487,9 +485,10 @@ defmodule Beamlet.Code do
     with :ok <- check_grouped(warnings, run.locators),
          :ok <- check_kinds(run.entries) do
       owners = compile_owners(state, run.entry_modules)
-      calls = merge_calls(state, run.entry_modules ++ run.dependents, owners)
+      known = known_in_run(state, run)
+      calls = merge_calls(state, run.entry_modules ++ run.dependents, owners, known)
 
-      case broken_callers(calls, run.replaced) do
+      case broken_callers(calls, run.replaced, Map.merge(state.generated, owners)) do
         [] -> :ok
         breaks -> {:error, render_broken_callers(breaks)}
       end
@@ -862,7 +861,7 @@ defmodule Beamlet.Code do
     state = committed_state(state, run, compiled)
     publish(state)
     audit(state, run, diffs)
-    {:ok, summary(run, state.calls, diffs), state}
+    {:ok, summary(run, state, diffs), state}
   end
 
   # What a replace did to the module's functions, read before the
@@ -900,6 +899,7 @@ defmodule Beamlet.Code do
       end)
 
     owners = compile_owners(state, run.entry_modules)
+    known = known_in_run(state, run)
 
     compiled_mods =
       for {:compiled, mod, _file, _binary} <- compiled, not Map.has_key?(owners, mod), do: mod
@@ -912,8 +912,8 @@ defmodule Beamlet.Code do
     %{
       state
       | modules: modules,
-        deps: merge_deps(state, compiled_mods, owners),
-        calls: merge_calls(state, compiled_mods, owners),
+        deps: merge_deps(state, compiled_mods, owners, known),
+        calls: merge_calls(state, compiled_mods, owners, known),
         generated: replace_generated(state, compiled_mods, owners),
         quarantined: quarantined
     }
@@ -968,7 +968,7 @@ defmodule Beamlet.Code do
   # A replace and a patch say what they did to the module's
   # functions, since a function lost in a re-emission is otherwise
   # lost silently.
-  defp summary(run, calls, diffs) do
+  defp summary(run, state, diffs) do
     lines =
       Enum.flat_map(run.entry_modules, fn mod ->
         head = head(run, mod)
@@ -988,7 +988,7 @@ defmodule Beamlet.Code do
           lines ++ ["Recompiled dependents: #{Enum.map_join(dependents, ", ", &inspect/1)}"]
       end
 
-    caller_lines = runtime_caller_lines(calls, run.replaced, run.entry_modules)
+    caller_lines = runtime_caller_lines(state, run.replaced, run.entry_modules)
     Enum.join(lines ++ caller_lines, "\n")
   end
 
@@ -996,14 +996,15 @@ defmodule Beamlet.Code do
   # their calls resolve at runtime, so the summary names them and
   # what they call, as fact: whether the replacement still suits them
   # is the agent's judgment.
-  defp runtime_caller_lines(calls, replaced, entry_modules) do
+  defp runtime_caller_lines(state, replaced, entry_modules) do
     callers =
-      for {caller, targets} <- calls,
+      for {caller, targets} <- state.calls,
           caller not in entry_modules,
           {callee, fas} <- targets,
-          callee in replaced,
+          owner = owner(state.generated, callee),
+          owner in replaced,
           fa <- fas,
-          do: {caller, fa}
+          do: {caller, render_call(owner, callee, fa)}
 
     case callers do
       [] ->
@@ -1015,42 +1016,48 @@ defmodule Beamlet.Code do
           |> Enum.group_by(fn {caller, _fa} -> caller end, fn {_caller, fa} -> fa end)
           |> Enum.sort_by(fn {caller, _fas} -> inspect(caller) end)
           |> Enum.map_join(", ", fn {caller, fas} ->
-            fas = fas |> Enum.uniq() |> Enum.sort() |> Enum.map_join(", ", &render_fa/1)
-            "#{inspect(caller)} (#{fas})"
+            "#{inspect(caller)} (#{fas |> Enum.uniq() |> Enum.sort() |> Enum.join(", ")})"
           end)
 
         ["Note: called at runtime by #{rendered}"]
     end
   end
 
-  defp broken_callers(calls, replaced) do
+  # A call to a generated module is a call into its owner's file, so
+  # it breaks when the owner is replaced and the module or function
+  # goes.
+  defp broken_callers(calls, replaced, generated) do
     for {caller, targets} <- calls,
         {callee, fas} <- targets,
-        callee in replaced,
+        owner = owner(generated, callee),
+        owner in replaced,
         {f, a} <- fas,
         not function_exported?(callee, f, a),
-        do: {caller, callee, f, a}
+        do: {caller, owner, callee, f, a}
   end
 
   defp render_broken_callers(breaks) do
     breaks
-    |> Enum.group_by(fn {caller, callee, _f, _a} -> {caller, callee} end, fn {_c, _r, f, a} ->
-      {f, a}
+    |> Enum.group_by(fn {caller, owner, _callee, _f, _a} -> {caller, owner} end, fn
+      {_caller, _owner, callee, f, a} -> {callee, f, a}
     end)
-    |> Enum.sort_by(fn {{caller, callee}, _fas} -> {inspect(callee), inspect(caller)} end)
-    |> Enum.map_join("\n", fn {{caller, callee}, fas} ->
+    |> Enum.sort_by(fn {{caller, owner}, _calls} -> {inspect(owner), inspect(caller)} end)
+    |> Enum.map_join("\n", fn {{caller, owner}, calls} ->
       calls =
-        fas
+        calls
         |> Enum.sort()
-        |> Enum.map_join(", ", fn {f, a} -> "#{inspect(callee)}.#{f}/#{a}" end)
+        |> Enum.map_join(", ", fn {callee, f, a} -> "#{inspect(callee)}.#{f}/#{a}" end)
 
-      "replacing #{inspect(callee)} broke its caller #{inspect(caller)} — " <>
+      "replacing #{inspect(owner)} broke its caller #{inspect(caller)} — " <>
         "#{inspect(caller)} calls #{calls}, which the replacement no longer defines. " <>
         "Nothing was changed. Update #{inspect(caller)} in the same call, or keep #{calls}."
     end)
   end
 
-  defp render_fa({f, a}), do: "#{f}/#{a}"
+  # A call into the module itself reads as its function; one into a
+  # module it generates names that module.
+  defp render_call(owner, owner, {f, a}), do: "#{f}/#{a}"
+  defp render_call(_owner, callee, {f, a}), do: "#{inspect(callee)}.#{f}/#{a}"
 
   # A replaced module whose previous source lives at another path, a
   # quarantined hand edit or an odd hand-made layout, must lose that
@@ -1338,21 +1345,26 @@ defmodule Beamlet.Code do
       |> Enum.sort_by(&inspect/1)
       |> Enum.flat_map(fn mod ->
         compile? = target in Map.get(state.deps, mod, [])
-        fas = state.calls |> Map.get(mod, %{}) |> Map.get(target)
+
+        calls =
+          for {callee, fas} <- Map.get(state.calls, mod, %{}),
+              owner(state.generated, callee) == target,
+              fa <- fas,
+              do: render_call(target, callee, fa)
 
         uses =
-          case {fas, compile?} do
-            {nil, false} ->
+          case {Enum.sort(calls), compile?} do
+            {[], false} ->
               nil
 
-            {nil, true} ->
+            {[], true} ->
               "depends on it at compile time"
 
-            {fas, false} ->
-              "calls #{Enum.map_join(fas, ", ", &render_fa/1)}"
+            {calls, false} ->
+              "calls #{Enum.join(calls, ", ")}"
 
-            {fas, true} ->
-              "calls #{Enum.map_join(fas, ", ", &render_fa/1)} and depends on it at compile time"
+            {calls, true} ->
+              "calls #{Enum.join(calls, ", ")} and depends on it at compile time"
           end
 
         if uses, do: ["#{inspect(mod)} #{uses}"], else: []
@@ -1439,7 +1451,7 @@ defmodule Beamlet.Code do
       (file_modules |> Map.values() |> List.flatten()) ++
         Enum.flat_map(quarantined, & &1.modules)
 
-    ctx = %{roots: MapSet.new(files), defined: MapSet.new(defined)}
+    ctx = %{roots: MapSet.new(files), defined: MapSet.new(defined), ebin: ebin(state)}
 
     result =
       with_compiler_env(ctx, fn ->
@@ -1515,11 +1527,12 @@ defmodule Beamlet.Code do
 
     owners = generated_owners(&Map.has_key?(modules, &1))
     state = %{state | modules: modules, generated: owners}
+    known = MapSet.new(Map.keys(modules) ++ Enum.flat_map(quarantined, & &1.modules))
 
     %{
       state
-      | deps: merge_deps(%{state | deps: %{}}, Map.keys(modules), owners),
-        calls: merge_calls(%{state | calls: %{}}, Map.keys(modules), owners),
+      | deps: merge_deps(%{state | deps: %{}}, Map.keys(modules), owners, known),
+        calls: merge_calls(%{state | calls: %{}}, Map.keys(modules), owners, known),
         quarantined: Enum.reverse(quarantined)
     }
   end
@@ -1589,7 +1602,7 @@ defmodule Beamlet.Code do
   # An empty root set keeps the tracer out of it: nothing in a derived
   # artifact is an edge between defined modules.
   defp run_compile_artifact(source, file) do
-    ctx = %{roots: MapSet.new(), defined: MapSet.new()}
+    ctx = %{roots: MapSet.new(), defined: MapSet.new(), ebin: []}
     quoted = source.()
     {:ok, with_compiler_env(ctx, fn -> Code.compile_quoted(quoted, file) end)}
   rescue
@@ -1629,27 +1642,42 @@ defmodule Beamlet.Code do
 
   # A generated module's edges and calls are its owner's: it compiles
   # from the owner's file, so recompiling that file is what refreshes
-  # it.
-  defp merge_deps(state, compiled_mods, owners) do
+  # it. As a target it stands for its owner too, since replacing or
+  # removing the owner is what changes it: an edge goes to the owner,
+  # and a call keeps the module it names, read through its owner. The
+  # tracer records more than it keeps (Beamlet.Code.Tracer), so a
+  # record survives only when its target resolves to a defined module.
+  defp merge_deps(state, compiled_mods, owners, known) do
+    generated = Map.merge(state.generated, owners)
+
     by_source =
       __MODULE__
       |> :ets.match_object({:edge, :_, :_})
-      |> Enum.map(fn {:edge, source, target} -> {Map.get(owners, source, source), target} end)
-      |> Enum.reject(fn {source, target} -> source == target end)
+      |> Enum.map(fn {:edge, source, target} ->
+        {owner(generated, source), owner(generated, target)}
+      end)
+      |> Enum.filter(fn {source, target} ->
+        source != target and MapSet.member?(known, target)
+      end)
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
     new_deps = Map.new(compiled_mods, fn mod -> {mod, Enum.uniq(Map.get(by_source, mod, []))} end)
     Map.merge(state.deps, new_deps)
   end
 
-  defp merge_calls(state, compiled_mods, owners) do
+  defp merge_calls(state, compiled_mods, owners, known) do
+    generated = Map.merge(state.generated, owners)
+
     by_source =
       __MODULE__
       |> :ets.match_object({:call, :_, :_, :_, :_})
       |> Enum.map(fn {:call, source, target, f, a} ->
-        {Map.get(owners, source, source), target, {f, a}}
+        {owner(generated, source), target, {f, a}}
       end)
-      |> Enum.reject(fn {source, target, _fa} -> source == target end)
+      |> Enum.filter(fn {source, target, _fa} ->
+        owner = owner(generated, target)
+        source != owner and MapSet.member?(known, owner)
+      end)
       |> Enum.group_by(&elem(&1, 0))
 
     new_calls =
@@ -1708,6 +1736,8 @@ defmodule Beamlet.Code do
     state.generated |> Map.drop(stale) |> Map.merge(owners)
   end
 
+  defp owner(generated, mod), do: Map.get(generated, mod, mod)
+
   defp with_generated(state, modules) do
     modules ++ for {mod, owner} <- state.generated, owner in modules, do: mod
   end
@@ -1732,6 +1762,10 @@ defmodule Beamlet.Code do
   defp known_module_names(state) do
     quarantined = Enum.flat_map(state.quarantined, & &1.modules)
     MapSet.new(Map.keys(state.modules) ++ quarantined)
+  end
+
+  defp known_in_run(state, run) do
+    MapSet.union(known_module_names(state), MapSet.new(run.entry_modules))
   end
 
   # Sources
@@ -1784,6 +1818,8 @@ defmodule Beamlet.Code do
   defp clear_staging(state), do: File.rm_rf!(state.staging_dir)
 
   defp beam_path(state, mod), do: Path.join(state.ebin_dir, "#{mod}.beam")
+
+  defp ebin(state), do: String.to_charlist(state.ebin_dir <> "/")
 
   defp relative(state, file), do: Path.relative_to(file, state.code_dir)
 end

@@ -10,8 +10,15 @@ defmodule Beamlet.Code.Tracer do
   # context in the code server's table rather than in any process:
   # which files belong to the compile in flight, so other compiles in
   # the VM pass through untouched, and which module names count as
-  # defined, so only edges between defined modules are recorded. It
-  # is a no-op unless a context is installed.
+  # defined. It is a no-op unless a context is installed.
+  #
+  # The records are between defined modules, but the modules a
+  # compile generates, an inline embed among them, are known only once
+  # it has run. So a target outside the defined set is recorded too
+  # when it is not loaded yet, as a module still compiling may not be,
+  # or was loaded from the code dir's ebin, which only the code
+  # server's own compiles and restores load from; the server drops
+  # what does not resolve to a defined module when it merges.
   #
   # Two kinds of record land in the table, both scoped to defined
   # modules. Compile-time edges, from struct expansions, remote and
@@ -25,7 +32,7 @@ defmodule Beamlet.Code.Tracer do
 
   @table Beamlet.Code
 
-  @type ctx :: %{roots: MapSet.t(Path.t()), defined: MapSet.t(module())}
+  @type ctx :: %{roots: MapSet.t(Path.t()), defined: MapSet.t(module()), ebin: charlist()}
 
   @spec install(ctx()) :: [module()]
   def install(ctx) do
@@ -89,6 +96,15 @@ defmodule Beamlet.Code.Tracer do
   end
 
   defp records?(ctx, env, module) do
-    env.module != nil and module != env.module and MapSet.member?(ctx.defined, module)
+    env.module != nil and module != env.module and
+      (MapSet.member?(ctx.defined, module) or not :erlang.module_loaded(module) or
+         compiled_here?(ctx, module))
+  end
+
+  defp compiled_here?(ctx, module) do
+    case :code.is_loaded(module) do
+      {:file, path} when is_list(path) -> :lists.prefix(ctx.ebin, path)
+      _other -> false
+    end
   end
 end

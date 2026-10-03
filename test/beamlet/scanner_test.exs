@@ -147,6 +147,7 @@ defmodule Beamlet.ScannerTest do
                "spawn/1 is not permitted by your policy — process primitives"
 
       assert scan_error("send(self(), :hi)") =~ "send/2 is not permitted"
+      assert scan_error("&spawn/1") =~ "spawn/1 is not permitted by your policy"
     end
 
     test "pipes are checked at their effective arity" do
@@ -346,6 +347,18 @@ defmodule Beamlet.ScannerTest do
 
       assert message =~ "define Outer.Inner as its own top-level defmodule"
       assert message =~ "nested module definitions are not permitted"
+    end
+
+    test "the qualified Kernel.defmodule spelling is refused like the bare one" do
+      assert scan_define_error("""
+             defmodule Outer do
+               @moduledoc "Outer."
+
+               Kernel.defmodule Inner do
+                 @moduledoc "Inner."
+               end
+             end
+             """) =~ "line 4: nested module definitions are not permitted"
     end
 
     test "a protocol beside the module is rejected" do
@@ -669,6 +682,16 @@ defmodule Beamlet.ScannerTest do
                @before_compile @mod
              end
              """) =~ "@before_compile target must be a literal module"
+    end
+
+    test "a hook tuple with a non-literal module is rejected" do
+      assert scan_define_error("""
+             defmodule Scan.Fixture.R2 do
+               @moduledoc "R2."
+               @mod File
+               @after_compile {@mod, :check}
+             end
+             """) =~ "line 4: @after_compile target must be a literal module"
     end
 
     test "@derive is refused: a runtime implementation of a consolidated protocol is never used" do
