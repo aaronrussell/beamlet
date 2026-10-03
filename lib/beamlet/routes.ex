@@ -217,8 +217,8 @@ defmodule Beamlet.Routes do
   Boot regeneration, as a synchronous child: any failure is logged
   and the beamlet boots serving the placeholder. An empty table and
   an empty loaded router already agree, so that case compiles
-  nothing, which is what keeps a test suite that boots a beamlet per
-  test from paying a router compile each time.
+  nothing: a fresh beamlet, or one with no routes mounted, boots
+  without paying for a router compile.
   """
   @spec boot() :: :ignore
   def boot do

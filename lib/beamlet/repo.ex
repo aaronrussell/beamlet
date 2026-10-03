@@ -6,9 +6,13 @@ defmodule Beamlet.Repo do
 
   Lives at `db/beamlet.db` under the data dir and is migrated at boot
   from this package's priv dir, so an embedding host never runs a
-  migration step for it. Adapter options go under
-  `config :beamlet, Beamlet.Repo`; the path is derived, not
-  configured.
+  migration step for it. Agent code never reaches it; what agents
+  build goes in the agent database, `Host.Repo`.
+
+  Adapter options go under its own key, as for any Ecto repo. The
+  path is derived from the data dir, never configured:
+
+      config :beamlet, Beamlet.Repo, pool_size: 5
   """
 
   use Ecto.Repo, otp_app: :beamlet, adapter: Ecto.Adapters.SQLite3

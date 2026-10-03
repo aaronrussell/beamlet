@@ -1,67 +1,4 @@
 defmodule Beamlet.CLI do
-  @moduledoc """
-  The command line for setting up the owner and managing tokens and
-  policies on your beamlet.
-
-      beamlet setup                                 set the owner's email and password
-      beamlet tokens                                list tokens
-      beamlet tokens.create NAME [--policy POLICY]  create a CLI token
-      beamlet tokens.update ID [--name NEW_NAME] [--policy POLICY]
-      beamlet tokens.delete ID                      delete a token
-      beamlet policies                              list policies
-      beamlet policies.show POLICY                  show what a policy permits
-      beamlet reset                                 wipe everything agents built
-
-  `setup` is the same command on every run. It asks for the owner's
-  email, offering the current one, then a password twice; a blank
-  password keeps the current one, and is refused on the first run,
-  when there is none to keep. It never asks for the old password:
-  whoever can run this command already has the shell, which outranks
-  it, and asking would leave a forgotten password unrecoverable. The
-  password is prompted for, never taken as an argument, so it stays
-  out of the shell history, and piped input answers one line per
-  prompt. A new password signs every browser out.
-
-  Tokens are addressed by the id the listing prints. The tokens
-  created here are `cli` tokens, named on the command line; `oauth`
-  tokens arrive when the owner connects a chat client and consents,
-  so they are listed and deleted here but never created or edited
-  (`Beamlet.Token`). A token runs under `default` unless `--policy`
-  names one of the policies declared in config (`Beamlet.Policy`).
-  Each command takes its own switches and refuses any other.
-
-  The commands are the public functions of `Beamlet.Owner`,
-  `Beamlet.Tokens` and the declared policies with plain text output, and
-  `main/1` is the whole surface: it takes the arguments as a list,
-  prints, and returns `:ok` or `:error`. In development `mix beamlet`
-  hands it the arguments; a release ships a `bin/beamlet` script that
-  does the same.
-
-  The commands need the policies and the system database, nothing an
-  agent reaches. When no beamlet is running in the VM, `main/1` starts
-  that half of one (`Beamlet.start_link/1` with `only: :system`), runs
-  the command and stops it again, so it works beside a beamlet running
-  in another VM or with none running at all. A beamlet running in the
-  same VM is used as it is.
-
-  `reset` is the exception: it starts nothing and deletes the unit
-  agents build, the agent database with the route table and key/value
-  store in it, the code dir with its git history and the files dir,
-  so the next boot starts from nothing. A reset that fails partway can
-  be run again. The owner, tokens, the operator config file and the
-  rest of the data dir are kept. It asks nothing and checks for no
-  running beamlet: a beamlet that is running keeps what it has loaded
-  until it restarts, so restart it right after.
-  """
-
-  alias Beamlet.Config
-  alias Beamlet.Owner
-  alias Beamlet.Policies
-  alias Beamlet.Policy
-  alias Beamlet.Token
-  alias Beamlet.Tokens
-  alias Beamlet.User
-
   @commands [
     {"setup", "", "set the owner's email and password", []},
     {"tokens", "", "list tokens", []},
@@ -84,6 +21,75 @@ defmodule Beamlet.CLI do
 
   #{Enum.map_join(@commands, "\n", fn {command, args, description, _switches} -> "  #{String.trim("#{command} #{args}")}\n      #{description}" end)}
   """
+
+  @moduledoc """
+  The command line for setting up the owner and managing tokens and
+  policies on your beamlet.
+
+  A release runs it as `beamlet`, a script beside the release's own
+  in `bin`; in development it is `mix beamlet` (`Mix.Tasks.Beamlet`).
+  `beamlet --help` prints the commands:
+
+  #{String.replace(@usage, ~r/^(?=.)/m, "    ")}
+  Each command takes its own switches and refuses any other.
+
+  ## Setup
+
+  `setup` is the same command on every run. It asks for the owner's
+  email, offering the current one, then a password twice; a blank
+  password keeps the current one, and is refused on the first run,
+  when there is none to keep. It never asks for the old password:
+  whoever can run this command already has the shell, which outranks
+  it, and asking would leave a forgotten password unrecoverable. The
+  password is prompted for, never taken as an argument, so it stays
+  out of the shell history, and piped input answers one line per
+  prompt. A new password signs every browser out.
+
+  ## Tokens and policies
+
+  The tokens created here are `cli` tokens, named on the command
+  line. `oauth` tokens arrive when the owner connects a chat client
+  and consents, so they are listed and deleted here but never created
+  or edited (`Beamlet.Token`). A token runs under `default` unless
+  `--policy` names one of the policies the beamlet declares;
+  `policies` lists them and `policies.show` prints what one permits,
+  as an agent under it reads it (`Beamlet.Policy`).
+
+  ## Reset
+
+  `reset` deletes the unit agents build: the agent database with the
+  route table and key/value store in it, the code dir with its git
+  history, and the files dir, so the next boot starts from nothing.
+  The owner, the tokens, the operator config file and the rest of the
+  data dir are kept. It asks nothing and checks for no running
+  beamlet: a beamlet that is running keeps what it has loaded until
+  it restarts, so restart it straight after. A reset that fails
+  partway can be run again.
+
+  ## Running beside a beamlet
+
+  The commands other than `reset` need the policies and the system
+  database, nothing an agent reaches. When no beamlet is running in
+  the VM, `main/1` starts that half of one (`Beamlet.start_link/1`
+  with `only: :system`), runs the command and stops it again, so it
+  works beside a beamlet running in another VM or with none running
+  at all. A beamlet running in the same VM is used as it is. `reset`
+  starts nothing.
+
+  The commands are `Beamlet.Owner`, `Beamlet.Tokens` and the declared
+  policies with plain text output, and `main/1` is the whole surface:
+  it takes the arguments as a list, prints, and returns `:ok` or
+  `:error`. An embedding host can call it, or the functions beneath
+  it, in place of the script.
+  """
+
+  alias Beamlet.Config
+  alias Beamlet.Owner
+  alias Beamlet.Policies
+  alias Beamlet.Policy
+  alias Beamlet.Token
+  alias Beamlet.Tokens
+  alias Beamlet.User
 
   @doc """
   Runs one command from its arguments, printing the outcome.

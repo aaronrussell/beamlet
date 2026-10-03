@@ -1,24 +1,31 @@
 defmodule Beamlet do
   @moduledoc """
-  A beamlet's supervision tree.
+  A beamlet's supervision tree, started by its host.
 
   Beamlet is a library, not an OTP application: nothing starts until
   a host adds `Beamlet` to its own supervision tree. The standalone
   server does this in its application module; an embedding host does
-  it wherever its boot ordering needs; a test does it with
-  `start_supervised!/1` and gets a fresh beamlet per test.
+  it wherever its boot ordering needs.
 
       children = [
         {Beamlet, []},
-        MyApp.Endpoint
+        MyAppWeb.Endpoint
       ]
 
+  > #### Embedding puts your application inside the boundary {: .warning}
+  >
+  > Agent code runs in the beamlet's own VM, which an embedding host
+  > shares. A policy is a guardrail on what a token's code calls, not
+  > containment, so treat any token as reaching whatever the VM
+  > holds: the host application's processes, its data and its
+  > secrets. Embed a beamlet only in an application whose every token
+  > holder you would trust with all of it.
+
   Configuration is application config (`Beamlet.Config`). Starting
-  checks the configured data dir exists, builds the declared policies
-  and loads the modules defined before, and fails
-  the boot loudly when the dir is missing, a policy is bad, git is
-  not installed or no endpoint is configured. One beamlet runs per
-  VM.
+  checks the configured data dir exists, builds the declared
+  policies and loads the modules defined before, and fails the boot
+  loudly when the dir is missing, a policy is bad, git is not
+  installed or no endpoint is configured. One beamlet runs per VM.
 
   The web surface, the pages and APIs agents build, is served by the
   host's own endpoint. The host names it in config, forwards to
@@ -39,8 +46,8 @@ defmodule Beamlet do
 
   `only: :system` starts the system half alone: the policies and the
   system database, migrated. Nothing an agent reaches, no agent
-  database and no MCP server. The operator CLI (`Beamlet.CLI`) uses it
-  to set up the owner and manage tokens in a VM with no beamlet
+  database and no MCP server. The command line (`Beamlet.CLI`) uses
+  it to set up the owner and manage tokens in a VM with no beamlet
   running:
 
       {:ok, pid} = Beamlet.start_link(only: :system)
