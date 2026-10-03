@@ -17,10 +17,24 @@ defmodule Beamlet.MCP.Server do
   listing is filtered per request; a policy change is a restart, so
   no list-changed notification is sent.
 
-  The instructions returned on `initialize` and each tool's
-  description are kept under 2,048 bytes: Claude Code truncates both
-  at 2KB, so they say what matters most first and point at the
-  stdlib for the rest.
+  ## What a client reads
+
+  A client receives the server's instructions on `initialize` and
+  each tool's description in the listing, all written for the model.
+  Each is kept under 2,048 bytes, since Claude Code truncates both at
+  2KB, so they say what matters most first and point at the stdlib
+  for the rest. Some clients drop the instructions altogether, so the
+  `eval` description carries the orientation too.
+
+  The descriptions state the limits in force, so read them on the
+  running beamlet. On the standalone server's release:
+
+      beamlet_server rpc 'IO.puts Beamlet.MCP.Server.server_instructions()'
+      beamlet_server rpc 'IO.puts Beamlet.MCP.Eval.description()'
+
+  `Beamlet.MCP.Define.description()` and
+  `Beamlet.MCP.Patch.description()` read the same way. In development,
+  the same calls work in `iex -S mix phx.server`.
   """
 
   @version Mix.Project.config()[:version]

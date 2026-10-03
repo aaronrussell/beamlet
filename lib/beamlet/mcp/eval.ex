@@ -30,9 +30,9 @@ defmodule Beamlet.MCP.Eval do
   - `max_heap_bytes` (128MB) protects the beamlet: a runaway
     allocation is stopped before it takes the VM down. Binaries the
     code holds count, however large.
-  - `max_output` (32KB) protects the model's context. Only the first
-    32KB printed is ever held, and a longer result is cut with a line
-    saying how much was shown of how much. The result or error after
+  - `max_output` (32KB) protects the model's context. Only that much
+    printed output is ever held, and a longer result is cut with a
+    line saying how much was shown of how much. The result or error after
     the output is kept whole when it fits, the output taking the room
     left, since that line is what the agent acts on. 32KB is under
     the point where Claude Code warns about a large tool result.
