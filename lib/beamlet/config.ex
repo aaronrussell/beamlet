@@ -143,8 +143,8 @@ defmodule Beamlet.Config do
   def files_dir, do: Path.join(data_dir(), "files")
 
   @doc """
-  The policies declared beside `default`, as a keyword list of name
-  to document (`Beamlet.Policy`). Empty when unset.
+  The policies declared beside `default`, empty when unset: a keyword
+  list of name to document (`Beamlet.Policy`).
   """
   @spec policies() :: keyword()
   def policies, do: Application.get_env(:beamlet, :policies, [])
@@ -173,12 +173,13 @@ defmodule Beamlet.Config do
   def mcp, do: limits(:mcp, @mcp_defaults)
 
   @doc """
-  The agent HTTP settings, merged over the defaults: `allow`, empty
-  by default, the hosts `Host.HTTP` reaches although they are on a
-  private or reserved network. A name entry matches a URL's host
-  exactly, ignoring case; an IP address or CIDR block matches a host
-  written as an address. A name that resolves into an allowed block
-  is still refused.
+  The agent HTTP settings, merged over the defaults: `allow`, empty by
+  default, the hosts `Host.HTTP` reaches although they are on a
+  private or reserved network.
+
+  A name entry matches a URL's host exactly, ignoring case; an IP
+  address or CIDR block matches a host written as an address. A name
+  that resolves into an allowed block is still refused.
   """
   @spec http() :: keyword()
   def http, do: limits(:http, @http_defaults)

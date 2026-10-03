@@ -564,8 +564,8 @@ defmodule Beamlet.Policy.Default do
 
   ## Granted: packages
 
-  Expanded to per-module entries when the table is built, `@moduledoc
-  false` modules excluded:
+  Expanded to per-module entries when the table is built, modules
+  marked `@moduledoc false` excluded:
 
   #{@join_names.(@package_names)}
 
@@ -606,8 +606,9 @@ defmodule Beamlet.Policy.Default do
   @doc """
   The framework modules: the curated web and data authoring surface,
   granted module by module because the rest of their applications is
-  machinery. Discovery lists them apart from the packages granted
-  whole.
+  machinery.
+
+  Discovery lists them apart from the packages granted whole.
   """
   @spec framework_modules() :: [module()]
   def framework_modules, do: Map.keys(@web) ++ Map.keys(@data)

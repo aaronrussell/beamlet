@@ -1,7 +1,8 @@
 defmodule Beamlet.Router do
   @moduledoc """
-  The router a host forwards to, and the one line that puts a beamlet
-  on the web:
+  The router a host forwards to, which puts a beamlet on the web.
+
+  One line in the host's router:
 
       forward "/", Beamlet.Router
 

@@ -104,7 +104,7 @@ defmodule Beamlet.Policy do
   @typedoc "A module's grant: everything, a closed list, or all but."
   @type entry :: :all | {:only, [fa()]} | {:except, [fa()]}
 
-  @typedoc "The grant table. Absence means denied."
+  @typedoc "The grant table, where absence means denied."
   @type grants :: %{module() => entry()}
 
   @typedoc "An MCP tool a policy may grant."

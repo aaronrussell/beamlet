@@ -8,11 +8,10 @@ defmodule Host.Code do
   `:ok`. A failure raises with a teaching message, like any other
   error, and everything printed before it survives.
 
-  Explore with `eval`, then build with `define` and edit with
-  `patch`: anything worth calling again belongs in a module. Each
-  `eval` starts clean, so
-  read what exists first. Other agents and clients share the same
-  pool of modules, and this is how you see its current state. A
+  Explore with `eval`, then build with `define` and edit with `patch`:
+  anything worth calling again belongs in a module. Each `eval` starts
+  clean, so read what exists first. Other agents and clients share the
+  same pool of modules, and this is how you see its current state. A
   defined module is read whole with `print_source/1`, or in pieces:
   `print_outline/1` for its shape, then `print_source/2` and
   `print_source/3` for one function or a range of lines.
@@ -98,8 +97,8 @@ defmodule Host.Code do
   function's row covers all its clauses and the `@doc`, `@spec`,
   `@impl`, `attr` and `slot` directly above them, which is exactly
   what a `patch` `select` touches; a type's row covers its
-  `@typedoc`. `use`, `import`, `alias`, `defstruct` and
-  any other top-level form show by their first line. The moduledoc
+  `@typedoc`. `use`, `import`, `alias`, `defstruct` and any other
+  top-level form show by their first line. The moduledoc
   and attributes holding values have no row, so a gap between rows
   is one of those: read it by line range. Read the outline first,
   then the piece you need with `print_source/2` or `print_source/3`.

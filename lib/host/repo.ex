@@ -32,13 +32,14 @@ defmodule Host.Repo do
   `update`, `delete`, `insert_all`, `update_all`, `transaction` and
   the rest.
 
-  Ecto's query builders (`from`, `where`, `order_by`, `limit` and
-  the rest) are macros: put `import Ecto.Query` at the top of any
-  eval or module that queries. A `:map` field is stored as JSON, so
-  its keys come back as strings. Raw SQL through `query/2` runs one
-  statement per call, since SQLite silently ignores anything after
-  the first, and stays inside this database file: `ATTACH DATABASE`
-  is refused on every connection.
+  Ecto's query builders (`from`, `where`, `order_by`, `limit` and the
+  rest) are macros: put `import Ecto.Query` at the top of any eval or
+  module that queries. A `:map` field is stored as JSON, so its keys
+  come back as strings. Raw SQL through `query/2` runs one statement
+  per call, since SQLite silently ignores anything after the first,
+  and stays inside this database file: `ATTACH DATABASE`,
+  `DETACH DATABASE` and `VACUUM INTO` are refused on every
+  connection.
   """
 
   use Ecto.Repo, otp_app: :beamlet, adapter: Ecto.Adapters.SQLite3

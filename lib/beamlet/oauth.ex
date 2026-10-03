@@ -132,8 +132,10 @@ defmodule Beamlet.OAuth do
 
   @doc """
   The authorization server metadata document (RFC 8414): the two
-  endpoints and what the flow supports. No scopes are advertised; the
-  policy is chosen on the consent page instead.
+  endpoints and what the flow supports.
+
+  No scopes are advertised; the policy is chosen on the consent page
+  instead.
   """
   @spec authorization_server_metadata() :: map()
   def authorization_server_metadata do

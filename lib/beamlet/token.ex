@@ -70,6 +70,7 @@ defmodule Beamlet.Token do
 
   @doc """
   Changeset for creating or updating a `cli` token: name and policy.
+
   The name is unique across the beamlet, the policy must be declared
   on the beamlet, and the hash is set by the store, never cast.
   """
@@ -87,8 +88,9 @@ defmodule Beamlet.Token do
 
   @doc """
   Changeset for creating an `oauth` token: the client id, the policy
-  chosen at consent, and both expiries. The hashes are set by the
-  store, never cast.
+  chosen at consent, and both expiries.
+
+  The hashes are set by the store, never cast.
   """
   @spec oauth_changeset(t(), map()) :: Ecto.Changeset.t()
   def oauth_changeset(token, attrs) do
@@ -100,9 +102,10 @@ defmodule Beamlet.Token do
   end
 
   @doc """
-  Changeset for refreshing an `oauth` token: both expiries anew. The
-  client and policy stay as consented, and the hashes are set by the
-  store.
+  Changeset for refreshing an `oauth` token: both expiries anew.
+
+  The client and policy stay as consented, and the hashes are set by
+  the store.
   """
   @spec rotate_changeset(t(), map()) :: Ecto.Changeset.t()
   def rotate_changeset(%__MODULE__{kind: :oauth} = token, attrs) do
