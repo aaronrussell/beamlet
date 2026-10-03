@@ -5,9 +5,14 @@ defmodule Beamlet.TestEndpoint do
   the session, the LiveView sockets at `/beamlet/live` for agent pages
   and `/beamlet/app/live` for the app, `Beamlet.Assets` for the
   LiveView JavaScript under `/beamlet/assets`, the JSON and urlencoded
-  parsers, and a router whose last line forwards to `Beamlet.Router`
-  at the root.
+  parsers, `Plug.MethodOverride`, and a router whose last line
+  forwards to `Beamlet.Router` at the root.
   `Beamlet.Case` starts it after the beamlet.
+
+  The server's endpoint carries all of it and plugs of its own, none
+  of which changes what agent routes receive: `Plug.RewriteOn` for a
+  TLS proxy, `Plug.RequestId` and `Plug.Telemetry`, and the live and
+  code reloaders in development.
   """
 
   use Phoenix.Endpoint, otp_app: :beamlet
@@ -34,6 +39,7 @@ defmodule Beamlet.TestEndpoint do
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 
+  plug Plug.MethodOverride
   plug Plug.Head
   plug Plug.Session, @session_options
   plug Beamlet.TestRouter

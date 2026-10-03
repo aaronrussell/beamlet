@@ -48,8 +48,9 @@ defmodule Beamlet.Router do
   The pages agents build are LiveViews, and the endpoint serving them
   needs what any LiveView app's endpoint has. This is the whole list
   of integration points; `Beamlet.TestEndpoint` in the library's test
-  support is it written down, and the standalone server in `server/`
-  is a copy.
+  support is it written down. The standalone server in `server/`
+  carries the same, with plugs of its own for running as a deployment
+  that change nothing agent routes receive.
 
   In the router:
 
@@ -67,7 +68,12 @@ defmodule Beamlet.Router do
       JavaScript and the beamlet's own stylesheet under
       `/beamlet/assets`.
     * `Plug.Parsers` with the JSON and urlencoded parsers: JSON for
-      controller routes, urlencoded for the sign-in form.
+      controller routes, urlencoded for the sign-in form and the forms
+      agent pages post. No multipart parser: it writes uploads to the
+      system temp dir, where agent code cannot read them.
+    * `plug Plug.MethodOverride` after the parsers, so a form's
+      `_method` field reaches the PUT, PATCH and DELETE routes agents
+      mount.
     * `Plug.Session`, the session agent pages fetch: their CSRF
       token, their flash and whatever an agent's app keeps there. It
       does not carry the sign-in. Behind a proxy that terminates TLS,

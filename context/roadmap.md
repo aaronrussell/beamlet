@@ -53,7 +53,7 @@ Agent-served files and agent-installed JavaScript and CSS, colocated JS and CSS 
 
 ## 0.4 — admin UI
 
-LiveViews in the library under `/beamlet`, beside the home page and behind the login: files with drag-and-drop upload, routes, read-only source for modules. Sensitive actions ask for the password again, and the consent page's Allow asks for it every time, signed in or not, with client ids on the beamlet's own host refused. Agent pages share the beamlet's origin and the browser sends the app's cookie to any `/beamlet` request, so script on an agent page can otherwise drive the consent page as the signed-in owner. A separate origin for agent pages is the complete fix, if pages are ever shared publicly.
+LiveViews in the library under `/beamlet`, beside the home page and behind the login: files with drag-and-drop upload, routes, read-only source for modules. Uploads to agent routes belong with the files work: the server dropped its multipart parser at step 13, since `Plug.Parsers` writes uploads to the system temp dir, where agent code cannot read them (`File` is denied, `Host.File` is scoped to the files dir). Supporting them means the multipart parser back in the endpoint list and a `Host.*` function moving an upload into the files dir. Sensitive actions ask for the password again, and the consent page's Allow asks for it every time, signed in or not, with client ids on the beamlet's own host refused. Agent pages share the beamlet's origin and the browser sends the app's cookie to any `/beamlet` request, so script on an agent page can otherwise drive the consent page as the signed-in owner. A separate origin for agent pages is the complete fix, if pages are ever shared publicly.
 
 ## 0.5 — agent-installed dependencies
 

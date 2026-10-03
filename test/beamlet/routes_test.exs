@@ -270,6 +270,17 @@ defmodule Beamlet.RoutesTest do
       assert ctx.conn |> put("/echo") |> response(404)
     end
 
+    test "a form posting _method reaches a delete mount", ctx do
+      add_echo!(ctx, :delete, "create")
+      assert :ok = Routes.regenerate()
+
+      assert %{"echo" => "create", "params" => %{"_method" => "delete", "z" => "3"}} =
+               ctx.conn
+               |> put_req_header("content-type", "application/x-www-form-urlencoded")
+               |> post("/echo", "_method=delete&z=3")
+               |> json_response(200)
+    end
+
     test "a removed route 404s after regeneration while survivors serve", ctx do
       add_hello!(ctx)
       echo = add_echo!(ctx, :get, "show")
