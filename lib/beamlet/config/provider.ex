@@ -26,15 +26,6 @@ defmodule Beamlet.Config.Provider do
           explorer: [tools: [:eval]]
         ]
 
-  > #### A policy is replaced whole {: .warning}
-  >
-  > Everything else the file sets merges into the config before it
-  > key by key, as config files do. A policy does not: one the file
-  > names replaces the policy of that name declared before it, so a
-  > key the file leaves out falls back to what `default` has, never
-  > to what the environment declared. Policies the file does not name
-  > are kept.
-
   It is application config all the same, so it can set any key of any
   application, including ones the environment set a moment earlier,
   and nothing here stands in the way. That is not the intended use:
@@ -70,23 +61,9 @@ defmodule Beamlet.Config.Provider do
     file = Config.Provider.resolve_config_path!(path)
 
     if File.regular?(file) do
-      declared = read!(file)
-      config |> Config.Reader.merge(declared) |> replace_policies(declared)
+      Config.Reader.merge(config, read!(file))
     else
       config
-    end
-  end
-
-  # Config.Reader merges keyword lists all the way down, which would
-  # blend a policy the file declares with one of the same name declared
-  # before it. A policy is one document, so the file's replaces it.
-  defp replace_policies(merged, declared) do
-    policies = get_in(declared, [:beamlet, :policies])
-
-    if is_list(policies) and Keyword.keyword?(policies) do
-      update_in(merged, [:beamlet, :policies], &Keyword.merge(&1, policies))
-    else
-      merged
     end
   end
 

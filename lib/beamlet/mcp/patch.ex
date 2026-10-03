@@ -10,8 +10,7 @@ defmodule Beamlet.MCP.Patch do
   `after`. The patches apply in order, then the touched modules go
   through everything `define` does, as one change: scanned, checked
   for docs, compiled with the modules that depend on them and
-  committed to the code dir's history (`Beamlet.MCP.Define`). On any
-  error nothing changes.
+  committed. On any error nothing changes.
 
   `patch` comes with `define`: a policy listing `:define` under
   `tools` grants both (`Beamlet.Policy`). It shares define's

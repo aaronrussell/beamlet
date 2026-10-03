@@ -11,16 +11,16 @@ defmodule Beamlet.Policy.Default do
 
   # ── Grants ────────────────────────────────────────────────────────
 
-  # Partial grants carry their slice rationale: Function.capture builds
-  # funs from names (dynamic dispatch); List and String lose their atom
-  # constructors, which turn data into module names; IO is granted for
-  # output only (device-directed IO reaches arbitrary processes); Macro
-  # keeps its string helpers, which name tables and files from module
-  # names, and loses everything that builds or expands code; Path is
-  # pure string manipulation, safe because Host.File re-checks every
-  # path it receives, except wildcard, which touches the real
-  # filesystem; System keeps its clock/VM introspection and loses shell,
-  # env, and lifecycle control.
+  # Partial grants carry their slice rationale: Function.capture
+  # builds funs from names (dynamic dispatch); List and String lose
+  # their atom constructors, which turn data into module names; IO
+  # is granted for output only (device-directed IO reaches arbitrary
+  # processes); Macro keeps its string helpers, which name tables and files from
+  # module names, and loses everything that builds or expands code;
+  # Path is pure string manipulation, safe because Host.File re-checks
+  # every path it receives, except wildcard, which touches the real
+  # filesystem; System keeps its clock/VM introspection and loses
+  # shell, env, and lifecycle control.
   @elixir %{
     Access => :all,
     Atom => :all,
@@ -473,19 +473,17 @@ defmodule Beamlet.Policy.Default do
                         end)
 
   @moduledoc """
-  The policy Beamlet ships, `default`: every module it grants and
-  every one it rules out, rendered from its data.
+  The policy Beamlet ships: every name-based ruling of the curation
+  pass, as data.
 
   `default` is what a token runs under when it names no policy and
-  the base every declared policy builds on (`Beamlet.Policy`). Its
-  grants are a curated table: Elixir and Erlang where they compute
-  rather than reach the system, the surface agents write pages and
-  schemas against, the results of `Host.HTTP`, the `Host.*` stdlib,
-  and the packages Beamlet ships. Every documented module of the
-  platform is either granted here or recorded under Not granted with
-  its reason. Everything below this paragraph is rendered from the
-  table when Beamlet compiles, so it cannot drift from what is
-  enforced.
+  the base every declared policy builds on (`Beamlet.Policy`). This
+  module is deliberately logic-free: `Beamlet.Policy` composes and
+  enforces the rulings, the coverage test proves every documented
+  platform module is either granted here or recorded as not granted,
+  and the golden fixture pins the composed table. Everything below
+  this paragraph is rendered from the data at compile time and cannot
+  drift from it.
 
   ## Granted: Elixir
 
@@ -554,7 +552,7 @@ defmodule Beamlet.Policy.Default do
 
   ## Granted: host stdlib
 
-  The stdlib agent code calls.
+  Each `Host.*` module joins here as it lands.
 
   #{@join_names.(Map.keys(@host))}
 
@@ -564,17 +562,16 @@ defmodule Beamlet.Policy.Default do
 
   ## Granted: packages
 
-  Expanded to per-module entries when the table is built, modules
-  marked `@moduledoc false` excluded:
+  Expanded to per-module entries when the table is built, `@moduledoc
+  false` modules excluded:
 
   #{@join_names.(@package_names)}
 
   ## Not granted
 
-  Denied by absence, each with the reason it is not granted. The few
-  refusals that carry teaching copy, telling an agent what to use
-  instead, are what `beamlet policies.show` and
-  `Host.Code.print_policy/0` list.
+  Denied by absence; the reason is recorded for the walk record only.
+  The few refusals that carry teaching copy are what
+  `Beamlet.Policy.render/1` lists.
 
   #{@rendered_not_granted}
   """
@@ -606,9 +603,8 @@ defmodule Beamlet.Policy.Default do
   @doc """
   The framework modules: the curated web and data authoring surface,
   granted module by module because the rest of their applications is
-  machinery.
-
-  Discovery lists them apart from the packages granted whole.
+  machinery. Discovery lists them apart from the packages granted
+  whole.
   """
   @spec framework_modules() :: [module()]
   def framework_modules, do: Map.keys(@web) ++ Map.keys(@data)

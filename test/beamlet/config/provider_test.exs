@@ -70,26 +70,6 @@ defmodule Beamlet.Config.ProviderTest do
              ]
     end
 
-    test "replaces a policy the file declares whole, keeping the others", %{config_file: file} do
-      File.write!(file, """
-      import Config
-      config :beamlet, policies: [explorer: [tools: [:eval]]]
-      """)
-
-      config = [
-        beamlet: [
-          policies: [
-            explorer: [rules: [allow_defmacro: true], deny: [Host.HTTP]],
-            reader: [tools: []]
-          ]
-        ]
-      ]
-
-      assert Provider.load(config, file) == [
-               beamlet: [policies: [reader: [tools: []], explorer: [tools: [:eval]]]]
-             ]
-    end
-
     test "resolves a path from an environment variable", %{dir: dir, config_file: file} do
       File.write!(file, "import Config\nconfig :beamlet, eval: [timeout: 5]\n")
       variable = "BEAMLET_PROVIDER_TEST_#{System.unique_integer([:positive])}"

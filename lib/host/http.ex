@@ -36,10 +36,9 @@ defmodule Host.HTTP do
   Options that would send a request anywhere but the network, or keep
   it on disk, are refused with an `ArgumentError` naming the option:
   `plug`, `adapter`, `unix_socket`, `connect_options`, `finch` and
-  `finch_request`, the disk cache, and `.netrc` credentials. So is
-  `into: :self`; stream with an `into` function instead. `Req`'s own
-  functions are not available to your code; these are how requests
-  leave your beamlet.
+  `finch_request`, the disk cache, and `.netrc` credentials. `Req`'s
+  own functions are not available to your code; these are how
+  requests leave your beamlet.
   """
 
   @typedoc "A URL, or a keyword list of options that includes `:url`."

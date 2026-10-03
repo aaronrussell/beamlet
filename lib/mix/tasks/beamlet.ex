@@ -2,10 +2,8 @@ defmodule Mix.Tasks.Beamlet do
   @shortdoc "Sets up the owner and manages tokens and policies on your beamlet"
 
   @moduledoc """
-  Sets up the owner and manages tokens and policies on your beamlet.
-
-  The development form of the `beamlet` command, run from the
-  project:
+  Sets up the owner and manages tokens and policies on your beamlet
+  from the command line:
 
       $ mix beamlet setup
       $ mix beamlet tokens.create laptop --policy explorer

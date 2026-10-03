@@ -4,33 +4,21 @@ defmodule Beamlet.MCP.Define do
 
   Each use takes a list of entries, one top-level `defmodule` each.
   The modules are scanned against the token's policy, checked for
-  docs, compiled into the running beamlet and stored under the data
-  dir's `code/`. They are callable at once and reloaded at boot. The
+  docs, compiled into the running beamlet, stored as source under the
+  data dir's `code/` and committed to its git history with the token
+  as provenance. They are callable at once and reloaded at boot. The
   entries land together or not at all: on any error nothing changes,
   and the error says what to fix.
 
-  Changing a module that exists needs `replace: true` on its entry,
-  and recompiles the modules that depend on it; a change that drops a
-  function another module still calls is refused. `Beamlet.*` and
-  `Host.*` are reserved. Every module needs a `@moduledoc` and every
-  public function a `@doc`, since docs are how the next agent finds
-  it; a module whose functions are framework callbacks, a LiveView, a
-  controller, a migration or an Ecto type, needs only the
-  `@moduledoc`. A module that uses `Ecto.Migration` is filed as a
-  numbered migration and waits for `Host.Migrator`.
+  Changing a module that exists needs `replace: true` on its entry.
+  `Beamlet.*` and `Host.*` are reserved, every module needs a
+  `@moduledoc` and every public function a `@doc`, since docs are how
+  the next agent finds it. A module that uses `Ecto.Migration` is
+  filed as a numbered migration and waits for `Host.Migrator`.
 
   A token may use the tool when its policy lists `:define` under
   `tools` (`Beamlet.Policy`), which grants `patch` with it; `default`
   does.
-
-  ## The code dir
-
-  `code/` holds the sources under `lib/`, numbered migrations under
-  `migrations/`, and the compiled modules under `ebin/`. It is a git
-  repository, and every define, patch and removal is one commit: the
-  subject names the modules, and the trailers name the token and its
-  policy. `git log` in the code dir is the record of everything built
-  and torn down, and by whom.
 
   ## Limits
 

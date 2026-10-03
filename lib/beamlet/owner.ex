@@ -19,8 +19,7 @@ defmodule Beamlet.Owner do
   user on a request and nothing more: no token and no policy, since a
   browser authors no code.
 
-  An embedding host calls `create/1` and `update/2` in place of
-  `beamlet setup`. Agent code never reaches these functions.
+  Operator-only. Nothing under `Host.*` reaches these functions.
   """
 
   import Ecto.Query
@@ -31,17 +30,14 @@ defmodule Beamlet.Owner do
   alias Beamlet.User
 
   @typedoc """
-  The owner: `email` and the password's hash.
-
-  `password` is virtual and never loaded.
+  The owner: `email` and the password's hash. `password` is virtual
+  and never loaded.
   """
   @type user :: %User{}
 
   @typedoc """
-  A browser signed in as the owner.
-
-  `secret` is virtual, set only on the struct `create_session/0`
-  returns.
+  A browser signed in as the owner. `secret` is virtual, set only on
+  the struct `create_session/0` returns.
   """
   @type session :: %Session{}
 
@@ -55,10 +51,8 @@ defmodule Beamlet.Owner do
   end
 
   @doc """
-  Creates the owner from an email and a password.
-
-  A beamlet has one, so a second create fails on `id` and the answer
-  is `update/2`.
+  Creates the owner from an email and a password. A beamlet has one,
+  so a second create fails on `id` and the answer is `update/2`.
   """
   @spec create(map() | keyword()) :: {:ok, user()} | {:error, Ecto.Changeset.t()}
   def create(attrs) do
@@ -68,10 +62,9 @@ defmodule Beamlet.Owner do
   end
 
   @doc """
-  Updates the owner's email, password or both.
-
-  A new password ends every session, so a browser signed in with the
-  old one is signed out; a new email keeps them.
+  Updates the owner's email, password or both. A new password ends
+  every session, so a browser signed in with the old one is signed
+  out; a new email keeps them.
   """
   @spec update(user(), map() | keyword()) :: {:ok, user()} | {:error, Ecto.Changeset.t()}
   def update(%User{} = user, attrs) do
@@ -116,9 +109,8 @@ defmodule Beamlet.Owner do
   end
 
   @doc """
-  Creates a session, for a web sign-in.
-
-  The returned session carries its `secret`; nothing else ever will.
+  Creates a session, for a web sign-in. The returned session carries
+  its `secret`; nothing else ever will.
   """
   @spec create_session() :: {:ok, session()} | {:error, Ecto.Changeset.t()}
   def create_session do
@@ -130,10 +122,9 @@ defmodule Beamlet.Owner do
   end
 
   @doc """
-  Turns a browser's session secret into the owner.
-
-  Anything that is not the secret of a stored session, including one
-  that was signed out, is `{:error, :unknown_session}`.
+  Turns a browser's session secret into the owner. Anything that is
+  not the secret of a stored session, including one that was signed
+  out, is `{:error, :unknown_session}`.
   """
   @spec authenticate_session(term()) :: {:ok, user()} | {:error, :unknown_session}
   def authenticate_session(secret) when is_binary(secret) do
