@@ -2,13 +2,13 @@ defmodule Beamlet.CLI do
   @commands [
     {"setup", "", "set the owner's email and password", []},
     {"tokens", "", "list tokens", []},
-    {"tokens.create", "NAME [--policy POLICY]", "create a CLI token, printing its secret once",
+    {"tokens.create", "<NAME> [--policy POLICY]", "create a CLI token, printing its secret once",
      [policy: :keep]},
-    {"tokens.update", "ID [--name NEW_NAME] [--policy POLICY]",
+    {"tokens.update", "<ID> [--name NEW_NAME] [--policy POLICY]",
      "rename a CLI token or change its policy", [name: :string, policy: :keep]},
-    {"tokens.delete", "ID", "delete a token", []},
+    {"tokens.delete", "<ID>", "delete a token", []},
     {"policies", "", "list policies", []},
-    {"policies.show", "POLICY", "show what a policy permits", []},
+    {"policies.show", "<POLICY>", "show what a policy permits", []},
     {"reset", "", "wipe everything agents built: agent database, code, files", []}
   ]
 
@@ -26,54 +26,59 @@ defmodule Beamlet.CLI do
   #{@command_table}
   """
 
+  @details %{
+    "setup" => """
+    Sets the owner's email and password, which sign in to the app at
+    `/beamlet`. Run it again to change either. A blank password keeps
+    the current one, and a new password signs every browser out.
+    """,
+    "tokens" => """
+    Lists every token with its id, policy and expiry. Tokens created
+    here show their name. Tokens a chat client received through OAuth
+    show the client's host.
+    """,
+    "tokens.create" => """
+    Creates a token and prints its secret. The secret is shown only
+    this once, so copy it into your MCP client now. The token gets
+    the `default` policy unless `--policy` names another.
+    """,
+    "tokens.update" => """
+    Renames a token or changes its policy, from the client's next
+    request. OAuth tokens cannot be changed. Delete one and connect
+    the client again instead.
+    """,
+    "tokens.delete" => """
+    Deletes a token of either kind. A client using it is refused from
+    its next request.
+    """,
+    "policies" => """
+    Lists the policies you can give a token: `default`, and any
+    declared in config.
+    """,
+    "policies.show" => """
+    Shows what a policy allows: its tools, its rules, and the modules
+    it denies or grants only in part.
+    """,
+    "reset" => """
+    Deletes everything agents have built: the agent database, the
+    code dir with its history, and the files dir. The owner, the
+    tokens and your `config.exs` are kept. Restart the beamlet
+    afterwards, since until then it keeps running what it had loaded.
+    """
+  }
+
+  @command_sections Enum.map_join(@commands, "\n", fn {command, args, _description, _switches} ->
+                      "### `beamlet #{String.trim("#{command} #{args}")}`\n\n" <>
+                        Map.fetch!(@details, command)
+                    end)
+
   @moduledoc """
   The command line for setting up the owner and managing tokens and
   policies on your beamlet.
 
-  ```text
-  #{@command_table}
-  ```
+  ## Commands
 
-  `setup` is the same command on every run. It asks for the owner's
-  email, offering the current one, then a password twice; a blank
-  password keeps the current one, and is refused on the first run,
-  when there is none to keep. It never asks for the old password:
-  whoever can run this command already has the shell, which outranks
-  it, and asking would leave a forgotten password unrecoverable. The
-  password is prompted for, never taken as an argument, so it stays
-  out of the shell history, and piped input answers one line per
-  prompt. A new password signs every browser out.
-
-  Tokens are addressed by the id the listing prints. The tokens
-  created here are `cli` tokens, named on the command line; `oauth`
-  tokens arrive when the owner connects a chat client and consents,
-  so they are listed and deleted here but never created or edited
-  (`Beamlet.Token`). A token runs under `default` unless `--policy`
-  names one of the policies declared in config (`Beamlet.Policy`).
-  Each command takes its own switches and refuses any other.
-
-  The commands are the public functions of `Beamlet.Owner`,
-  `Beamlet.Tokens` and the declared policies with plain text output, and
-  `main/1` is the whole surface: it takes the arguments as a list,
-  prints, and returns `:ok` or `:error`. In development `mix beamlet`
-  hands it the arguments; a release ships a `bin/beamlet` script that
-  does the same.
-
-  The commands need the policies and the system database, nothing an
-  agent reaches. When no beamlet is running in the VM, `main/1` starts
-  that half of one (`Beamlet.start_link/1` with `only: :system`), runs
-  the command and stops it again, so it works beside a beamlet running
-  in another VM or with none running at all. A beamlet running in the
-  same VM is used as it is.
-
-  `reset` is the exception: it starts nothing and deletes the unit
-  agents build, the agent database with the route table and key/value
-  store in it, the code dir with its git history and the files dir,
-  so the next boot starts from nothing. A reset that fails partway can
-  be run again. The owner, tokens, the operator config file and the
-  rest of the data dir are kept. It asks nothing and checks for no
-  running beamlet: a beamlet that is running keeps what it has loaded
-  until it restarts, so restart it right after.
+  #{@command_sections}
   """
 
   alias Beamlet.Config
@@ -308,7 +313,7 @@ defmodule Beamlet.CLI do
   defp list_tokens do
     case Tokens.list() do
       [] ->
-        puts("No tokens yet. Create one with: beamlet tokens.create NAME")
+        puts("No tokens yet. Create one with: beamlet tokens.create <NAME>")
 
       tokens ->
         table(

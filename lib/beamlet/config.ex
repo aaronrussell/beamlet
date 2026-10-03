@@ -1,33 +1,54 @@
 defmodule Beamlet.Config do
   @moduledoc """
-  How a beamlet runs: `:beamlet` application config, checked once at
-  boot and read plainly after.
-
-  One config surface, read at runtime, so a release or container sets
-  it from the environment in `runtime.exs`, and a release can merge
-  an operator's file from the data dir into it at boot
-  (`Beamlet.Config.Provider`). `validate!/0` runs before
-  a beamlet starts anything and fails the boot with a message naming
-  the key at fault; the accessors then return what was checked, with
-  defaults merged in, and never raise. A change is a restart.
-
-  The data dir is the root everything a beamlet persists lives under:
-  the databases under `db/`, the defined modules under `code/` and
-  the files agent code keeps under `files/` (`Host.File`). Policies
-  are declared here too (`Beamlet.Policy`), the limits on the tools
-  (`Beamlet.MCP.Eval`, `Beamlet.MCP.Define`), the
-  MCP request timeout, the hosts agent HTTP may reach on private
-  networks (`Host.HTTP`), and the web surface: the host's endpoint,
-  which serves the routes agents mount (`Beamlet.Router`), and the
-  prefix they are served under.
+  The `:beamlet` application config.
 
       config :beamlet,
         data_dir: "/var/lib/beamlet",
         web: [endpoint: MyAppWeb.Endpoint],
         eval: [timeout: 60_000],
-        define: [timeout: 60_000],
         mcp: [request_timeout: 90_000],
         http: [allow: ["homeassistant.local", "192.168.1.0/24"]]
+
+  The beamlet checks every key when it starts. A bad value stops the
+  boot with a message naming the key. A change takes a restart.
+
+  Times are in milliseconds and sizes in bytes.
+
+  ## Keys
+
+    * `:data_dir` - The directory where the beamlet keeps everything:
+      its databases, the code agents define and the files they keep.
+      Required. It must be an absolute path to a directory that already
+      exists.
+
+    * `:policies` - The policies a token can have besides `default`, as
+      a keyword list of name to policy. None by default.
+      `Beamlet.Policy` describes how to write one.
+
+    * `:eval` - Limits on the `eval` tool. `timeout` is how long one
+      evaluation may run (30 seconds). `max_heap_bytes` caps the memory
+      it may use (128 MB), and `max_output` the output returned to the
+      model (32 KB). `Beamlet.MCP.Eval` says what happens when each is
+      reached.
+
+    * `:define` - `timeout` is how long one `define` or `patch` may take
+      to compile (30 seconds).
+
+    * `:mcp` - `request_timeout` is how long the MCP server waits for a
+      tool to answer before replying "Server unavailable" (65 seconds).
+      It must be longer than the eval and define timeouts, so a slow
+      tool reports its own error first.
+
+    * `:http` - `allow` lists the hosts on private networks that agent
+      code may reach through `Host.HTTP`, as names, IP addresses or CIDR
+      blocks. A name must be listed as a name: allowing its address
+      or block is not enough. Empty by default, so agent code reaches
+      only the public internet.
+
+    * `:web` - `endpoint` names the Phoenix endpoint that forwards to
+      `Beamlet.Router`. Required. `prefix` is a path to serve the routes
+      agents mount under, such as `"/app"`, and cannot be under
+      `/beamlet`. Empty by default, which serves them at the root.
   """
 
   @eval_defaults [timeout: 30_000, max_heap_bytes: 134_217_728, max_output: 32_768]
@@ -41,19 +62,8 @@ defmodule Beamlet.Config do
   @doc """
   Checks every key, raising `ArgumentError` for the first at fault.
 
-  `Beamlet` calls it before starting anything. The data dir must be
-  set and absolute, since it holds state that must never silently
-  depend on the working directory; the policies must be a keyword
-  list of name to document, each document checked when the policies
-  are built; the eval, define and mcp
-  limits must be known keys with positive integers, and the MCP
-  request timeout longer than both tool timeouts; the http group's
-  `allow` must be a list of host names, IP addresses and CIDR blocks;
-  the web group's
-  endpoint must be a module and its prefix empty or a path with a
-  leading slash and no trailing one, outside `/beamlet`. Whether an endpoint is set is
-  checked by the full boot, not here, since the system half runs
-  without one.
+  `Beamlet` calls it before starting anything. It does not check that
+  an endpoint is set. A full boot checks that afterwards.
   """
   @spec validate!() :: :ok
   def validate! do
@@ -72,69 +82,47 @@ defmodule Beamlet.Config do
   @spec data_dir() :: Path.t()
   def data_dir, do: Application.fetch_env!(:beamlet, :data_dir)
 
-  @doc "Directory holding Beamlet and agent database files."
+  @doc "The directory holding both database files."
   @spec db_dir() :: Path.t()
   def db_dir, do: Path.join(data_dir(), "db")
 
-  @doc "The system database file (`Beamlet.Repo`): the owner, sessions and tokens."
+  @doc "The system database file, used by `Beamlet.Repo`."
   @spec system_db_file() :: Path.t()
   def system_db_file, do: Path.join(db_dir(), "beamlet.db")
 
-  @doc "The agent database file (`Host.Repo`): everything agents build, the route table included."
+  @doc "The agent database file, used by `Host.Repo`."
   @spec agent_db_file() :: Path.t()
   def agent_db_file, do: Path.join(db_dir(), "agent.db")
 
-  @doc "Directory holding the defined modules: their sources, beams and git history."
+  @doc "The directory holding the modules agents define, with their git history."
   @spec code_dir() :: Path.t()
   def code_dir, do: Path.join(data_dir(), "code")
 
-  @doc "Directory holding the files agent code keeps through `Host.File`."
+  @doc "The directory holding the files agent code keeps through `Host.File`."
   @spec files_dir() :: Path.t()
   def files_dir, do: Path.join(data_dir(), "files")
 
-  @doc "The policies declared beside `default`, as a keyword list of name to document (`Beamlet.Policy`). Empty when unset."
+  @doc "The policies declared besides `default`."
   @spec policies() :: keyword()
   def policies, do: Application.get_env(:beamlet, :policies, [])
 
-  @doc """
-  The eval limits, merged over the defaults: `timeout` 30 seconds,
-  `max_heap_bytes` 128MB, `max_output` 32KB (`Beamlet.MCP.Eval` says
-  what each protects).
-  """
+  @doc "The `:eval` settings, with the defaults filled in."
   @spec eval() :: keyword()
   def eval, do: limits(:eval, @eval_defaults)
 
-  @doc """
-  The define limits, merged over the defaults: `timeout` 30 seconds,
-  the time one compile may take (`Beamlet.MCP.Define`).
-  """
+  @doc "The `:define` settings, with the defaults filled in."
   @spec define() :: keyword()
   def define, do: limits(:define, @define_defaults)
 
-  @doc """
-  The MCP limits, merged over the defaults: `request_timeout` 65
-  seconds, how long the transport waits for a request's answer before
-  replying "Server unavailable".
-  """
+  @doc "The `:mcp` settings, with the defaults filled in."
   @spec mcp() :: keyword()
   def mcp, do: limits(:mcp, @mcp_defaults)
 
-  @doc """
-  The agent HTTP settings, merged over the defaults: `allow`, empty
-  by default, the hosts `Host.HTTP` reaches although they are on a
-  private or reserved network. A name entry matches a URL's host
-  exactly, ignoring case; an IP address or CIDR block matches a host
-  written as an address. A name that resolves into an allowed block
-  is still refused.
-  """
+  @doc "The `:http` settings, with the defaults filled in."
   @spec http() :: keyword()
   def http, do: limits(:http, @http_defaults)
 
-  @doc """
-  The web surface, merged over the defaults: `endpoint`, the host's
-  Phoenix endpoint (nil when unset), and `prefix`, the path the
-  routes agents mount are served under, `""` for the root.
-  """
+  @doc "The `:web` settings, with the defaults filled in."
   @spec web() :: keyword()
   def web, do: limits(:web, @web_defaults)
 

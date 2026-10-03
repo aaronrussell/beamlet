@@ -156,7 +156,7 @@ defmodule Beamlet.Web.HomeLive do
     <.steps>
       <:step>
         Create an authentication token from the CLI.
-        <.code class="my-2">beamlet tokens.create NAME</.code>
+        <.code class="my-2">beamlet tokens.create &lt;NAME&gt;</.code>
         Keep the token in an environment variable, <code>BEAMLET_TOKEN</code>, rather than in a file you might commit.
       </:step>
       <:step>
@@ -176,7 +176,7 @@ defmodule Beamlet.Web.HomeLive do
     <.steps>
       <:step>
         Create an authentication token from the CLI.
-        <.code class="my-2">beamlet tokens.create NAME</.code>
+        <.code class="my-2">beamlet tokens.create &lt;NAME&gt;</.code>
         Keep the token in an environment variable, <code>BEAMLET_TOKEN</code>, rather than in a file you might commit.
       </:step>
       <:step>
@@ -195,7 +195,7 @@ defmodule Beamlet.Web.HomeLive do
     </p>
     <p class="mt-2">
       Create an authentication token from the CLI.
-      <.code class="my-2">beamlet tokens.create NAME</.code>
+      <.code class="my-2">beamlet tokens.create &lt;NAME&gt;</.code>
       Keep the token in an environment variable, <code>BEAMLET_TOKEN</code>, rather than in a file you might commit.
     </p>
 

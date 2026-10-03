@@ -42,7 +42,7 @@ defmodule Beamlet.Web.HomeLiveTest do
     end
 
     {:ok, view, html} = live(conn, "/beamlet?client=code")
-    assert has_element?(view, "pre", "beamlet tokens.create NAME")
+    assert has_element?(view, "pre", "beamlet tokens.create <NAME>")
     assert html =~ ~s(server_label: &quot;beamlet&quot;)
 
     {:ok, view, _html} = live(conn, "/beamlet?client=nonsense")

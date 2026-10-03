@@ -2,20 +2,13 @@ defmodule Mix.Tasks.Beamlet do
   @shortdoc "Sets up the owner and manages tokens and policies on your beamlet"
 
   @moduledoc """
-  Sets up the owner and manages tokens and policies on your beamlet
-  from the command line:
+  Runs the beamlet command line in development.
 
       $ mix beamlet setup
-      $ mix beamlet tokens.create laptop --policy explorer
-      $ mix beamlet tokens
-      $ mix beamlet policies
-      $ mix beamlet reset
-      $ mix beamlet --help
+      $ mix beamlet tokens.create laptop
 
-  The commands are `Beamlet.CLI`'s. This task loads the application
-  config, hands the arguments over, and exits non-zero when a command
-  fails. Nothing else starts, so it runs against the configured data
-  dir whether a beamlet is running in another VM or not.
+  It reads the project's config, runs one command and exits non-zero
+  when the command fails. `Beamlet.CLI` describes each command.
   """
 
   use Mix.Task

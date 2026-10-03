@@ -1,12 +1,39 @@
 defmodule Beamlet.Config.Provider do
   @moduledoc """
-  The operator config file: an optional `config.exs` in the data dir,
-  merged into application config when a release boots.
+  Reads a `config.exs` from the data dir when a release boots.
 
-  A container declares its policies without a rebuild. The file is a
-  plain `Config` file, read by this `Config.Provider` after
-  `runtime.exs` and merged over everything before it, so what it says
-  is the last word. A release names it beside its other providers:
+  The file lets you configure a beamlet without rebuilding it. It is
+  a plain Elixir config file:
+
+      import Config
+
+      config :beamlet,
+        policies: [
+          explorer: [tools: [:eval]]
+        ],
+        eval: [timeout: 60_000]
+
+  It can set any of the keys `Beamlet.Config` lists. It is read after
+  all other config, so what it says wins.
+
+  > #### A policy here replaces the policy whole {: .warning}
+  >
+  > When the file names a policy, its version replaces any policy of
+  > the same name declared elsewhere. The two are not merged.
+  > Policies the file does not name are kept.
+
+  A change takes a restart. `beamlet policies.show` reads the file
+  afresh each time it runs, so you can check a change first. A
+  beamlet with no file starts as usual. A file that fails to
+  evaluate stops the boot with the file and line at fault.
+
+  The file stands alone: `import_config` and `config_env/0` do not
+  work in it.
+
+  ## In your own release
+
+  The standalone server reads the file already. To read it in your
+  own release, add the provider to its `config_providers`:
 
       releases: [
         my_app: [
@@ -16,35 +43,8 @@ defmodule Beamlet.Config.Provider do
         ]
       ]
 
-  The file is for the keys `Beamlet.Config` documents, the policies
-  above all, and the eval and define limits beside them:
-
-      import Config
-
-      config :beamlet,
-        policies: [
-          explorer: [tools: [:eval]]
-        ]
-
-  It is application config all the same, so it can set any key of any
-  application, including ones the environment set a moment earlier,
-  and nothing here stands in the way. That is not the intended use:
-  the environment configures the deployment, this file configures the
-  beamlet, and an operator who reaches past that is on their own.
-
-  No file means no change, silently. A file that fails to evaluate
-  fails the boot, naming the file and the line; a policy it declares
-  badly fails the boot the way any declared policy does
-  (`Beamlet.Policy`). The release's `eval` command runs config
-  providers too, so `beamlet policies` on the container reads the
-  file afresh and either lists what it declares or prints what is
-  wrong with it, without a restart; the running beamlet picks the
-  change up on its next start. The file is trusted code, evaluated as
-  the release's user: a policy that grants `File` to agent code hands
-  it over, as it hands over the code dir.
-
-  The file is one file: `import_config` is disabled inside it, and
-  `config_env/0` is not available.
+  `path` takes any path `Config.Provider` accepts. Point it at the
+  same directory as `:data_dir`.
   """
 
   @behaviour Config.Provider

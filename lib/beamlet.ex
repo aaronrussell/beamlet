@@ -1,49 +1,50 @@
 defmodule Beamlet do
   @moduledoc """
-  A beamlet's supervision tree.
+  Beamlet is a programmable Elixir code server for AI agents.
 
-  Beamlet is a library, not an OTP application: nothing starts until
-  a host adds `Beamlet` to its own supervision tree. The standalone
-  server does this in its application module; an embedding host does
-  it wherever its boot ordering needs; a test does it with
-  `start_supervised!/1` and gets a fresh beamlet per test.
+  An agent connects over MCP and works on your beamlet, a running
+  Elixir application. It defines modules, runs code, and builds APIs
+  and live dashboards on it. Most people run Beamlet as a standalone
+  server, and the [overview](overview.md) is the place to start.
+
+  This module is what starts a beamlet, in the standalone server or
+  inside your own app.
+
+  ## Running a beamlet in your app
+
+  > #### Your app is inside the boundary {: .warning}
+  >
+  > Agent code runs in the same VM as your application. Policies are
+  > guardrails, not containment. Anyone holding a token can reach
+  > whatever your application can: its modules, its processes and
+  > its data. Embed a beamlet only where you would trust every token
+  > holder with the whole app.
+
+  Add `Beamlet` to your supervision tree, before your endpoint, so
+  the beamlet is ready by the first request:
 
       children = [
-        {Beamlet, []},
-        MyApp.Endpoint
+        Beamlet,
+        MyAppWeb.Endpoint
       ]
 
-  Configuration is application config (`Beamlet.Config`). Starting
-  checks the configured data dir exists, builds the declared policies
-  and loads the modules defined before, and fails
-  the boot loudly when the dir is missing, a policy is bad, git is
-  not installed or no endpoint is configured. One beamlet runs per
-  VM.
+  Give it a data dir and name your endpoint:
 
-  The web surface, the pages and APIs agents build, is served by the
-  host's own endpoint. The host names it in config, forwards to
-  `Beamlet.Router` at the root as the last route of its router, and
-  carries the few things the pages need, the LiveView socket among
-  them; `Beamlet.Router` lists them.
+      config :beamlet,
+        data_dir: "/var/lib/my_app/beamlet",
+        web: [endpoint: MyAppWeb.Endpoint]
 
-      config :beamlet, web: [endpoint: MyAppWeb.Endpoint]
+  Then forward to `Beamlet.Router` as the last route in your router:
 
       forward "/", Beamlet.Router
 
-  The beamlet's message bus is a `Phoenix.PubSub` named
-  `Beamlet.PubSub`, which agent code reaches through `Host.PubSub`.
-  A host's endpoint names it so LiveViews defined on the beamlet can
-  subscribe and receive:
+  Your endpoint needs a few more things, two LiveView sockets among
+  them. `Beamlet.Router` lists them all, and `Beamlet.Config` covers
+  the other config keys.
 
-      config :my_app, MyAppWeb.Endpoint, pubsub_server: Beamlet.PubSub
-
-  `only: :system` starts the system half alone: the policies and the
-  system database, migrated. Nothing an agent reaches, no agent
-  database and no MCP server. The operator CLI (`Beamlet.CLI`) uses it
-  to set up the owner and manage tokens in a VM with no beamlet
-  running:
-
-      {:ok, pid} = Beamlet.start_link(only: :system)
+  The boot fails with a message saying what to fix when the data dir
+  is missing, a policy is invalid, git is not installed or no
+  endpoint is named. Only one beamlet runs per VM.
   """
 
   use Supervisor
@@ -53,7 +54,14 @@ defmodule Beamlet do
   @typedoc "Options accepted by `start_link/1`."
   @type option :: {:only, :system}
 
-  @doc "Starts a beamlet, supervising everything it needs to run."
+  @doc """
+  Starts a beamlet, supervising everything it needs to run.
+
+  ## Options
+
+    * `:only` - `:system` starts just the policies and the system
+      database, with nothing an agent reaches.
+  """
   @spec start_link([option()]) :: Supervisor.on_start()
   def start_link(opts) when is_list(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)

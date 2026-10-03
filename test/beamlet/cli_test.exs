@@ -13,9 +13,9 @@ defmodule Beamlet.CLITest do
       assert {:ok, output} = with_io(fn -> CLI.main([]) end)
       assert output =~ "Usage: beamlet COMMAND"
       assert output =~ "setup\n      set the owner's email and password"
-      assert output =~ "tokens.create NAME [--policy POLICY]"
-      assert output =~ "tokens.update ID [--name NEW_NAME] [--policy POLICY]"
-      assert output =~ "policies.show POLICY"
+      assert output =~ "tokens.create <NAME> [--policy POLICY]"
+      assert output =~ "tokens.update <ID> [--name NEW_NAME] [--policy POLICY]"
+      assert output =~ "policies.show <POLICY>"
       assert output =~ "reset"
 
       assert {:ok, output} = with_io(fn -> CLI.main(["--help"]) end)
@@ -44,9 +44,9 @@ defmodule Beamlet.CLITest do
       for {args, switch, shape} <- [
             {["tokens", "--verbose"], "--verbose", "tokens"},
             {["tokens.create", "laptop", "--name", "x"], "--name",
-             "tokens.create NAME [--policy POLICY]"},
+             "tokens.create <NAME> [--policy POLICY]"},
             {["tokens.create", "laptop", "--user", "bob"], "--user",
-             "tokens.create NAME [--policy POLICY]"},
+             "tokens.create <NAME> [--policy POLICY]"},
             {["setup", "--password"], "--password", "setup"}
           ] do
         assert {:error, output} = with_io(:stderr, fn -> CLI.main(args) end)
@@ -73,10 +73,10 @@ defmodule Beamlet.CLITest do
 
     test "wrong arguments name the command's shape" do
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens.create"]) end)
-      assert output =~ "beamlet tokens.create takes: tokens.create NAME [--policy POLICY]"
+      assert output =~ "beamlet tokens.create takes: tokens.create <NAME> [--policy POLICY]"
 
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["tokens.delete"]) end)
-      assert output =~ "beamlet tokens.delete takes: tokens.delete ID"
+      assert output =~ "beamlet tokens.delete takes: tokens.delete <ID>"
 
       assert {:error, output} = with_io(:stderr, fn -> CLI.main(["setup", "extra"]) end)
       assert output =~ "beamlet setup takes: setup"
@@ -213,7 +213,7 @@ defmodule Beamlet.CLITest do
       {:ok, _} = Tokens.delete(token)
 
       assert {:ok, output} = with_io(fn -> CLI.main(["tokens"]) end)
-      assert output =~ "No tokens yet. Create one with: beamlet tokens.create NAME"
+      assert output =~ "No tokens yet. Create one with: beamlet tokens.create <NAME>"
     end
 
     test "creates a token and prints its secret once" do
