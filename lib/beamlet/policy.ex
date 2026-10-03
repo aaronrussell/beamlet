@@ -2,19 +2,33 @@ defmodule Beamlet.Policy do
   @moduledoc """
   A policy: what a token's requests may do on your beamlet.
 
-  Three parts. **Tools** are which of the MCP tools the token may
-  use: `eval`, and `define`, which is two tools in one, since the
-  `define` and `patch` tools both write modules through the same
-  pipeline under the same limit. **Rules** are the shape rules on the code
-  it submits, both strict unless relaxed. **Grants** are the modules and
-  functions its code may call: a module maps to everything, an
-  `only` list or an `except` list, and a module absent from the
-  table is denied.
+  Every token runs under one. A policy is a guardrail, not
+  containment: it keeps an honest model away from what it should not
+  touch and stops low-effort prompt injection, but agent code runs in
+  the beamlet's own VM and code set on getting past a policy can.
+  Treat any token as full access to the beamlet, and use policies to
+  steer each client.
+
+  A policy has three parts:
+
+    * **Tools**, the MCP tools the token may use: `eval`, and
+      `define`, which brings the `patch` tool with it, since both
+      write modules through the same pipeline under the same limit.
+    * **Rules**, the two shape rules on the code the token submits,
+      `allow_defmacro` and `allow_dynamic_dispatch`, both strict
+      unless relaxed.
+    * **Grants**, the modules and functions its code may call. A
+      module maps to everything, an `only` list or an `except` list,
+      and a module absent from the table is denied. Modules defined
+      on the beamlet are granted by existence and never need one.
+
+  ## Declaring a policy
 
   Beamlet ships one policy, `default` (`Beamlet.Policy.Default`
   records its rulings). A token runs under it when it names no
   policy, and every other policy builds on it. Declare the others in
-  application config and restart; there is no reload:
+  application config, on a container in the operator config file
+  (`Beamlet.Config.Provider`), and restart; there is no reload:
 
       config :beamlet,
         policies: [
@@ -28,24 +42,24 @@ defmodule Beamlet.Policy do
 
   Applied to the default in this order:
 
-  - `tools` replaces the default's list when given. An empty list is
-    accepted.
-  - `rules` merges: a rule given overrides, a rule absent stays
-    strict, an unknown rule fails the boot.
-  - `allow` replaces the module's entry wholesale, the default's
-    included, so `allow: [Kernel]` re-enables `apply`. `only:` and
-    `except:` are relative to the module's full surface.
-  - `deny` removes the module's entry. It applies after `allow`, so
-    a module in both is denied. Denying a module nothing grants is a
-    no-op.
+    * `tools` replaces the default's list when given. An empty list is
+      accepted.
+    * `rules` merges: a rule given overrides, a rule absent stays
+      strict, an unknown rule fails the boot.
+    * `allow` replaces the module's entry wholesale, the default's
+      included, so `allow: [Kernel]` re-enables `apply`. `only:` and
+      `except:` are relative to the module's full surface.
+    * `deny` removes the module's entry. It applies after `allow`, so
+      a module in both is denied. Denying a module nothing grants is a
+      no-op.
 
   Every module named must be loadable on the beamlet and every
   function under `only:` or `except:` must exist at that arity, so a
   typo fails the boot rather than granting nothing. A module named
-  twice in one key is an error. Agent-defined modules are granted by
-  existence and never need an `allow`. Policy names follow the token
-  name rule, lowercase letters, digits, underscores and hyphens;
-  `default` is reserved.
+  twice in one key is an error. Policy names follow the token name
+  rule, lowercase letters, digits, underscores and hyphens; `default`
+  is reserved. A policy the operator config file names replaces any
+  declaration of that name before it, whole.
 
   Tools and grants are independent: a policy with `tools: [:eval]`
   cannot define or patch modules but can still remove them through
@@ -53,19 +67,27 @@ defmodule Beamlet.Policy do
   A token that should not tear modules down gets
   `allow: [{Host.Code, except: [remove: 1]}]`.
 
+  ## Reading a policy
+
+  `beamlet policies.show NAME` prints a policy the way an agent under
+  it reads it with `Host.Code.print_policy/0` (`render/1`): its tools,
+  the rules in force, what it deliberately withholds and why, and the
+  modules it grants only in part. Everything else denied is simply
+  not granted; `Beamlet.Policy.Default` is the full record.
+
   ## What a relaxed rule reaches
 
   The pool of defined modules is shared by every token, so a rule
   relaxed for one policy is felt by all:
 
-  - `allow_defmacro: true` lets the token define macros. A macro
-    expands inside whichever module uses it, under that author's
-    policy, so whatever this policy grants reaches every other token
-    through the macros it writes.
-  - `allow_dynamic_dispatch: true` lets call targets be computed
-    (`mod.fun()` with `mod` a variable), which the scanner cannot
-    resolve. The grants then stop meaning what they say for this
-    policy's code, since any loaded module is one variable away.
+    * `allow_defmacro: true` lets the token define macros. A macro
+      expands inside whichever module uses it, under that author's
+      policy, so whatever this policy grants reaches every other token
+      through the macros it writes.
+    * `allow_dynamic_dispatch: true` lets call targets be computed
+      (`mod.fun()` with `mod` a variable), which the scanner cannot
+      resolve. The grants then stop meaning what they say for this
+      policy's code, since any loaded module is one variable away.
 
   Give either to a token you would trust with the whole beamlet.
   """
@@ -152,25 +174,24 @@ defmodule Beamlet.Policy do
     end
   end
 
-  @doc """
-  The policy with every module in `modules` granted whole.
-
-  The other half of the effective grants: modules defined on the
-  beamlet are granted by existence, so the runtimes merge the defined
-  set in before every scan, and `define`
-  and `patch` grant the modules of one call to each other the same
-  way.
-  """
+  # The policy with every module in `modules` granted whole. The other
+  # half of the effective grants: modules defined on the beamlet are
+  # granted by existence, so the runtimes merge the defined set in
+  # before every scan, and `define` and `patch` grant the modules of
+  # one call to each other the same way.
+  @doc false
   @spec grant(t(), [module()]) :: t()
   def grant(%__MODULE__{grants: grants} = policy, modules) do
     %{policy | grants: Map.merge(grants, Map.new(modules, &{&1, :all}))}
   end
 
-  @doc "Whether the module is granted at all (structs, require, use)."
+  # Whether the module is granted at all (structs, require, use).
+  @doc false
   @spec allowed?(t(), module()) :: boolean()
   def allowed?(%__MODULE__{grants: grants}, module), do: Map.has_key?(grants, module)
 
-  @doc "Whether the function is granted under the module's entry."
+  # Whether the function is granted under the module's entry.
+  @doc false
   @spec allowed?(t(), module(), atom(), arity()) :: boolean()
   def allowed?(%__MODULE__{grants: grants}, module, fun, arity) do
     case grants do
@@ -181,7 +202,8 @@ defmodule Beamlet.Policy do
     end
   end
 
-  @doc "The module's entry, or `:error` when the module is denied."
+  # The module's entry, or `:error` when the module is denied.
+  @doc false
   @spec fetch(t(), module()) :: {:ok, entry()} | :error
   def fetch(%__MODULE__{grants: grants}, module), do: Map.fetch(grants, module)
 

@@ -20,9 +20,8 @@ defmodule Beamlet.Tokens do
   `default` when it names none, and the name must be a policy the
   beamlet declares (`Beamlet.Policy`).
 
-  Operator-only. Nothing under `Host.*` reaches these functions. The
-  command line over them is `Beamlet.CLI`, reached as `mix beamlet` in
-  development.
+  The command line over them is `Beamlet.CLI`; an embedding host can
+  call them in its place. Agent code never reaches these functions.
   """
 
   import Ecto.Query

@@ -10,10 +10,11 @@ defmodule Beamlet.OAuth.TokenController do
   # `Beamlet.OAuth.Codes`: the client id, redirect URI and, when sent,
   # the resource must be the ones the code was issued for, a resource
   # first named here being this beamlet's, and the `code_verifier` must
-  # hash to the challenge the client committed to. Then `Beamlet.Tokens.create/1` mints an `oauth` token under
-  # the consented policy. `grant_type=refresh_token` rotates that token
-  # in place (`Beamlet.Tokens.rotate/2`): the old secrets die, the row
-  # and its id stay.
+  # hash to the challenge the client committed to. Then
+  # `Beamlet.Tokens.create/1` mints an `oauth` token under the
+  # consented policy. `grant_type=refresh_token` rotates that token in
+  # place (`Beamlet.Tokens.rotate/2`): the old secrets die, the row and
+  # its id stay.
   #
   # No client authentication: every client is public, identified by
   # the client id it sends, which must match what the code or token

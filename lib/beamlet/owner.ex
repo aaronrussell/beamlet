@@ -19,7 +19,8 @@ defmodule Beamlet.Owner do
   user on a request and nothing more: no token and no policy, since a
   browser authors no code.
 
-  Operator-only. Nothing under `Host.*` reaches these functions.
+  An embedding host calls `create/1` and `update/2` in place of
+  `beamlet setup`. Agent code never reaches these functions.
   """
 
   import Ecto.Query
