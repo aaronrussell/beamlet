@@ -2,13 +2,19 @@ defmodule Mix.Tasks.Beamlet do
   @shortdoc "Sets up the owner and manages tokens and policies on your beamlet"
 
   @moduledoc """
-  Runs the beamlet command line in development.
+  Runs the beamlet command line from Mix, in development.
 
       $ mix beamlet setup
       $ mix beamlet tokens.create laptop
+      $ mix beamlet --help
 
-  It reads the project's config, runs one command and exits non-zero
-  when the command fails. `Beamlet.CLI` describes each command.
+  It works on the data dir your project's config names, whether or
+  not the beamlet is running. It exits non-zero when a command fails,
+  so it works in scripts.
+
+  `Beamlet.CLI` describes each command. A release has no Mix, so the
+  standalone server ships `bin/beamlet` instead, and your own release
+  can call `Beamlet.CLI.main/1` from its `eval` command the same way.
   """
 
   use Mix.Task
