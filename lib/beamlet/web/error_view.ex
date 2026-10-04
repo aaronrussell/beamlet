@@ -1,15 +1,17 @@
 defmodule Beamlet.Web.ErrorView do
   @moduledoc """
-  Plain error responses for a host's endpoint: the status message as
-  text for HTML requests and as `{"errors": {"detail": ...}}` for
-  JSON. A miss under `Beamlet.Router` is a 404 rendered here, and
-  since `/` is one until an agent mounts something there, the HTML
-  404 says where the beamlet has its own pages.
+  A plain error view for your endpoint.
 
       config :my_app, MyAppWeb.Endpoint,
-        render_errors: [formats: [html: Beamlet.Web.ErrorView, json: Beamlet.Web.ErrorView], layout: false]
+        render_errors: [
+          formats: [html: Beamlet.Web.ErrorView, json: Beamlet.Web.ErrorView],
+          layout: false
+        ]
 
-  A host with error pages of its own keeps them.
+  It renders the status message as text, or as
+  `{"errors": {"detail": ...}}` for JSON. Its 404 page points to
+  `/beamlet`, since `/` answers 404 until an agent builds something
+  there. Your own error view works too.
   """
 
   @doc "Renders the response for an error template such as `\"404.html\"` or `\"500.json\"`."

@@ -1,47 +1,17 @@
 defmodule Beamlet.Web.Auth do
   @moduledoc """
-  The web sign-in: who the browser is, kept in the app's own session.
+  The owner's sign-in to the beamlet's own pages.
 
-  The one person who signs in is the owner (`Beamlet.Owner`), and a
-  signed-in browser is their user on a request with no token
-  and no policy, since a browser authors no code.
+  The sign-in is kept in a cookie of its own, scoped to `/beamlet`,
+  apart from your endpoint's session.
 
-  The app keeps a cookie of its own, apart from the endpoint's session
-  that agent pages use: `session_options/0`, scoped to `/beamlet` and
-  unreadable by page scripts. `Beamlet.Router` plugs it into its
-  browser pipeline, and the app's LiveView socket at
-  `/beamlet/app/live` decodes it. The session holds the secret of a
-  session row in the system database, and every request
-  turns it back into the user through
-  `Beamlet.Owner.authenticate_session/1`. Nothing agent code can write
-  signs anyone in: an agent page's session is a different cookie, and
-  a cookie forged with the endpoint's `secret_key_base` still needs a
-  secret that matches a row. A new email keeps the owner signed in; a
-  new password signs every browser out.
+  The one part you use is `session_options/0`, for the socket the
+  beamlet's own pages connect to:
 
-  Two plugs for `Beamlet.Router`'s browser pipeline:
-  `fetch_current_user/2` assigns `:current_user`, nil when nobody is
-  signed in, and `require_auth/2` sends a signed-out request to the
-  login page, remembering where a GET was headed so the sign-in
-  returns there. `on_mount/4` is the LiveView form of `require_auth`,
-  for a `live_session`:
+      socket "/beamlet/app/live", Phoenix.LiveView.Socket,
+        websocket: [connect_info: [session: {Beamlet.Web.Auth, :session_options, []}]]
 
-      live_session :beamlet, on_mount: [{Beamlet.Web.Auth, :require_auth}] do
-        live "/", HomeLive
-      end
-
-  `on_mount(:fetch_current_user, ...)` assigns the user without a
-  redirect, for a page that renders either way, such as the sign-in.
-
-  `log_in/2` and `log_out/1` are what the session controller calls:
-  the first creates a session, the second deletes it, and both renew
-  the cookie so a sign-in never keeps one handed out before it. A
-  sign-out also disconnects the app's LiveViews on that session, so
-  a page open in another tab goes to the login rather than acting on
-  a session that is gone. A new password set from the command line
-  disconnects nothing, since the command runs in a VM of its own: an
-  open page keeps its socket until it reconnects, and is sent to the
-  login then.
+  `Beamlet.Router` and the beamlet's pages use the rest.
   """
 
   import Plug.Conn
@@ -65,26 +35,28 @@ defmodule Beamlet.Web.Auth do
   ]
 
   @doc """
-  The `Plug.Session` options for the app's cookie.
+  The `Plug.Session` options for the sign-in's cookie.
 
-  `Beamlet.Router` plugs them into its browser pipeline, and a host's
-  endpoint names them for the app's LiveView socket:
-
-      socket "/beamlet/app/live", Phoenix.LiveView.Socket,
-        websocket: [connect_info: [session: {Beamlet.Web.Auth, :session_options, []}]]
+  `Beamlet.Router` plugs them in for the beamlet's own pages, and your
+  endpoint names them for the socket at `/beamlet/app/live`.
   """
   @spec session_options() :: keyword()
   def session_options, do: @session_options
 
-  @doc "Assigns `:current_user` from the session: the user, or nil when nobody is signed in."
+  @doc """
+  Assigns `:current_user` from the session.
+
+  It is `nil` when nobody is signed in.
+  """
   @spec fetch_current_user(Plug.Conn.t(), keyword()) :: Plug.Conn.t()
   def fetch_current_user(conn, _opts) do
     assign(conn, :current_user, user_from(get_session(conn, :session_secret)))
   end
 
   @doc """
-  Halts a signed-out request with a redirect to the login page,
-  storing the path of a GET as where to return after.
+  Halts a signed-out request with a redirect to the login page.
+
+  The path of a GET is stored, so the sign-in returns there.
   """
   @spec require_auth(Plug.Conn.t(), keyword()) :: Plug.Conn.t()
   def require_auth(%Plug.Conn{assigns: %{current_user: %User{}}} = conn, _opts), do: conn
@@ -98,9 +70,10 @@ defmodule Beamlet.Web.Auth do
   end
 
   @doc """
-  Signs the user in: creates a session, renews the cookie and stores
-  the session's secret, and the id the app's LiveView sockets on it
-  take.
+  Signs the owner in.
+
+  It creates a session, renews the cookie, and stores the session's
+  secret and the id the app's LiveView sockets on it take.
   """
   @spec log_in(Plug.Conn.t(), %User{}) :: Plug.Conn.t()
   def log_in(conn, %User{}) do
@@ -113,8 +86,10 @@ defmodule Beamlet.Web.Auth do
   end
 
   @doc """
-  Signs out: disconnects the app's LiveViews on the session, deletes
-  it, clears the cookie and renews it.
+  Signs the owner out.
+
+  It disconnects the app's LiveViews on the session, deletes the
+  session, and clears and renews the cookie.
   """
   @spec log_out(Plug.Conn.t()) :: Plug.Conn.t()
   def log_out(conn) do
@@ -130,9 +105,11 @@ defmodule Beamlet.Web.Auth do
   end
 
   @doc """
-  The hooks for a `live_session`: `:require_auth` assigns
-  `:current_user` or halts with a redirect to the login page;
-  `:fetch_current_user` assigns it, nil when nobody is signed in.
+  The hooks for a `live_session`.
+
+  `:require_auth` assigns `:current_user`, or halts with a redirect
+  to the login page. `:fetch_current_user` assigns it, `nil` when
+  nobody is signed in.
   """
   @spec on_mount(:require_auth | :fetch_current_user, map(), map(), Phoenix.LiveView.Socket.t()) ::
           {:cont, Phoenix.LiveView.Socket.t()} | {:halt, Phoenix.LiveView.Socket.t()}

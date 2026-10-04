@@ -68,6 +68,7 @@ defmodule Beamlet.MixProject do
       {:inet_cidr, "~> 1.0"},
       {:jason, "~> 1.4"},
       {:lazy_html, "~> 0.1", only: :test},
+      {:makeup_json, ">= 0.0.0", only: :dev, runtime: false},
       {:pbkdf2_elixir, "~> 2.3"},
       {:phoenix, "~> 1.8"},
       {:phoenix_html, "~> 4.3"},

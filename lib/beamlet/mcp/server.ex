@@ -1,26 +1,27 @@
 defmodule Beamlet.MCP.Server do
   @moduledoc """
-  A beamlet's MCP server: the `define`, `eval` and `patch` tools over
-  Streamable HTTP, for any MCP client.
+  The MCP server agents connect to, at `/beamlet/mcp`.
 
-  The tools are `Beamlet.MCP.Define`, `Beamlet.MCP.Eval` and
-  `Beamlet.MCP.Patch`. The server runs as a child of `Beamlet`. A
-  host serves it at `/beamlet/mcp` by forwarding to `Beamlet.Router`,
-  which mounts the authenticating plug there, so every request
-  carries one of the beamlet's tokens as a bearer credential:
+  It offers three tools:
 
-      forward "/", Beamlet.Router
+  * `Beamlet.MCP.Define` - the `define` tool, which compiles modules
+    into your beamlet.
+  * `Beamlet.MCP.Eval` - the `eval` tool, which runs Elixir code on
+    your beamlet.
+  * `Beamlet.MCP.Patch` - the `patch` tool, which edits a module
+    agents defined.
 
-  What a token sees is set by its policy (`Beamlet.Policy`): the
-  listing holds only the tools the policy grants, and a call to any
-  other tool is refused as unknown, since to that token it is. The
-  listing is filtered per request; a policy change is a restart, so
-  no list-changed notification is sent.
+  Every request needs a token, and the token's policy decides which
+  of the tools the client sees.
 
-  The instructions returned on `initialize` and each tool's
-  description are kept under 2,048 bytes: Claude Code truncates both
-  at 2KB, so they say what matters most first and point at the
-  stdlib for the rest.
+  ## Configuration
+
+      config :beamlet, mcp: [request_timeout: 90_000]
+
+  * `:request_timeout` - How long the server waits for a tool to
+    answer before replying "Server unavailable", in milliseconds.
+    Defaults to 65 seconds. It must be longer than the eval and
+    define timeouts, so a slow tool reports its own error first.
   """
 
   @version Mix.Project.config()[:version]

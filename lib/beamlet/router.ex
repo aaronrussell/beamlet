@@ -1,92 +1,94 @@
 defmodule Beamlet.Router do
   @moduledoc """
-  The router a host forwards to, and the one line that puts a beamlet
-  on the web:
+  The router your app forwards to, which serves the beamlet.
+
+  Add it as the last route in your router, at the root:
 
       forward "/", Beamlet.Router
 
-  It goes last in the host's router and at the root. Last, because a
-  forward at `/` matches everything after it, so the host's own routes
-  win by coming first. At the root, because a LiveView page's
-  connected mount re-matches the full browser URL against the router
-  that served it, and a forward at a prefix strips that prefix from
-  what the router sees; the routes agents mount are served at the
-  root, or under the prefix `config :beamlet, :web` names, which the
-  router generated from them carries instead.
+  Last, so your own routes win. At the root, because LiveView pages
+  match the full URL and break under a forward at a prefix. To serve
+  the routes agents mount under a path, set `:prefix` in
+  `Beamlet.Config` instead.
 
-  Everything the beamlet owns lives under one segment, `/beamlet`,
-  which an agent can never mount under: the MCP server at
-  `/beamlet/mcp` (`Beamlet.MCP.Server`, behind the token check), the
-  sign-in at `/beamlet/login` and the sign-out at `/beamlet/logout`,
-  the home page at `/beamlet` (behind the login), the OAuth endpoints
-  at `/beamlet/authorize` (behind the login too) and `/beamlet/token`
-  (which clients post to directly, so no session and no CSRF check),
-  and on the host's endpoint the socket and asset paths below. The
-  one exception is the pair of OAuth discovery documents
-  (`Beamlet.OAuth`), which the specs fix under `/.well-known` at the
-  root; they are exact paths, matched ahead of the forward. Any other
-  path under `/beamlet` answers 404 here, whatever the route table
-  holds. Everything else forwards to the router generated from the
-  routes agents mount, so `/` is an agent's to build and answers 404
-  until one does.
+  The beamlet keeps its own pages under `/beamlet`, where agents can
+  never mount a route:
 
-  The sign-in, the consent page and the home page are the app, the
-  beamlet's own inner app, as against the pages agents build. The app
-  keeps its own session in its own cookie, scoped to `/beamlet`
-  (`Beamlet.Web.Auth.session_options/0`), which this router's browser
-  pipeline plugs in place of the endpoint's, and its pages connect to
-  their own LiveView socket. Agent pages never receive the app's
-  cookie or its session, and nothing they write to theirs signs
-  anyone in.
+  * `/beamlet/mcp` - the MCP server (`Beamlet.MCP.Server`).
+  * `/beamlet` - the home page, behind the sign-in.
+  * `/beamlet/login` and `/beamlet/logout` - signing in and out.
+  * `/beamlet/authorize` and `/beamlet/token` - OAuth
+    (`Beamlet.OAuth`).
 
-  ## What the host carries
+  It also answers the two OAuth documents under `/.well-known`. Every
+  other path goes to the routes agents mount, so `/` answers 404
+  until an agent builds something there.
 
-  The pages agents build are LiveViews, and the endpoint serving them
-  needs what any LiveView app's endpoint has. This is the whole list
-  of integration points; `Beamlet.TestEndpoint` in the library's test
-  support is it written down. The standalone server in `server/`
-  carries the same, with plugs of its own for running as a deployment
-  that change nothing agent routes receive.
+  ## What your endpoint needs
 
-  In the router:
+  Agent pages are LiveViews, so your endpoint needs what any LiveView
+  app has, plus a socket for the beamlet's own pages:
 
-    * `forward "/", Beamlet.Router` as the last route.
+      socket "/beamlet/live", Phoenix.LiveView.Socket,
+        websocket: [connect_info: [session: @session_options]]
 
-  In the endpoint:
+      socket "/beamlet/app/live", Phoenix.LiveView.Socket,
+        websocket: [connect_info: [session: {Beamlet.Web.Auth, :session_options, []}]]
 
-    * The LiveView socket for agent pages at `/beamlet/live`, the
-      path the `beamlet` layout of agent pages connects to:
-      `socket "/beamlet/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: @session_options]]`.
-    * The LiveView socket for the app at `/beamlet/app/live`, the
-      path the `app` layout connects to, decoding the app's cookie:
-      `socket "/beamlet/app/live", Phoenix.LiveView.Socket, websocket: [connect_info: [session: {Beamlet.Web.Auth, :session_options, []}]]`.
-    * `plug Beamlet.Assets` before the parsers, serving the LiveView
-      JavaScript and the beamlet's own stylesheet under
-      `/beamlet/assets`.
-    * `Plug.Parsers` with the JSON and urlencoded parsers: JSON for
-      controller routes, urlencoded for the sign-in form and the forms
-      agent pages post. No multipart parser: it writes uploads to the
-      system temp dir, where agent code cannot read them.
-    * `plug Plug.MethodOverride` after the parsers, so a form's
-      `_method` field reaches the PUT, PATCH and DELETE routes agents
-      mount.
-    * `Plug.Session`, the session agent pages fetch: their CSRF
-      token, their flash and whatever an agent's app keeps there. It
-      does not carry the sign-in. Behind a proxy that terminates TLS,
-      add `plug Plug.RewriteOn, [:x_forwarded_proto]` ahead of it so
-      both session cookies are marked secure.
+      plug Beamlet.Assets
 
-  In config:
+      plug Plug.Parsers,
+        parsers: [:urlencoded, :json],
+        pass: ["*/*"],
+        json_decoder: Phoenix.json_library()
 
-    * `config :beamlet, web: [endpoint: MyAppWeb.Endpoint]`, naming the
-      endpoint the routes are served through (`Beamlet.Config`).
-    * `pubsub_server: Beamlet.PubSub` on the endpoint, so a page can
-      subscribe through `Host.PubSub`.
-    * `render_errors` on the endpoint naming an error view;
-      `Beamlet.Web.ErrorView` is a plain one, or the host's own.
-    * `config :phoenix, :filter_parameters, ["password", "code",
-      "code_verifier", "refresh_token"]`, so the request log keeps
-      neither the sign-in's password nor the token endpoint's secrets.
+      plug Plug.MethodOverride
+      plug Plug.Session, @session_options
+      plug MyAppWeb.Router
+
+  * `/beamlet/live` is the socket agent pages connect to, with your
+    endpoint's session.
+  * `/beamlet/app/live` is the socket the beamlet's own pages connect
+    to, with their own session.
+  * `Beamlet.Assets` serves the LiveView JavaScript and the
+    beamlet's stylesheet. It goes before the parsers.
+  * `Plug.Parsers` leaves out multipart. It writes uploads to the
+    system temp dir, where agent code cannot read them.
+  * `Plug.MethodOverride` lets agent forms reach their PUT, PATCH and
+    DELETE routes.
+  * Behind a proxy that terminates TLS, add
+    `plug Plug.RewriteOn, [:x_forwarded_proto]` before `Plug.Session`,
+    so the session cookies are marked secure.
+
+  And in config:
+
+      config :beamlet, web: [endpoint: MyAppWeb.Endpoint]
+
+      config :my_app, MyAppWeb.Endpoint,
+        pubsub_server: Beamlet.PubSub,
+        render_errors: [
+          formats: [html: Beamlet.Web.ErrorView, json: Beamlet.Web.ErrorView],
+          layout: false
+        ]
+
+      config :phoenix, :filter_parameters,
+        ["password", "code", "code_verifier", "refresh_token"]
+
+  `pubsub_server` lets agent pages subscribe through `Host.PubSub`.
+  `Beamlet.Web.ErrorView` is a plain error view, and your own works
+  too. The filtered parameters keep the sign-in's password and the
+  OAuth secrets out of the request log.
+
+  The standalone server's
+  [endpoint](https://github.com/aaronrussell/beamlet/blob/main/server/lib/beamlet_server/endpoint.ex)
+  is a worked example.
+
+  > #### Nothing may fetch the session before the forward {: .warning}
+  >
+  > The beamlet's pages swap in their own session as the request
+  > reaches this router. If a plug in your endpoint or router fetches
+  > the session first, the owner's sign-in lands in your endpoint's
+  > session, which agent pages can read and write.
   """
 
   use Phoenix.Router, helpers: false

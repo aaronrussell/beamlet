@@ -16,39 +16,33 @@ defmodule Beamlet.Config do
 
   ## Keys
 
-    * `:data_dir` - The directory where the beamlet keeps everything:
-      its databases, the code agents define and the files they keep.
-      Required. It must be an absolute path to a directory that already
-      exists.
-
-    * `:policies` - The policies a token can have besides `default`, as
-      a keyword list of name to policy. None by default.
-      `Beamlet.Policy` describes how to write one.
-
-    * `:eval` - Limits on the `eval` tool. `timeout` is how long one
-      evaluation may run (30 seconds). `max_heap_bytes` caps the memory
-      it may use (128 MB), and `max_output` the output returned to the
-      model (32 KB). `Beamlet.MCP.Eval` says what happens when each is
-      reached.
-
-    * `:define` - `timeout` is how long one `define` or `patch` may take
-      to compile (30 seconds).
-
-    * `:mcp` - `request_timeout` is how long the MCP server waits for a
-      tool to answer before replying "Server unavailable" (65 seconds).
-      It must be longer than the eval and define timeouts, so a slow
-      tool reports its own error first.
-
-    * `:http` - `allow` lists the hosts on private networks that agent
-      code may reach through `Host.HTTP`, as names, IP addresses or CIDR
-      blocks. A name must be listed as a name: allowing its address
-      or block is not enough. Empty by default, so agent code reaches
-      only the public internet.
-
-    * `:web` - `endpoint` names the Phoenix endpoint that forwards to
-      `Beamlet.Router`. Required. `prefix` is a path to serve the routes
-      agents mount under, such as `"/app"`, and cannot be under
-      `/beamlet`. Empty by default, which serves them at the root.
+  * `:data_dir` - The directory where the beamlet keeps everything:
+    its databases, the code agents define and the files they keep.
+    Required. It must be an absolute path to a directory that already
+    exists.
+  * `:policies` - The policies a token can have besides `default`, as
+    a keyword list of name to policy. None by default.
+    `Beamlet.Policy` describes how to write one.
+  * `:eval` - Limits on the `eval` tool. `timeout` is how long one
+    evaluation may run (30 seconds). `max_heap_bytes` caps the memory
+    it may use (128 MB), and `max_output` the output returned to the
+    model (32 KB). `Beamlet.MCP.Eval` says what happens when each is
+    reached.
+  * `:define` - `timeout` is how long one `define` or `patch` may take
+    to compile (30 seconds).
+  * `:mcp` - `request_timeout` is how long the MCP server waits for a
+    tool to answer before replying "Server unavailable" (65 seconds).
+    It must be longer than the eval and define timeouts, so a slow
+    tool reports its own error first.
+  * `:http` - `allow` lists the hosts on private networks that agent
+    code may reach through `Host.HTTP`, as names, IP addresses or CIDR
+    blocks. A name must be listed as a name: allowing its address
+    or block is not enough. Empty by default, so agent code reaches
+    only the public internet.
+  * `:web` - `endpoint` names the Phoenix endpoint that forwards to
+    `Beamlet.Router`. Required. `prefix` is a path to serve the routes
+    agents mount under, such as `"/app"`, and cannot be under
+    `/beamlet`. Empty by default, which serves them at the root.
   """
 
   @eval_defaults [timeout: 30_000, max_heap_bytes: 134_217_728, max_output: 32_768]

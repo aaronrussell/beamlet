@@ -1,41 +1,42 @@
 defmodule Beamlet.MCP.Eval do
-  @moduledoc """
-  The `eval` tool: run Elixir code on a beamlet and hand back what it
-  printed and returned.
+  @moduledoc ~S"""
+  The `eval` tool, which runs Elixir code on your beamlet.
 
-  Each use is a fresh evaluation inside the beamlet's own VM, with
-  empty bindings and nothing carried over from the last. The code is
-  scanned against the token's policy before it runs, and may call
-  whatever the policy grants and every module defined on the beamlet.
-  The result is the printed output, then `=> ` and the inspected
-  value of the last expression. A refused call, a raised exception
-  and a timeout come back as text too, after the output printed
-  before them, so an agent reads what went wrong and tries again.
+  Each use is a fresh evaluation, with nothing carried over from the
+  last. The code is checked against the token's policy before it
+  runs. It can call what the policy grants and every module agents
+  have defined.
 
-  A token may use the tool when its policy lists `:eval` under
-  `tools` (`Beamlet.Policy`); `default` does.
+  The agent gets back what the code printed, then the value of its
+  last expression. A refused call, an exception or a timeout comes
+  back as text too, so the agent can see what went wrong and try
+  again.
 
-  ## Limits
+  A token has the tool when its policy lists `:eval` under `tools`.
+  `default` does.
 
-  Three limits, set in config, each protecting one thing:
+  ## Input
 
-      config :beamlet,
-        eval: [timeout: 30_000, max_heap_bytes: 134_217_728, max_output: 32_768]
+  ```json
+  {"code": "Shopping.List.items() |> length()"}
+  ```
 
-  - `timeout` (30 seconds) protects the session. An MCP session runs
-    one request at a time, so a run that never ended would stall
-    every request behind it. The evaluation is stopped and the output
-    so far returned. The MCP request timeout (`Beamlet.Config.mcp/0`)
-    must be longer, so it is never the one that fires.
-  - `max_heap_bytes` (128MB) protects the beamlet: a runaway
-    allocation is stopped before it takes the VM down. Binaries the
-    code holds count, however large.
-  - `max_output` (32KB) protects the model's context. Only the first
-    32KB printed is ever held, and a longer result is cut with a line
-    saying how much was shown of how much. The result or error after
-    the output is kept whole when it fits, the output taking the room
-    left, since that line is what the agent acts on. 32KB is under
-    the point where Claude Code warns about a large tool result.
+  * `code` - Required. The Elixir code to evaluate.
+
+  ## Configuration
+
+      config :beamlet, eval: [timeout: 60_000]
+
+  * `:timeout` - How long one evaluation may run, in milliseconds.
+    When it runs out, the evaluation stops and the output so far
+    comes back. Defaults to 30 seconds. The MCP server's
+    `:request_timeout` must stay longer (`Beamlet.MCP.Server`).
+  * `:max_heap_bytes` - How much memory one evaluation may use.
+    Past it, the evaluation stops before it can take the beamlet
+    down. Defaults to 128 MB.
+  * `:max_output` - How much printed output comes back, in bytes.
+    Longer output is cut, with a line saying how much was shown.
+    Defaults to 32 KB.
   """
 
   use Anubis.Server.Component, type: :tool

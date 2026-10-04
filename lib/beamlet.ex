@@ -59,8 +59,8 @@ defmodule Beamlet do
 
   ## Options
 
-    * `:only` - `:system` starts just the policies and the system
-      database, with nothing an agent reaches.
+  * `:only` - `:system` starts just the policies and the system
+    database, with nothing an agent reaches.
   """
   @spec start_link([option()]) :: Supervisor.on_start()
   def start_link(opts) when is_list(opts) do

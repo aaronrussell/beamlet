@@ -1,20 +1,47 @@
 defmodule Beamlet.MCP.Patch do
-  @moduledoc """
-  The `patch` tool: targeted edits to the source of modules defined on
-  a beamlet.
+  @moduledoc ~S"""
+  The `patch` tool, which edits the source of modules agents defined.
 
-  Each use takes a list of patches. A patch names a module, an anchor
-  and an operation. The anchor is `find`, text occurring exactly once
-  in the module's source, or `select`, a function as `name/arity`
-  with its `@doc` and `@spec`; the operation is `replace`, `before` or
-  `after`. The patches apply in order, then the touched modules go
-  through everything `define` does, as one change: scanned, checked
-  for docs, compiled with the modules that depend on them and
-  committed. On any error nothing changes.
+  An agent names a module and an anchor in its source, then replaces
+  the anchor or inserts text before or after it. The anchor is a
+  piece of text that occurs exactly once, or a function given as
+  `name/arity`, together with its `@doc` and `@spec`.
 
-  `patch` comes with `define`: a policy listing `:define` under
-  `tools` grants both (`Beamlet.Policy`). It shares define's
-  `timeout` (`Beamlet.MCP.Define`).
+  The patches apply in order. The modules they touch then go through
+  everything `define` does, as one change: checked against the
+  token's policy, compiled and committed. Either all of it lands or
+  none of it does.
+
+  A token has the tool whenever it has `define`
+  (`Beamlet.MCP.Define`).
+
+  ## Input
+
+  ```json
+  {
+    "patches": [
+      {"module": "Shopping.List", "find": "@limit 10", "replace": "@limit 50"},
+      {"module": "Shopping.List", "select": "add/2", "after": "def remove(list, item) do..."}
+    ]
+  }
+  ```
+
+  * `patches` - Required. The patches to apply, in order, each with:
+    * `module` - Required. The module to edit, such as `Shopping.List`.
+    * `find` - Text that occurs exactly once in the module's source.
+    * `select` - A function as `name/arity`, with its `@doc` and
+      `@spec`.
+    * `replace` - Text to put in place of the anchor. Empty removes it.
+    * `before` - Text to insert before the anchor.
+    * `after` - Text to insert after the anchor.
+
+  Each patch takes one anchor, `find` or `select`, and one of
+  `replace`, `before` or `after`.
+
+  ## Configuration
+
+  Nothing of its own. A patch uses define's `:timeout`
+  (`Beamlet.MCP.Define`).
   """
 
   use Anubis.Server.Component, type: :tool

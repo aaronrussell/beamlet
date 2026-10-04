@@ -1,27 +1,15 @@
 defmodule Beamlet.Assets do
   @moduledoc """
-  The files the beamlet's pages load, served under `/beamlet/assets`.
-  A host plugs it into its endpoint before the parsers, where
-  `Plug.Static` usually goes:
+  Serves the files the beamlet's pages load, under `/beamlet/assets`.
+
+  Plug it into your endpoint, before the parsers:
 
       plug Beamlet.Assets
 
-  It serves the LiveView JavaScript from the deps' precompiled
-  bundles, so there is no JavaScript build to run, and the stylesheet
-  for the app, the beamlet's own pages, from the package's
-  `priv/static`, built from `assets/css/app.css` with
-  `mix assets.build` and shipped built. The root layouts reference
-  exactly these:
-
-    * `/beamlet/assets/phoenix/phoenix.mjs` from `:phoenix`
-    * `/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js` from
-      `:phoenix_live_view`
-    * `/beamlet/assets/app.css` from `:beamlet`
-
-  Nothing else under those directories is reachable; the other builds
-  of the same bundles answer 404. `/beamlet/assets` is one of the paths a
-  beamlet reserves for itself (`Beamlet.Router`), so an agent cannot
-  mount a route under it.
+  There is nothing to build. It serves the LiveView JavaScript from
+  the bundles the Phoenix packages ship, and the beamlet's own
+  stylesheet. Those three files are all it serves, and any other path
+  under `/beamlet/assets` answers 404.
   """
 
   use Plug.Builder

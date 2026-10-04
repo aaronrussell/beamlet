@@ -4,13 +4,12 @@ defmodule Beamlet.Token do
 
   A token is one of two kinds:
 
-    * `cli` - Named, and created with `beamlet tokens.create` or
-      `Beamlet.Tokens.create/1`. It never expires and lasts until you
-      delete it.
-
-    * `oauth` - Created when a chat client connects and you consent.
-      It is known by the client's URL, and it expires and refreshes
-      as `Beamlet.OAuth` describes.
+  * `cli` - Named, and created with `beamlet tokens.create` or
+    `Beamlet.Tokens.create/1`. It never expires and lasts until you
+    delete it.
+  * `oauth` - Created when a chat client connects and you consent.
+    It is known by the client's URL, and it expires and refreshes
+    as `Beamlet.OAuth` describes.
 
   Each token has a policy, `default` unless another was named.
 

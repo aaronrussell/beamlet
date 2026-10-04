@@ -24,23 +24,20 @@ defmodule Beamlet.Policy do
 
   Every policy starts from `default` and changes only what it names.
 
-    * `:tools` - The MCP tools the token gets: `:eval`, `:define` or
-      both. `:define` brings the `patch` tool with it. Replaces the
-      default's list, which has both.
-
-    * `:rules` - Relaxes the rules on the code the token submits.
-      There are two, `allow_defmacro` and `allow_dynamic_dispatch`,
-      both off unless set to `true`.
-
-    * `:allow` - Modules the token's code may call. A module alone
-      grants all of it. `{Mod, only: [fun: 1]}` grants just the
-      functions listed, and `{Mod, except: [fun: 1]}` all but those.
-      An entry replaces whatever the default grants for that module,
-      so `allow: [Kernel]` brings back `apply/2` and the rest the
-      default holds back.
-
-    * `:deny` - Modules the token's code may not call at all. A
-      module in both `allow` and `deny` is denied.
+  * `:tools` - The MCP tools the token gets: `:eval`, `:define` or
+    both. `:define` brings the `patch` tool with it. Replaces the
+    default's list, which has both.
+  * `:rules` - Relaxes the rules on the code the token submits.
+    There are two, `allow_defmacro` and `allow_dynamic_dispatch`,
+    both off unless set to `true`.
+  * `:allow` - Modules the token's code may call. A module alone
+    grants all of it. `{Mod, only: [fun: 1]}` grants just the
+    functions listed, and `{Mod, except: [fun: 1]}` all but those.
+    An entry replaces whatever the default grants for that module,
+    so `allow: [Kernel]` brings back `apply/2` and the rest the
+    default holds back.
+  * `:deny` - Modules the token's code may not call at all. A
+    module in both `allow` and `deny` is denied.
 
   Tools and grants are separate. Without the `except`, `explorer`
   above could not define modules but could still delete them with
@@ -435,7 +432,7 @@ defmodule Beamlet.Policy do
         "(none)"
 
       granted ->
-        case tool_list(%__MODULE__{tools: @tools}) -- granted do
+        case tool_list(%__MODULE__{name: "default", tools: @tools}) -- granted do
           [] -> Enum.join(granted, ", ")
           withheld -> "#{Enum.join(granted, ", ")} (not granted: #{Enum.join(withheld, ", ")})"
         end
