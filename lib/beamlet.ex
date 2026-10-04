@@ -5,7 +5,8 @@ defmodule Beamlet do
   An agent connects over MCP and works on your beamlet, a running
   Elixir application. It defines modules, runs code, and builds APIs
   and live dashboards on it. Most people run Beamlet as a standalone
-  server, and the [overview](overview.md) is the place to start.
+  server, and [Getting started](getting-started.md) is the place to
+  start.
 
   This module is what starts a beamlet, in the standalone server or
   inside your own app.

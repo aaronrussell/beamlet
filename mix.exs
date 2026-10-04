@@ -95,15 +95,25 @@ defmodule Beamlet.MixProject do
 
   defp docs do
     [
-      main: "overview",
+      main: "getting-started",
       source_url: @source_url,
       source_ref: "v#{@version}",
       homepage_url: @source_url,
-      extras: ["docs/overview.md", "CHANGELOG.md"],
+      extras: [
+        "CHANGELOG.md",
+        "guides/security.md",
+        "guides/getting-started.md",
+        "guides/working-with-your-beamlet.md",
+        "guides/tokens-and-policies.md",
+        "guides/operating-a-beamlet.md"
+      ],
+      groups_for_extras: [
+        Guides: ~r/^guides\/(?!security)/
+      ],
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       groups_for_modules: [
-        MCP: [Beamlet.MCP.Server, Beamlet.MCP.Define, Beamlet.MCP.Eval, Beamlet.MCP.Patch],
-        Web: [Beamlet.Router, Beamlet.Assets, Beamlet.Web.Auth, Beamlet.Web.ErrorView],
+        MCP: ~r/^Beamlet.MCP\./,
+        Web: [Beamlet.Router, Beamlet.Assets, ~r/^Beamlet.Web\./],
         "Host Stdlib": ~r/^Host\./
       ]
     ]
