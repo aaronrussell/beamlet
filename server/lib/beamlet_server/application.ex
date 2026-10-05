@@ -16,10 +16,4 @@ defmodule BeamletServer.Application do
     opts = [strategy: :one_for_one, name: BeamletServer.Supervisor]
     Supervisor.start_link(children, opts)
   end
-
-  @impl true
-  def config_change(changed, _new, removed) do
-    BeamletServer.Endpoint.config_change(changed, removed)
-    :ok
-  end
 end

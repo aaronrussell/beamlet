@@ -102,25 +102,25 @@ defmodule Beamlet.Config do
 
   @doc "The `:eval` settings, with the defaults filled in."
   @spec eval() :: keyword()
-  def eval, do: limits(:eval, @eval_defaults)
+  def eval, do: settings(:eval, @eval_defaults)
 
   @doc "The `:define` settings, with the defaults filled in."
   @spec define() :: keyword()
-  def define, do: limits(:define, @define_defaults)
+  def define, do: settings(:define, @define_defaults)
 
   @doc "The `:mcp` settings, with the defaults filled in."
   @spec mcp() :: keyword()
-  def mcp, do: limits(:mcp, @mcp_defaults)
+  def mcp, do: settings(:mcp, @mcp_defaults)
 
   @doc "The `:http` settings, with the defaults filled in."
   @spec http() :: keyword()
-  def http, do: limits(:http, @http_defaults)
+  def http, do: settings(:http, @http_defaults)
 
   @doc "The `:web` settings, with the defaults filled in."
   @spec web() :: keyword()
-  def web, do: limits(:web, @web_defaults)
+  def web, do: settings(:web, @web_defaults)
 
-  defp limits(key, defaults) do
+  defp settings(key, defaults) do
     configured = Application.get_env(:beamlet, key, [])
     for {name, default} <- defaults, do: {name, Keyword.get(configured, name, default)}
   end

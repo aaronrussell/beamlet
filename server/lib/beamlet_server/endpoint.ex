@@ -10,9 +10,6 @@ defmodule BeamletServer.Endpoint do
 
   use Phoenix.Endpoint, otp_app: :beamlet_server
 
-  # The session will be stored in the cookie and signed,
-  # this means its contents can be read but not tampered with.
-  # Set :encryption_salt if you would also like to encrypt it.
   @session_options [
     store: :cookie,
     key: "_beamlet_server_key",

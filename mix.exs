@@ -34,15 +34,6 @@ defmodule Beamlet.MixProject do
 
   defp aliases do
     [
-      "ecto.setup": [
-        "ecto.create -r Beamlet.Repo -r Host.Repo",
-        "ecto.migrate",
-        "run priv/repo/seeds.exs"
-      ],
-      "ecto.reset": [
-        "ecto.drop -r Beamlet.Repo -r Host.Repo",
-        "ecto.setup"
-      ],
       "assets.build": ["tailwind app"],
       precommit: [
         "compile --warnings-as-errors",
@@ -83,7 +74,7 @@ defmodule Beamlet.MixProject do
 
   defp pkg do
     [
-      description: "TODO",
+      description: "A little Elixir server that your AI client builds inside, over MCP.",
       licenses: ["Apache-2.0"],
       maintainers: ["Aaron Russell"],
       files: ~w(lib priv/repo priv/static .formatter.exs mix.exs CHANGELOG.md LICENSE README.md),

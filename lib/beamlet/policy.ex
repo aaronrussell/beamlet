@@ -76,7 +76,9 @@ defmodule Beamlet.Policy do
   alias Beamlet.Policy.Rules
   alias Beamlet.Policy.Signage
 
-  defstruct [:name, tools: [:define, :eval], rules: %Rules{}, grants: %{}]
+  @tools [:define, :eval]
+
+  defstruct [:name, tools: @tools, rules: %Rules{}, grants: %{}]
 
   @typedoc "A function name/arity pair, the grants' granularity."
   @type fa :: {atom(), arity()}
@@ -98,7 +100,6 @@ defmodule Beamlet.Policy do
           grants: grants()
         }
 
-  @tools [:define, :eval]
   @keys [:tools, :rules, :allow, :deny]
   @name ~r/^[a-z0-9_-]{1,64}$/
 
@@ -250,10 +251,13 @@ defmodule Beamlet.Policy do
          "policy #{name}: a policy is a keyword list with tools, rules, allow and " <>
            "deny, got: #{inspect(document)}"}
 
-      (unknown = Keyword.keys(document) -- @keys) != [] ->
+      (unknown = Enum.find(Keyword.keys(document), &(&1 not in @keys))) != nil ->
         {:error,
-         "policy #{name}: unknown key #{inspect(hd(unknown))} " <>
+         "policy #{name}: unknown key #{inspect(unknown)} " <>
            "(a policy has tools, rules, allow and deny)"}
+
+      (dup = repeated(Keyword.keys(document))) != nil ->
+        {:error, "policy #{name}: the document names #{dup} twice"}
 
       true ->
         :ok
@@ -266,8 +270,8 @@ defmodule Beamlet.Policy do
     cond do
       not is_list(tools) or not Enum.all?(tools, &(&1 in @tools)) ->
         {:error,
-         "policy #{name}: tools must be a list drawn from #{inspect(@tools)}, " <>
-           "got: #{inspect(tools)}"}
+         "policy #{name}: tools must be a list drawn from #{inspect(@tools)} " <>
+           "(:define brings the patch tool with it), got: #{inspect(tools)}"}
 
       (dup = repeated(tools)) != nil ->
         {:error, "policy #{name}: tools names #{inspect(dup)} twice"}
@@ -281,25 +285,31 @@ defmodule Beamlet.Policy do
 
   defp validate_rules(name, {:ok, rules}) do
     if Keyword.keyword?(rules) do
-      Enum.find_value(rules, :ok, fn
-        {key, value}
-        when key in [:allow_defmacro, :allow_dynamic_dispatch] and
-               is_boolean(value) ->
-          nil
-
-        {key, value} ->
-          if key in Rules.keys() do
-            {:error, "policy #{name}: rule #{key} must be true or false, got: #{inspect(value)}"}
-          else
+      Enum.find_value(rules, fn {key, value} ->
+        cond do
+          key not in Rules.keys() ->
             {:error,
              "policy #{name}: unknown rule #{inspect(key)} " <>
                "(rules are #{Enum.join(Rules.keys(), " and ")})"}
-          end
-      end)
+
+          not is_boolean(value) ->
+            {:error, "policy #{name}: rule #{key} must be true or false, got: #{inspect(value)}"}
+
+          true ->
+            nil
+        end
+      end) || validate_rules_once(name, rules)
     else
       {:error,
        "policy #{name}: rules must be a keyword list like [allow_defmacro: true], " <>
          "got: #{inspect(rules)}"}
+    end
+  end
+
+  defp validate_rules_once(name, rules) do
+    case repeated(Keyword.keys(rules)) do
+      nil -> :ok
+      key -> {:error, "policy #{name}: rules names #{key} twice"}
     end
   end
 
@@ -361,14 +371,22 @@ defmodule Beamlet.Policy do
         Enum.all?(fas, fn {_fun, arity} -> is_integer(arity) and arity >= 0 end)
 
     if shaped? do
-      case Enum.find(fas, fn {fun, arity} -> not exported?(module, fun, arity) end) do
-        nil ->
-          {:ok, {key, fas}}
+      missing = Enum.find(fas, fn {fun, arity} -> not exported?(module, fun, arity) end)
 
-        {fun, arity} ->
+      cond do
+        missing != nil ->
+          {fun, arity} = missing
+
           {:error,
            "policy #{name}: allow #{inspect(module)} #{key}: #{fun}/#{arity} is not " <>
              "a function or macro of #{inspect(module)}"}
+
+        (dup = repeated(fas)) != nil ->
+          {fun, arity} = dup
+          {:error, "policy #{name}: allow #{inspect(module)} #{key}: names #{fun}/#{arity} twice"}
+
+        true ->
+          {:ok, {key, fas}}
       end
     else
       {:error,

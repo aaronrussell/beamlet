@@ -87,11 +87,17 @@ defmodule Beamlet.PolicyTest do
                "policy x: unknown key :allow_app (a policy has tools, rules, allow and deny)"
     end
 
+    test "rejects a key named twice" do
+      assert {:error, message} = Policy.build(:x, deny: [IO], deny: [File])
+      assert message =~ "policy x: the document names deny twice"
+    end
+
     test "rejects tools outside the list" do
       assert {:error, message} = Policy.build(:x, tools: [:eval, :exec])
 
       assert message =~
-               "policy x: tools must be a list drawn from [:define, :eval], got: [:eval, :exec]"
+               "policy x: tools must be a list drawn from [:define, :eval] " <>
+                 "(:define brings the patch tool with it), got: [:eval, :exec]"
 
       assert {:error, message} = Policy.build(:x, tools: :eval)
       assert message =~ "policy x: tools must be a list"
@@ -112,6 +118,13 @@ defmodule Beamlet.PolicyTest do
     test "rejects a rule that is not a boolean" do
       assert {:error, message} = Policy.build(:x, rules: [allow_defmacro: "yes"])
       assert message =~ ~s(policy x: rule allow_defmacro must be true or false, got: "yes")
+    end
+
+    test "rejects a rule named twice" do
+      assert {:error, message} =
+               Policy.build(:x, rules: [allow_defmacro: true, allow_defmacro: false])
+
+      assert message =~ "policy x: rules names allow_defmacro twice"
     end
 
     test "rejects rules that are not a keyword list" do
@@ -168,6 +181,11 @@ defmodule Beamlet.PolicyTest do
 
       assert {:error, message} = Policy.build(:x, allow: [{File, except: [read: 3]}])
       assert message =~ "policy x: allow File except: read/3 is not a function or macro of File"
+    end
+
+    test "rejects a function named twice in one list" do
+      assert {:error, message} = Policy.build(:x, allow: [{File, only: [read: 1, read: 1]}])
+      assert message =~ "policy x: allow File only: names read/1 twice"
     end
 
     test "accepts macros in a function list" do

@@ -27,8 +27,8 @@ defmodule Beamlet.Code.Docs do
 
   alias Beamlet.Code.Entry
 
-  @public_kinds [:def, :defmacro, :defdelegate]
-  @private_kinds [:defp, :defmacrop]
+  @public_kinds [:def, :defmacro, :defdelegate, :defguard]
+  @private_kinds [:defp, :defmacrop, :defguardp]
   @framework_uses [
     [:Phoenix, :LiveView],
     [:Phoenix, :Controller],

@@ -1,5 +1,5 @@
 #!/bin/sh
-# The operator CLI (Beamlet.CLI) in a release: `bin/beamlet users` and
+# The operator CLI (Beamlet.CLI) in a release: `bin/beamlet setup` and
 # friends. `eval` runs the config providers and loads the release
 # without starting it; the CLI starts the system half of a beamlet
 # itself, so this works on a fresh volume and beside a running server.

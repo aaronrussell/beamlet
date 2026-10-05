@@ -56,7 +56,6 @@ WORKDIR /app
 COPY --from=builder --chown=beamlet:beamlet /app/server/_build/prod/rel/beamlet_server ./
 USER beamlet
 
-ENV MIX_ENV=prod
 ENV BEAMLET_DATA_DIR=/data
 ENV PATH="/app/bin:${PATH}"
 EXPOSE 4000

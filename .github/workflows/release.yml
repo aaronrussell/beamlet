@@ -22,7 +22,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME#v}"
           for file in mix.exs server/mix.exs; do
-            version=$(sed -nE 's/^ *version: "([^"]+)".*/\1/p' "$file")
+            version=$(sed -nE 's/^ *(@version |version: )"([^"]+)".*/\2/p' "$file")
             if [ "$version" != "$tag" ]; then
               echo "::error file=$file::version is $version, the tag is $GITHUB_REF_NAME"
               exit 1

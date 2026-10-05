@@ -163,6 +163,50 @@ defmodule Beamlet.Code.DocsTest do
       assert message =~ "Docs.Fixture.K.upcase/1 is missing @doc"
     end
 
+    test "defguard needs a doc and defguardp does not" do
+      message =
+        check_error("""
+        defmodule Docs.Fixture.K2 do
+          @moduledoc "K2."
+
+          defguardp is_teen(age) when age in 13..19
+
+          defguard is_adult(age) when is_integer(age) and age >= 18
+        end
+        """)
+
+      assert message =~ "Docs.Fixture.K2.is_adult/1 is missing @doc"
+      refute message =~ "is_teen"
+    end
+
+    test "a doc consumed by a defguardp does not document the next public guard" do
+      message =
+        check_error("""
+        defmodule Docs.Fixture.K3 do
+          @moduledoc "K3."
+
+          @doc "Teens."
+          defguardp is_teen(age) when age in 13..19
+
+          defguard is_adult(age) when is_integer(age) and age >= 18
+        end
+        """)
+
+      assert message =~ "Docs.Fixture.K3.is_adult/1 is missing @doc"
+    end
+
+    test "a documented defguard passes" do
+      assert :ok =
+               check("""
+               defmodule Docs.Fixture.K4 do
+                 @moduledoc "K4."
+
+                 @doc "Adults."
+                 defguard is_adult(age) when is_integer(age) and age >= 18
+               end
+               """)
+    end
+
     test "all violations are collected, one per line" do
       message =
         check_error("""
