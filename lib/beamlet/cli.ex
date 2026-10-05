@@ -9,7 +9,7 @@ defmodule Beamlet.CLI do
     {"tokens.delete", "<ID>", "delete a token", []},
     {"policies", "", "list policies", []},
     {"policies.show", "<POLICY>", "show what a policy permits", []},
-    {"reset", "", "wipe everything agents built: agent database, code, files", []}
+    {"reset", "", "wipe everything agents built: routes, agent database, code, files", []}
   ]
 
   @command_table Enum.map_join(@commands, "\n", fn {command, args, description, _switches} ->
@@ -60,10 +60,11 @@ defmodule Beamlet.CLI do
     it denies or grants only in part.
     """,
     "reset" => """
-    Deletes everything agents have built: the agent database, the
-    code dir with its history, and the files dir. The owner, the
-    tokens and your `config.exs` are kept. Restart the beamlet
-    afterwards, since until then it keeps running what it had loaded.
+    Deletes everything agents have built: the routes, the agent
+    database, the code dir with its history, and the files dir. The
+    owner, the tokens and your `config.exs` are kept. Restart the
+    beamlet afterwards, since until then it keeps running what it had
+    loaded.
     """
   }
 
@@ -85,6 +86,7 @@ defmodule Beamlet.CLI do
   alias Beamlet.Owner
   alias Beamlet.Policies
   alias Beamlet.Policy
+  alias Beamlet.Routes
   alias Beamlet.Token
   alias Beamlet.Tokens
   alias Beamlet.User
@@ -378,24 +380,23 @@ defmodule Beamlet.CLI do
     end
   end
 
-  # Nothing starts: the unit is files, and deleting them under a
+  # The route rows live in the beamlet's database, so the command
+  # boots the system half as the token commands do. Deleting under a
   # running beamlet does no lasting harm, since it keeps what it has
-  # loaded until it restarts and boots fresh after. The config is
-  # still checked, so a bad declaration fails here as it would at boot.
-  # The database goes first: code without it boots fresh, while a
-  # database without its code keeps migrations and routes for modules
-  # that are gone.
+  # loaded until it restarts and boots fresh after. The rows and the
+  # database go before the code: code without them boots fresh, while
+  # routes and migrations without their code name modules that are
+  # gone.
   defp reset do
-    Config.validate!()
-    remove_agent_db(Config.agent_db_file())
-    remove_dir(Config.code_dir(), "code dir and its history")
-    remove_dir(Config.files_dir(), "files dir")
+    with_beamlet(fn ->
+      remove_routes()
+      remove_agent_db(Config.agent_db_file())
+      remove_dir(Config.code_dir(), "code dir and its history")
+      remove_dir(Config.files_dir(), "files dir")
 
-    puts("The owner, tokens and config.exs are kept. If a beamlet is running, restart it now.")
+      puts("The owner, tokens and config.exs are kept. If a beamlet is running, restart it now.")
+    end)
   rescue
-    error in ArgumentError ->
-      fail(Exception.message(error))
-
     error in File.Error ->
       fail("""
       #{Exception.message(error)}
@@ -410,6 +411,14 @@ defmodule Beamlet.CLI do
       puts("Removed the #{label}: #{dir}")
     else
       puts("No #{label} at #{dir}")
+    end
+  end
+
+  defp remove_routes do
+    case Routes.delete_all() do
+      0 -> puts("No routes mounted")
+      1 -> puts("Removed 1 route")
+      count -> puts("Removed #{count} routes")
     end
   end
 

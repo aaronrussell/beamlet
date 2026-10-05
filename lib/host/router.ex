@@ -420,16 +420,8 @@ defmodule Host.Router do
 
   defp route_line(route) do
     verb = route.verb |> Route.method() |> String.pad_trailing(7)
-    changeset = Route.load_changeset(route)
 
     cond do
-      not changeset.valid? ->
-        fields = changeset.errors |> Keyword.keys() |> Enum.uniq() |> Enum.join(", ")
-
-        "#{verb}#{inspect(route.path)} — #{route.module} (#{mounted_by(route)}) — " <>
-          "not served: the row is malformed (#{fields}) " <>
-          "and is deleted the next time the router is built"
-
       not Routes.servable?(route) ->
         "#{verb}#{route.path} — #{target_label(route)} (#{mounted_by(route)}) — " <>
           "not served: the target is missing or no longer fits the route"

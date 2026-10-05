@@ -60,8 +60,8 @@ defmodule Beamlet do
 
   ## Options
 
-  * `:only` - `:system` starts just the policies and the system
-    database, with nothing an agent reaches.
+  * `:only` - `:system` starts just the policies and the beamlet's
+    own database, with nothing an agent reaches.
   """
   @spec start_link([option()]) :: Supervisor.on_start()
   def start_link(opts) when is_list(opts) do
@@ -92,7 +92,6 @@ defmodule Beamlet do
       Beamlet.Repo,
       {Ecto.Migrator, repos: [Beamlet.Repo]},
       Host.Repo,
-      Beamlet.Tables,
       {Task.Supervisor, name: Beamlet.TaskSupervisor},
       {Phoenix.PubSub, name: Beamlet.PubSub},
       Beamlet.Code,
@@ -109,10 +108,10 @@ defmodule Beamlet do
   end
 
   # The world the checked config points at: the data dir exists, the
-  # migrations and the system database do, before any child runs. The
-  # full boot also needs an endpoint to serve the routes through, the
-  # files dir and the agent database; the system half touches nothing
-  # an agent reaches.
+  # migrations and the beamlet's database do, before any child runs.
+  # The full boot also needs an endpoint to serve the routes through,
+  # the files dir and the agent database with its one table of
+  # Beamlet's; the system half touches nothing an agent reaches.
   defp prepare!(only) do
     ensure_data_dir!()
     ensure_migrations!()
@@ -122,6 +121,7 @@ defmodule Beamlet do
       ensure_endpoint!()
       File.mkdir_p!(Config.files_dir())
       ensure_database!(Host.Repo)
+      ensure_kv_table!()
     end
   end
 
@@ -161,6 +161,28 @@ defmodule Beamlet do
     case repo.__adapter__().storage_up(repo.config()) do
       :ok -> :ok
       {:error, :already_up} -> :ok
+    end
+  end
+
+  # The key/value table behind Host.KV sits in the agent database,
+  # beside the agent's own tables but outside their migration history,
+  # so it is created here rather than by a migration: one statement on
+  # one connection before the pool starts, as the file itself is. It
+  # is the only table of Beamlet's in that database. Should its shape
+  # ever change, versioned steps over PRAGMA user_version would carry
+  # the change, with this create as their idempotent first step, since
+  # every file made here sits at version zero.
+  defp ensure_kv_table! do
+    {:ok, conn} = Exqlite.Sqlite3.open(Config.agent_db_file())
+
+    try do
+      :ok =
+        Exqlite.Sqlite3.execute(
+          conn,
+          "CREATE TABLE IF NOT EXISTS __kv (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID"
+        )
+    after
+      Exqlite.Sqlite3.close(conn)
     end
   end
 end

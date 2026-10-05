@@ -879,21 +879,6 @@ defmodule Host.RouterTest do
                "/rt/ghost — No.Such.Live (test) — not served: the target is missing"
     end
 
-    test "shows a malformed row on one line, quoted, with the fields at fault" do
-      Host.Repo.query!(
-        "INSERT INTO __routes (kind, verb, path, module, principal, inserted_at) " <>
-          "VALUES ('live_view', 'get', ?, 'My.PageLive', '{}', ?)",
-        [~s|/x"\n  live "/y|, DateTime.to_iso8601(DateTime.utc_now(:second))]
-      )
-
-      output = capture_io(&Host.Router.print_routes/0)
-
-      assert output =~
-               ~s|GET    "/x\\"\\n  live \\"/y" — My.PageLive (an unknown token) — | <>
-                 "not served: the row is malformed (path) " <>
-                 "and is deleted the next time the router is built"
-    end
-
     test "annotates a controller route whose target stopped being a controller", ctx do
       ns = unique_namespace()
       mod = define_controller!(ctx, ns)

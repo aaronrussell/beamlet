@@ -9,9 +9,9 @@ defmodule Beamlet.Web.Layouts do
   # host's endpoint serves them at (`Beamlet.Assets`), and a socket
   # connection. They differ in the socket and in how a page is styled.
   #
-  # `beamlet/1` is for agent pages, which `Beamlet.Routes` puts on every
-  # route agents mount. It connects to `/beamlet/live`, whose session is
-  # the endpoint's, and loads Tailwind from its CDN, so a page can be
+  # `agent/1` is for agent pages, which `Beamlet.Routes` puts on every
+  # route agents mount. It connects to `/beamlet/agent/live`, whose
+  # session is the endpoint's, and loads Tailwind from its CDN, so a page can be
   # styled with utility classes and no build step, and says nothing
   # about how the page looks. Styling needs the internet; accepted for a
   # substrate with no bundler.
@@ -33,9 +33,9 @@ defmodule Beamlet.Web.Layouts do
 
   @doc """
   The root layout for agent pages: the LiveView wiring on
-  `/beamlet/live` and Tailwind from its CDN.
+  `/beamlet/agent/live` and Tailwind from its CDN.
   """
-  def beamlet(assigns) do
+  def agent(assigns) do
     ~H"""
     <!DOCTYPE html>
     <html lang="en">
@@ -51,7 +51,7 @@ defmodule Beamlet.Web.Layouts do
           import {LiveSocket} from "/beamlet/assets/phoenix_live_view/phoenix_live_view.esm.js"
 
           const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
-          const liveSocket = new LiveSocket("/beamlet/live", Socket, {params: {_csrf_token: csrfToken}})
+          const liveSocket = new LiveSocket("/beamlet/agent/live", Socket, {params: {_csrf_token: csrfToken}})
           liveSocket.connect()
           window.liveSocket = liveSocket
         </script>

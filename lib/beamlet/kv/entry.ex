@@ -3,7 +3,7 @@ defmodule Beamlet.KV.Entry do
 
   # One row of the key/value store behind Host.KV: a string key and
   # the JSON text of its value, which Host.KV encodes and decodes.
-  # The table is created at boot by Beamlet.Tables.
+  # The table is created at boot by `Beamlet` if missing.
 
   use Ecto.Schema
 

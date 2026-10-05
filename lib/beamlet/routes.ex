@@ -3,39 +3,39 @@ defmodule Beamlet.Routes do
 
   # The route table and the router derived from it.
   #
-  # Rows (`Beamlet.Route`) in the `__routes` table of the agent database
-  # are the durable record of the URL surface agents build; the router
-  # that serves them, `Beamlet.DynamicRouter`, is a derived artifact:
-  # built from the rows as quoted form and compiled, both inside the
-  # code server's lane (`Beamlet.Code.compile_artifact/2`), then
-  # hot-swapped into the VM, never written to disk and never
-  # committed. Reading the rows in the lane is what keeps two
-  # regenerations racing from landing an older table over a newer
-  # one. It is rebuilt at boot, by a synchronous child of `Beamlet`
-  # right after the code server, and after every change to the table.
+  # Rows (`Beamlet.Route`) in the `routes` table of the beamlet's
+  # database are the durable record of the URL surface agents build.
+  # They are written only through `create/1`, since agent code has no
+  # write path to that database, so what generation reads is what the
+  # changeset allowed. The router that serves them,
+  # `Beamlet.DynamicRouter`, is a derived artifact: built from the
+  # rows as quoted form and compiled, both inside the code server's
+  # lane (`Beamlet.Code.compile_artifact/2`), then hot-swapped into
+  # the VM, never written to disk and never committed. Reading the
+  # rows in the lane is what keeps two regenerations racing from
+  # landing an older table over a newer one. It is rebuilt at boot, by
+  # a synchronous child of `Beamlet` right after the code server, and
+  # after every change to the table.
   #
-  # `create`, `delete` and `list` change or read the table and nothing
-  # else. Regeneration is the caller's to compose, which is what
-  # `Host.Router` does: insert, regenerate, and delete the row again
-  # when regeneration fails. A row whose target is not a module defined
-  # with `define`, is missing, quarantined or of the wrong shape is
-  # left out at generation with a warning and answers 404; the row
-  # stays in the table for inspection. A define can repair a target or
-  # break one without touching the table, so `Beamlet.Define` and
-  # `Beamlet.Patch` call `refresh/0` after theirs, and redefining the
-  # module brings its routes back. A row that fails `Beamlet.Route`'s
-  # validations could only have been written with raw SQL and nothing
-  # can make it valid again, so regeneration deletes it with a warning
-  # recording the row; so too a row Ecto cannot load at all, which
-  # every read skips. Boot regeneration never fails the boot: the
-  # worst case is the empty placeholder serving 404s with an error in
-  # the log.
+  # `create`, `delete`, `delete_all` and `list` change or read the
+  # table and nothing else. Regeneration is the caller's to compose,
+  # which is what `Host.Router` does: insert, regenerate, and delete
+  # the row again when regeneration fails. A row whose target is not a
+  # module defined with `define`, is missing, quarantined or of the
+  # wrong shape is left out at generation with a warning and answers
+  # 404; the row stays in the table for inspection. A define can
+  # repair a target or break one without touching the table, so
+  # `Beamlet.Define` and `Beamlet.Patch` call `refresh/0` after
+  # theirs, and redefining the module brings its routes back. Boot
+  # regeneration never fails the boot: the worst case is the empty
+  # placeholder serving 404s with an error in the log.
 
   import Ecto.Query, only: [from: 2, where: 3]
 
   require Logger
 
   alias Beamlet.Config
+  alias Beamlet.Repo
   alias Beamlet.Route
   alias Beamlet.Routes.Generator
 
@@ -47,67 +47,51 @@ defmodule Beamlet.Routes do
   def create(attrs) when is_map(attrs) do
     %Route{}
     |> Route.changeset(attrs)
-    |> Host.Repo.insert()
+    |> Repo.insert()
   end
 
   @doc "Deletes a route row. Does not regenerate the router."
   @spec delete(Route.t()) :: :ok
   def delete(%Route{} = route) do
-    Host.Repo.delete!(route)
+    Repo.delete!(route)
     :ok
+  end
+
+  @doc """
+  Deletes every route row, returning how many there were. Does not
+  regenerate the router: the caller is `beamlet reset`, which runs
+  with no beamlet serving.
+  """
+  @spec delete_all() :: non_neg_integer()
+  def delete_all do
+    {count, _rows} = Repo.delete_all(Route)
+    count
   end
 
   @doc """
   The route rows in id order, the order they were mounted, which is
   the order the router matches them in. Filters narrow the list:
   `path:` to one path, `verb:` to one verb, `modules:` to rows
-  targeting any of the given module names in inspect form. A row
-  Ecto cannot load is left out.
+  targeting any of the given module names in inspect form.
   """
   @spec list([filter()]) :: [Route.t()]
   def list(filters \\ []) do
-    {routes, _unloadable} = read(filters)
-    routes
-  end
-
-  # The columns are read raw and each row loaded on its own: raw SQL
-  # can write a value no field loads (an unknown kind or verb, a
-  # principal that is not JSON), and loaded as a whole the query
-  # would raise for every reader.
-  defp read(filters) do
-    query =
-      from(r in "__routes",
-        order_by: r.id,
-        select: map(r, [:id, :kind, :verb, :path, :module, :action, :principal, :inserted_at])
-      )
-
-    rows =
-      filters
-      |> Enum.reduce(query, fn
-        {:path, path}, query -> where(query, [r], r.path == ^path)
-        {:verb, verb}, query -> where(query, [r], r.verb == ^Atom.to_string(verb))
-        {:modules, modules}, query -> where(query, [r], r.module in ^modules)
-      end)
-      |> Host.Repo.all()
-      |> Enum.map(&{&1, load(&1)})
-
-    {for({_raw, {:ok, route}} <- rows, do: route), for({raw, :error} <- rows, do: raw)}
-  end
-
-  defp load(raw) do
-    {:ok, Host.Repo.load(Route, raw)}
-  rescue
-    ArgumentError -> :error
+    filters
+    |> Enum.reduce(from(r in Route, order_by: r.id), fn
+      {:path, path}, query -> where(query, [r], r.path == ^path)
+      {:verb, verb}, query -> where(query, [r], r.verb == ^verb)
+      {:modules, modules}, query -> where(query, [r], r.module in ^modules)
+    end)
+    |> Repo.all()
   end
 
   @doc """
-  Rebuilds the router from the table: malformed rows are deleted and
-  rows whose targets cannot serve are left out, with a warning each,
-  and the rest are built under the configured prefix and compiled
-  in. The table is read inside the code server's lane, so the router
-  that lands is the table as it stands when the compile runs. On a
-  failure the previous router keeps serving and the error is
-  returned.
+  Rebuilds the router from the table: rows whose targets cannot serve
+  are left out with a warning each, and the rest are built under the
+  configured prefix and compiled in. The table is read inside the
+  code server's lane, so the router that lands is the table as it
+  stands when the compile runs. On a failure the previous router
+  keeps serving and the error is returned.
   """
   @spec regenerate() :: :ok | {:error, String.t()}
   def regenerate do
@@ -127,11 +111,7 @@ defmodule Beamlet.Routes do
   # Runs inside the code server's lane, so nothing here may call it:
   # servable?/1 reads the defined set from its table.
   defp render do
-    {routes, unloadable} = read([])
-    Enum.each(unloadable, &prune_unloadable/1)
-    {rows, malformed} = Enum.split_with(routes, &Route.load_changeset(&1).valid?)
-    Enum.each(malformed, &prune/1)
-    {servable, broken} = Enum.split_with(rows, &servable?/1)
+    {servable, broken} = Enum.split_with(list(), &servable?/1)
     Enum.each(broken, &log_broken/1)
     Generator.quoted(servable, Config.web()[:prefix])
   end
@@ -173,24 +153,16 @@ defmodule Beamlet.Routes do
   def served?(route), do: Generator.key(route) in Beamlet.DynamicRouter.__served__()
 
   @doc """
-  Whether a route can serve: the row passes `Beamlet.Route`'s
-  validations, and its target is a module defined with `define` that
-  is loaded and a LiveView for a `:live_view` row, or a Phoenix
-  controller exporting the action for a `:controller` row.
+  Whether a route can serve: its target is a module defined with
+  `define` that is loaded and a LiveView for a `:live_view` row, or a
+  Phoenix controller exporting the action for a `:controller` row.
 
-  The row is checked first because agents can write the table with
-  raw SQL, and only a well-formed row is turned into atoms.
   `use Phoenix.Controller` leaves no marker like `__live__/0`, so the
   controller pipeline's `action/2` stands in, which a plain plug
   never defines.
   """
   @spec servable?(Route.t()) :: boolean()
-  def servable?(route), do: well_formed?(route) and target_serves?(route)
-
-  defp well_formed?(route), do: Route.load_changeset(route).valid?
-
-  # A name with no atom was never loaded, so it cannot serve.
-  defp target_serves?(%Route{kind: :live_view} = route) do
+  def servable?(%Route{kind: :live_view} = route) do
     target = Route.target(route)
 
     target in Beamlet.Code.defined() and Code.ensure_loaded?(target) and
@@ -199,7 +171,7 @@ defmodule Beamlet.Routes do
     ArgumentError -> false
   end
 
-  defp target_serves?(%Route{kind: :controller} = route) do
+  def servable?(%Route{kind: :controller} = route) do
     target = Route.target(route)
 
     target in Beamlet.Code.defined() and Code.ensure_loaded?(target) and
@@ -231,19 +203,6 @@ defmodule Beamlet.Routes do
       )
 
       :ignore
-  end
-
-  # An unmount can delete the row between the list and the prune,
-  # hence allow_stale.
-  defp prune(route) do
-    Host.Repo.delete!(route, allow_stale: true)
-    fields = [:id, :kind, :verb, :path, :module, :action, :principal, :inserted_at]
-    Logger.warning("routes: deleted a malformed row: #{inspect(Map.take(route, fields))}")
-  end
-
-  defp prune_unloadable(raw) do
-    Host.Repo.delete_all(from(r in "__routes", where: r.id == ^raw.id))
-    Logger.warning("routes: deleted a row that cannot be loaded: #{inspect(raw)}")
   end
 
   defp log_broken(route) do

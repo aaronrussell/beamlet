@@ -184,28 +184,6 @@ defmodule Beamlet.RoutesTest do
     end
   end
 
-  describe "Route.load_changeset/1" do
-    test "a row read back from the table is valid", ctx do
-      {:ok, _route} = Routes.create(ctx.controller_attrs)
-
-      assert [route] = Routes.list()
-      assert Route.load_changeset(route).valid?
-    end
-
-    test "a row with a malformed path, module or action is not" do
-      route = %Route{
-        kind: :controller,
-        verb: :get,
-        path: ~s(/x"),
-        module: "my module",
-        action: "Show()"
-      }
-
-      assert %{path: [_path], module: [_module], action: [_action]} =
-               errors_on(Route.load_changeset(route))
-    end
-  end
-
   describe "the generated router" do
     setup ctx do
       %{hello: hello, echo: echo} = RouteFixtures.define!(ctx.principal)
@@ -238,7 +216,7 @@ defmodule Beamlet.RoutesTest do
 
       html = ctx.conn |> get("/hello/7") |> html_response(200)
 
-      assert html =~ ~s(new LiveSocket("/beamlet/live")
+      assert html =~ ~s(new LiveSocket("/beamlet/agent/live")
       assert html =~ "cdn.jsdelivr.net/npm/@tailwindcss/browser"
       assert html =~ ~r/<body class="[^"]*\bbg-[^"]*\bdark:bg-/
       refute html =~ "/beamlet/app/live"
@@ -342,89 +320,6 @@ defmodule Beamlet.RoutesTest do
       assert ctx.conn |> get("/home") |> response(404)
     end
 
-    test "a raw row whose path carries code is deleted and nothing runs", ctx do
-      add_hello!(ctx)
-      on_exit(fn -> :persistent_term.erase(:beamlet_route_injection) end)
-
-      path =
-        ~s|/x", #{ctx.hello}\n    :persistent_term.put(:beamlet_route_injection, true)\n    live "/y|
-
-      Host.Repo.query!(
-        "INSERT INTO __routes (kind, verb, path, module, principal, inserted_at) " <>
-          "VALUES ('live_view', 'get', ?, ?, '{}', ?)",
-        [path, ctx.hello, DateTime.to_iso8601(DateTime.utc_now(:second))]
-      )
-
-      log = capture_log(fn -> assert :ok = Routes.regenerate() end)
-
-      assert log =~ "deleted a malformed row"
-      assert log =~ inspect(path)
-      assert :persistent_term.get(:beamlet_route_injection, nil) == nil
-      assert [%Route{path: "/hello/:id"}] = Routes.list()
-      {:ok, _view, _html} = live(ctx.conn, "/hello/1")
-    end
-
-    test "a malformed row stops holding its path once the router is built", ctx do
-      Host.Repo.query!(
-        "INSERT INTO __routes (kind, verb, path, module, principal, inserted_at) " <>
-          "VALUES ('live_view', 'get', '/taken', 'not a module', '{}', ?)",
-        [DateTime.to_iso8601(DateTime.utc_now(:second))]
-      )
-
-      assert {:error, _changeset} = Routes.create(%{ctx.live_attrs | path: "/taken"})
-      assert capture_log(fn -> assert :ok = Routes.regenerate() end) =~ "deleted a malformed row"
-      assert {:ok, _route} = Routes.create(%{ctx.live_attrs | path: "/taken"})
-    end
-
-    test "a raw row Phoenix cannot route is deleted, and the rest serve", ctx do
-      add_hello!(ctx)
-
-      Host.Repo.insert!(%Route{
-        kind: :controller,
-        verb: :get,
-        path: "/*rest/more",
-        module: ctx.echo,
-        action: "show",
-        principal: Beamlet.Principal.to_map(ctx.principal)
-      })
-
-      log = capture_log(fn -> assert :ok = Routes.regenerate() end)
-
-      assert log =~ "deleted a malformed row"
-      assert log =~ "/*rest/more"
-      assert [%Route{path: "/hello/:id"}] = Routes.list()
-      {:ok, _view, _html} = live(ctx.conn, "/hello/1")
-    end
-
-    test "a raw row Ecto cannot load is skipped by every read and deleted at the build", ctx do
-      add_hello!(ctx)
-      now = DateTime.to_iso8601(DateTime.utc_now(:second))
-
-      for {kind, verb, path, principal} <- [
-            {"page", "get", "/a", "{}"},
-            {"controller", "fetch", "/b", "{}"},
-            {"live_view", "get", "/c", "not json"}
-          ] do
-        Host.Repo.query!(
-          "INSERT INTO __routes (kind, verb, path, module, principal, inserted_at) " <>
-            "VALUES (?, ?, ?, ?, ?, ?)",
-          [kind, verb, path, ctx.hello, principal, now]
-        )
-      end
-
-      assert [%Route{path: "/hello/:id"}] = Routes.list()
-      assert [] = Routes.list(modules: ["No.Such.Module"])
-
-      log = capture_log(fn -> assert :ok = Routes.regenerate() end)
-
-      assert log =~ "deleted a row that cannot be loaded"
-      assert log =~ ~s|kind: "page"|
-      assert log =~ ~s|verb: "fetch"|
-      assert log =~ ~s|principal: "not json"|
-      assert %{num_rows: 1} = Host.Repo.query!("SELECT * FROM __routes")
-      {:ok, _view, _html} = live(ctx.conn, "/hello/1")
-    end
-
     test "a broken generation is contained: boot logs and the previous router serves", ctx do
       add_hello!(ctx)
       assert :ok = Routes.regenerate()
@@ -479,7 +374,7 @@ defmodule Beamlet.RoutesTest do
       assert conn |> get("/peek") |> json_response(200) == %{}
     end
 
-    test "a raw row naming a never-seen module or action makes no atom and answers 404", ctx do
+    test "a row naming a never-seen module or action makes no atom and answers 404", ctx do
       ns = unique_namespace()
       module = "#{ns}.Never"
       action = "never_#{System.unique_integer([:positive])}"
@@ -519,7 +414,7 @@ defmodule Beamlet.RoutesTest do
       assert :ok = Routes.regenerate()
       assert Routes.served?(route)
 
-      {:ok, moved} = route |> Ecto.Changeset.change(path: "/moved") |> Host.Repo.update()
+      {:ok, moved} = route |> Ecto.Changeset.change(path: "/moved") |> Beamlet.Repo.update()
       refute Routes.served?(moved)
     end
 

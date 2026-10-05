@@ -9,15 +9,15 @@ Everything your beamlet keeps is in one directory, `/data` in the container:
 ```text
 /data
 ├── db/
-│   ├── agent.db        the agent database
-│   └── beamlet.db      the system database: you and your tokens
+│   ├── agent.db        the agent database: what agents build
+│   └── beamlet.db      the beamlet's own database: you, your tokens, the routes
 ├── code/               the agents' modules as source, with their git history
 ├── files/              files agent code writes
 ├── config.exs          the config file, once you've written one
 └── secret_key_base     signs your sign-in cookie, generated on first start
 ```
 
-The agent database, `code/` and `files/` are what agents build, and they move together: backed up, upgraded and wiped as one. The system database, the config file and the secret are yours.
+The agent database, `code/` and `files/` are what agents build, with the routes they mounted, which live in the beamlet's own database beside your tokens. `beamlet reset` wipes all four together. A backup is the whole data dir: nothing in it stands alone.
 
 ## Configuring it
 
@@ -87,7 +87,7 @@ docker exec my-beamlet beamlet reset
 docker restart my-beamlet
 ```
 
-`reset` deletes everything agents built: the agent database, the code dir with its history, and the files dir. You, your tokens and the config file stay. It doesn't ask first, so back up if you might want any of it again. Restart afterwards, because until then the running beamlet keeps what it had loaded.
+`reset` deletes everything agents built: the routes, the agent database, the code dir with its history, and the files dir. You, your tokens and the config file stay. It doesn't ask first, so back up if you might want any of it again. Restart afterwards, because until then the running beamlet keeps what it had loaded.
 
 ## The log
 

@@ -17,9 +17,9 @@ defmodule Beamlet.Route do
   # and `action` names the controller action, or the live action on a
   # page (`socket.assigns.live_action`), or nothing. The formats, and
   # Plug's reading of the path, which refuses a glob anywhere but
-  # last, are checked on insert and again at generation
-  # (`load_changeset/1`), since agents can write the table with raw
-  # SQL; a row failing them is left out of the router.
+  # last, are checked on insert. The table lives in the beamlet's
+  # database, which agent code has no write path to, so a row read
+  # back is a row the changeset allowed.
   #
   # `principal` is the provenance of the row, the principal that
   # mounted it, stored as JSON in the shape `Beamlet.Principal.to_map/1`
@@ -31,7 +31,7 @@ defmodule Beamlet.Route do
 
   alias Beamlet.Principal
 
-  schema "__routes" do
+  schema "routes" do
     field :kind, Ecto.Enum, values: [:live_view, :controller]
     field :verb, Ecto.Enum, values: [:get, :post, :put, :patch, :delete]
     field :path, :string
@@ -76,31 +76,15 @@ defmodule Beamlet.Route do
     |> put_principal(principal)
     |> validate_required([:principal])
     |> validate_fields()
-    |> unique_constraint(:path, name: :__routes_verb_path_index)
-  end
-
-  @doc """
-  The changeset that revalidates a row read back from the table.
-
-  Rows can be written with raw SQL, past `changeset/2`, so the
-  router generator checks each one with the same rules before it
-  serves it. The row's fields are cast onto a fresh struct, since
-  format validations only check changes.
-  """
-  @spec load_changeset(t()) :: Ecto.Changeset.t()
-  def load_changeset(%__MODULE__{} = route) do
-    %__MODULE__{}
-    |> cast(Map.from_struct(route), @fields)
-    |> validate_fields()
+    |> unique_constraint(:path, name: :routes_verb_path_index)
   end
 
   @doc """
   The target module as an atom.
 
-  Only an existing atom: rows can be written with raw SQL, and
-  turning their strings into new atoms at every regeneration would
-  fill the atom table. Raises `ArgumentError` when the atom does not
-  exist, which means no such module was ever loaded.
+  Only an existing atom: a name with no atom was never loaded, so it
+  cannot serve, and there is no reason to make one for it. Raises
+  `ArgumentError` when the atom does not exist.
   """
   @spec target(t()) :: module()
   def target(%__MODULE__{module: module}), do: String.to_existing_atom("Elixir." <> module)

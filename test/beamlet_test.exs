@@ -10,50 +10,22 @@ defmodule BeamletTest do
     assert %{rows: [["wal"]]} = Host.Repo.query!("pragma journal_mode")
   end
 
-  test "creates its own tables in the agent database at boot" do
-    assert furniture() == ["__kv", "__routes"]
-    assert version() > 0
-  end
-
-  test "upgrades an agent database at furniture version zero to the current one" do
-    current = version()
-    Host.Repo.query!("drop table __routes")
-    Host.Repo.query!("drop table __kv")
-    Host.Repo.query!("pragma user_version = 0")
-    assert furniture() == []
-
-    assert Beamlet.Tables.upgrade() == :ignore
-
-    assert version() == current
-    assert furniture() == ["__kv", "__routes"]
-    assert :ok = Host.KV.put("beamlet-test:after-upgrade", 1)
-  end
-
-  test "refuses an agent database written by a newer Beamlet" do
-    Host.Repo.query!("pragma user_version = #{version() + 1}")
-
-    assert_raise RuntimeError, ~r/newer Beamlet/, fn -> Beamlet.Tables.upgrade() end
-  end
-
-  test "refuses an agent database at a negative furniture version" do
-    Host.Repo.query!("pragma user_version = -1")
-
-    assert_raise RuntimeError, ~r/furniture version -1/, fn -> Beamlet.Tables.upgrade() end
-    assert furniture() == ["__kv", "__routes"]
-  end
-
-  defp version do
-    %{rows: [[version]]} = Host.Repo.query!("pragma user_version")
-    version
-  end
-
-  defp furniture do
+  test "creates the key/value table in the agent database at boot, and only that" do
     %{rows: rows} =
       Host.Repo.query!(
-        "select name from sqlite_master where name like '\\_\\_%' escape '\\' order by name"
+        "select name from sqlite_master where type = 'table' and name not like 'schema_%'"
       )
 
-    List.flatten(rows)
+    assert List.flatten(rows) == ["__kv"]
+    assert :ok = Host.KV.put("beamlet-test:boot", 1)
+    assert Host.KV.get("beamlet-test:boot") == 1
+  end
+
+  test "keeps the routes in the beamlet's database" do
+    %{rows: rows} =
+      Beamlet.Repo.query!("select name from sqlite_master where type = 'table' order by name")
+
+    assert "routes" in List.flatten(rows)
   end
 end
 
@@ -68,7 +40,7 @@ end
 defmodule BeamletSystemOnlyTest do
   use ExUnit.Case
 
-  test "only: :system starts the policies and the system database, nothing else" do
+  test "only: :system starts the policies and the beamlet's database, nothing else" do
     agent_db = Beamlet.Config.agent_db_file()
     File.rm_rf!(Beamlet.Config.files_dir())
     for file <- [agent_db, agent_db <> "-wal", agent_db <> "-shm"], do: File.rm(file)
@@ -80,7 +52,7 @@ defmodule BeamletSystemOnlyTest do
     refute Process.whereis(Host.Repo)
     refute Process.whereis(Beamlet.MCP.Server)
 
-    assert File.exists?(Beamlet.Config.system_db_file())
+    assert File.exists?(Beamlet.Config.beamlet_db_file())
     refute File.exists?(agent_db)
     refute File.exists?(Beamlet.Config.files_dir())
   end

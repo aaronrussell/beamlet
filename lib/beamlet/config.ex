@@ -80,9 +80,9 @@ defmodule Beamlet.Config do
   @spec db_dir() :: Path.t()
   def db_dir, do: Path.join(data_dir(), "db")
 
-  @doc "The system database file, used by `Beamlet.Repo`."
-  @spec system_db_file() :: Path.t()
-  def system_db_file, do: Path.join(db_dir(), "beamlet.db")
+  @doc "The beamlet's own database file, used by `Beamlet.Repo`."
+  @spec beamlet_db_file() :: Path.t()
+  def beamlet_db_file, do: Path.join(db_dir(), "beamlet.db")
 
   @doc "The agent database file, used by `Host.Repo`."
   @spec agent_db_file() :: Path.t()

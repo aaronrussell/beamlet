@@ -53,7 +53,7 @@ defmodule Beamlet.Web.HomeLiveTest do
     html = conn |> sign_in() |> get("/beamlet") |> html_response(200)
 
     assert html =~ ~s(new LiveSocket("/beamlet/app/live")
-    refute html =~ ~s(new LiveSocket("/beamlet/live")
+    refute html =~ ~s(new LiveSocket("/beamlet/agent/live")
     assert html =~ ~s(<link rel="stylesheet" href="/beamlet/assets/app.css")
     refute html =~ "cdn.jsdelivr.net"
   end

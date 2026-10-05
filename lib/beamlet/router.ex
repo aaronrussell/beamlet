@@ -29,7 +29,7 @@ defmodule Beamlet.Router do
   Agent pages are LiveViews, so your endpoint needs what any LiveView
   app has, plus a socket for the beamlet's own pages:
 
-      socket "/beamlet/live", Phoenix.LiveView.Socket,
+      socket "/beamlet/agent/live", Phoenix.LiveView.Socket,
         websocket: [connect_info: [session: @session_options]]
 
       socket "/beamlet/app/live", Phoenix.LiveView.Socket,
@@ -46,7 +46,7 @@ defmodule Beamlet.Router do
       plug Plug.Session, @session_options
       plug MyAppWeb.Router
 
-  * `/beamlet/live` is the socket agent pages connect to, with your
+  * `/beamlet/agent/live` is the socket agent pages connect to, with your
     endpoint's session.
   * `/beamlet/app/live` is the socket the beamlet's own pages connect
     to, with their own session.

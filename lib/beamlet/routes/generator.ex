@@ -4,8 +4,8 @@ defmodule Beamlet.Routes.Generator do
   # Builds Beamlet.DynamicRouter, a real Phoenix router that
   # Beamlet.Routes.regenerate/0 compiles and hot-swaps, from route
   # rows as quoted form: a row's path goes in as a binary and its
-  # module and action as atoms, so nothing a row holds can become
-  # code. Two convention pipelines: live_view rows get the browser
+  # module and action as atoms, so the router is built from data,
+  # never from source text. Two convention pipelines: live_view rows get the browser
   # pipeline (session, CSRF protection, the root layout) and
   # controller rows the API pipeline (neither, so a webhook can call
   # them). No auth anywhere: every route is public. The prefix
@@ -41,7 +41,7 @@ defmodule Beamlet.Routes.Generator do
           plug :accepts, ["html"]
           plug :fetch_session
           plug :fetch_live_flash
-          plug :put_root_layout, html: {Beamlet.Web.Layouts, :beamlet}
+          plug :put_root_layout, html: {Beamlet.Web.Layouts, :agent}
           plug :protect_from_forgery
           plug :put_secure_browser_headers
         end

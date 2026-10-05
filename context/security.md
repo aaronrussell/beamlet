@@ -2,7 +2,7 @@
 
 **Status:** Standing context: the threat model, the rule for deciding what to fix, and the risks accepted. Written from the 0.1 code review and checked against the code by the pre-release review. The mechanism lives in `design.md`; this note says what it defends, what it does not, and why, and points there. Update it in the same piece of work as any change that adds an input Beamlet reads back, touches the token edge or the app, changes a grant or a guardrail, or accepts or closes a risk.
 
-**Last updated:** 2026-10-05 (the docs pass: the session precondition beside the app and agent split)
+**Last updated:** 2026-10-05 (step 15: the routes in the beamlet's database, and the rule for where a record lives)
 
 ---
 
@@ -24,7 +24,7 @@ So the token is the boundary. What a token reaches past its policy is what the o
 
 - **A request without a valid token.** It reaches the sign-in and OAuth pages and nothing else.
 - **Agent code.** Guardrailed by its token's policy, not contained.
-- **Anything agent code can write.** Agents have raw SQL on the agent database, so a `__routes` or `__kv` row, a `schema_migrations` version, `PRAGMA user_version`, or anything else Beamlet reads back from that file may hold what no changeset allowed. Beamlet's own compiles are not scanned, so what feeds them is data, never text: the router is built as quoted form from validated rows whose names resolve to existing atoms, and KV values are strict JSON, a format that cannot express a fun. The review's two worst findings were this one mistake, Beamlet trusting bytes an agent could write.
+- **Anything agent code can write.** Agents have raw SQL on the agent database, so a `__kv` row, a `schema_migrations` version, or anything else Beamlet reads back from that file may hold what no changeset allowed. That is why the agent database holds only what agent code itself reads and writes, and why the routes moved out of it (design § Two databases): a durable record Beamlet acts on lives in the beamlet's database or the code dir, whoever created it. What stays in the agent database feeds nothing but data: KV values are strict JSON, a format that cannot express a fun, and Beamlet's own compiles, which are not scanned, take quoted form rather than text. The review's two worst findings were this one mistake, Beamlet trusting bytes an agent could write; the rule is what keeps it from recurring.
 - **What arrives from outside.** The bearer header (hashed and looked up, so a malformed value matches nothing); a client's metadata document and its redirect URIs (fetched behind an SSRF guard, script-capable schemes refused); URLs agent code is told to fetch by text it has read (the outbound guard).
 - **Script on agent pages.** Agent pages share the beamlet's origin with the app, and the browser sends the app's cookie with any request under `/beamlet`, whichever page makes it.
 
@@ -53,7 +53,7 @@ What steers a token, each a guardrail under § 1:
 - **Req's options as data.** `Host.HTTP` refuses what bypasses the guard or reaches the disk and leaves the rest to Req.
 - **The shared pool.** Code defined under a permissive token is callable from a restrictive one, as is a macro defined under `allow_defmacro`.
 - **The `Beamlet.Code` table** is public and named, safe only while no policy grants `:ets`.
-- **Taking the beamlet down.** Raw `PRAGMA user_version`, atom exhaustion and the like stop a beamlet; the owner restarts or resets it.
+- **Taking the beamlet down.** Dropping `__kv`, atom exhaustion and the like stop a beamlet or part of it; the owner restarts or resets it.
 
 ## 5. Deciding what to fix
 
@@ -63,7 +63,7 @@ Every finding, and every new feature's failure mode, falls into one of three gro
 2. **Lets a token holder exceed its policy.** Fix only when it is cheap, steers normal use, or completes a rule that already exists. Never add complexity to close an escape while an easier one of the same class stays open.
 3. **Correctness, robustness, readability.** Untouched by the stance; judge on merit.
 
-For a new feature the questions are: does it add an input Beamlet reads back that agent code can write (treat it as untrusted, feed compiles data); does it add a page or a cookie to the app (it takes the app's plumbing); does it widen a grant (anything that builds or loads code stays denied); does it make an outbound request (behind the guard).
+For a new feature the questions are: does it add a durable record Beamlet acts on (it goes in the beamlet's database or the code dir, never the agent database, whoever creates it; what agent code can write is untrusted and feeds compiles as data only); does it add a page or a cookie to the app (it takes the app's plumbing); does it widen a grant (anything that builds or loads code stays denied); does it make an outbound request (behind the guard).
 
 The cost of skipping this: `Host.HTTP` was first built as a fail-closed allowlist with value checks on every option that takes code, and the review removed it all once the stance made clear it stopped only a deliberate escaper.
 
@@ -76,7 +76,6 @@ Each with why it is accepted and what reopens it.
 - **A session has no expiry of its own.** It ends at sign-out, a new password, or when the browser drops the cookie.
 - **A new password from `beamlet setup` does not disconnect open app pages.** Every session is deleted, so the next reload goes to the login; the CLI has no way to the server's PubSub (roadmap, Deferred).
 - **DNS rebinding** in the outbound guard and the client-document fetch: the name is resolved again when the connection is made. Pinning the address costs a Finch pool per host.
-- **Live actions on route rows become atoms.** A live action names no function, so a loaded LiveView need not hold its atom, and the router makes one for each row whose target is a defined LiveView, at every regeneration and boot. Many raw rows with distinct actions against one LiveView would exhaust the atom table at every boot, until `beamlet reset` or hand-written SQL clears them: atom exhaustion, as § 4 accepts, by a token holder. Requiring the target to mention its live action, so the atom exists once the module loads, would close it at the cost of a mount rule.
 - **Shell access edits anything**, the code dir and the databases included, and the operator config file can set any application's keys. Shell access is the owner.
 - **Small items** with a fix each, unscheduled: the roadmap's "Security minors" under Deferred.
 

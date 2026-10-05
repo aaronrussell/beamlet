@@ -2,7 +2,7 @@ defmodule Beamlet.TestEndpoint do
   @moduledoc """
   The endpoint the suite serves a beamlet's routes through, and the
   written form of what a host's endpoint must carry (`Beamlet.Router`):
-  the session, the LiveView sockets at `/beamlet/live` for agent pages
+  the session, the LiveView sockets at `/beamlet/agent/live` for agent pages
   and `/beamlet/app/live` for the app, `Beamlet.Assets` for the
   LiveView JavaScript under `/beamlet/assets`, the JSON and urlencoded
   parsers, `Plug.MethodOverride`, and a router whose last line
@@ -24,7 +24,7 @@ defmodule Beamlet.TestEndpoint do
     same_site: "Lax"
   ]
 
-  socket "/beamlet/live", Phoenix.LiveView.Socket,
+  socket "/beamlet/agent/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]],
     longpoll: [connect_info: [session: @session_options]]
 

@@ -31,9 +31,9 @@ defmodule Host.Web do
   A template is a `~H` sigil in `render/1`; `~p` is for the paths
   inside it, never the template itself. `<.link navigate={~p"..."}>`
   or `<.link patch={...}>` keeps navigation on the LiveView socket
-  where a plain `<a href>` reloads the page. Pages render inside your
-  beamlet's layout with Tailwind utility classes available; no
-  stylesheet or asset setup is needed. The layout paints the page
+  where a plain `<a href>` reloads the page. Pages render inside the
+  layout your beamlet gives agent pages, with Tailwind utility
+  classes available; no stylesheet or asset setup is needed. The layout paints the page
   background and text colour for light and dark mode, following the
   visitor's system setting, so a page's own `dark:` classes land on a
   matching canvas. For live updates, broadcast from the action that

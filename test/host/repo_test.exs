@@ -2,10 +2,10 @@ defmodule Host.RepoTest do
   use Beamlet.Case, shared: true
 
   test "ATTACH DATABASE is refused on the agent database" do
-    system_db = Beamlet.Repo.config()[:database]
+    beamlet_db = Beamlet.Repo.config()[:database]
 
     assert {:error, %Exqlite.Error{message: "not authorized"}} =
-             Host.Repo.query("attach database ? as system", [system_db])
+             Host.Repo.query("attach database ? as system", [beamlet_db])
   end
 
   test "DETACH DATABASE is refused on the agent database" do

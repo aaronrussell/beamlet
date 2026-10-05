@@ -1,11 +1,12 @@
 defmodule Beamlet.Repo do
   @moduledoc """
-  The system database, which holds the owner, their sessions and the
-  tokens.
+  The beamlet's own database: the owner, their sessions, the tokens
+  and the routes agents mount.
 
   It lives at `db/beamlet.db` in the data dir. The beamlet creates
   and migrates it when it starts, so there is no `mix ecto.migrate`
-  step.
+  step. Agent code has no way to write it: what agents build as data
+  goes in `Host.Repo`, the agent database.
 
   To tune it, pass adapter options in config:
 
@@ -22,7 +23,7 @@ defmodule Beamlet.Repo do
   def init(_context, config) do
     config =
       config
-      |> Keyword.put(:database, Beamlet.Config.system_db_file())
+      |> Keyword.put(:database, Beamlet.Config.beamlet_db_file())
       |> Keyword.put(:journal_mode, :wal)
 
     {:ok, config}
