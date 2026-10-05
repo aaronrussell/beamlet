@@ -2,7 +2,7 @@
 
 **Status:** Standing context: the threat model, the rule for deciding what to fix, and the risks accepted. Written from the 0.1 code review and checked against the code by the pre-release review. The mechanism lives in `design.md`; this note says what it defends, what it does not, and why, and points there. Update it in the same piece of work as any change that adds an input Beamlet reads back, touches the token edge or the app, changes a grant or a guardrail, or accepts or closes a risk.
 
-**Last updated:** 2026-10-02 (the test review: `schema_migrations` among what agents write)
+**Last updated:** 2026-10-05 (the docs pass: the session precondition beside the app and agent split)
 
 ---
 
@@ -34,7 +34,7 @@ So the token is the boundary. What a token reaches past its policy is what the o
 - **Secrets.** Tokens, refresh tokens, session secrets and OAuth codes are random, shown once and stored as SHA-256 hashes. The server's `filter_parameters` keeps the password, `code`, `code_verifier` and `refresh_token` out of the logs.
 - **OAuth.** S256-only PKCE; single-use codes bound to client, redirect, policy and resource; exact redirect matching, except that a listed loopback URI matches either loopback host on any port (RFC 8252); no script-capable redirect schemes; refresh rotation as a compare-and-swap, so a refresh secret redeems once.
 - **Sign-in.** A dummy verify keeps timing flat for an unknown email, a missing owner and a wrong password, and a password over 128 bytes is refused before hashing.
-- **The app and the agent side kept apart** (design § Login and OAuth, § Web). The app's session is its own cookie, scoped to `/beamlet` and HTTP-only, carrying the secret of a session row rather than an identity, so an agent route that writes the endpoint's session or signs a cookie with `secret_key_base` gains nothing. The app's LiveViews use their own socket, so agent pages do not receive the app session by accident; § 6 says what a page that chooses its socket gets. `Beamlet.Router` answers 404 for every `/beamlet` path it does not own, so no agent route ever receives the app's cookie. A new piece of the app takes the app's plumbing, never the agent side's.
+- **The app and the agent side kept apart** (design § Login and OAuth, § Web). The app's session is its own cookie, scoped to `/beamlet` and HTTP-only, carrying the secret of a session row rather than an identity, so an agent route that writes the endpoint's session or signs a cookie with `secret_key_base` gains nothing. The app's LiveViews use their own socket, so agent pages do not receive the app session by accident; § 6 says what a page that chooses its socket gets. `Beamlet.Router` answers 404 for every `/beamlet` path it does not own, so no agent route ever receives the app's cookie. A new piece of the app takes the app's plumbing, never the agent side's. The split holds while nothing in the host fetches the session before the forward: a session already fetched stays the host's, and a sign-in would land in the cookie agent pages read and write. The standalone server fetches none; `Beamlet.Router` warns an embedder, and a plug enforcing it is deferred (design § 4).
 
 ## 4. The guardrails
 

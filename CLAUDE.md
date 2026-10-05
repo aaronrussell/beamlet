@@ -19,6 +19,8 @@ server/              beamlet_server  separate mix project: the standalone
                                      Phoenix app, path dep on `..`
 data/                dev data dir (gitignored)
 context/             design notes
+guides/              the hexdocs extras: the operator's guides,
+                     with their images under assets/
 Dockerfile           builds and runs the server; context is the repo root
 fly.toml             the image on Fly: one machine, one volume
 .github/workflows/   ci.yml on main and PRs, release.yml on a
@@ -59,6 +61,7 @@ Run the affected tests while working and `mix precommit` before claiming done, a
 ## Conventions
 
 - Terminology: **Beamlet** is the project, **a beamlet** is a running instance, **my beamlet** is where your code lives. Every other noun stays ordinary: modules, routes, tools, applications, users, tokens. A beamlet belongs to one person, **the owner**, its only user. **Tool use**, not "tool call".
+- Spelling: British on what a person meets first: the README, the guides, the public moduledocs, the app's pages and the CLI's output. What the model reads (the `Host.*` docs, tool descriptions and instructions, teaching errors) takes either. Identifiers and OAuth terms keep the specs' spelling: `authorize/2`, an authorization server.
 - **The app** is Beamlet's own inner app: the sign-in, the consent page, the home page and the admin pages to come. Its pieces take the name (`/beamlet/app/live`, the `app` layout, `app.css`, the `_beamlet_app_key` cookie); "beamlet" in a name means what the agent side uses. Nothing of the app's is shared with agent pages.
 - Path naming: `*_dir` for directories, `*_file` for files, `*_path` for generic or URL paths.
 - Public functions return `{:ok, result} | {:error, reason}`. Match existing error shapes.
@@ -71,9 +74,10 @@ Run the affected tests while working and `mix precommit` before claiming done, a
 
 ## Documentation
 
-- Public modules have a `@moduledoc`; internal ones `@moduledoc false`. This matters more here than usual: `@moduledoc false` is also how policy tells library internals from public surface, and module docs are what agents read to discover the environment.
-- Public functions have `@doc` and `@spec`; public types a `@typedoc`. Rely on the spec for types, do not repeat them in prose.
-- On `Host.*` modules, the first paragraph of a `@moduledoc` or `@doc` is one short sentence: `print_modules` and the function index render it. The explanation starts in the second paragraph. A convention about one module lives in that module's moduledoc, not in the server instructions.
+- A module is public when an operator or embedder meets its name: in config, a command, an endpoint or router line, or a boot error. Everything else is hidden with `@moduledoc false`, never ex_doc's `filter_modules`. This matters more here than usual: `@moduledoc false` is also how policy tells library internals from public surface, and module docs are what agents read to discover the environment.
+- A public module has a `@moduledoc`, its public functions `@doc` and `@spec`, its public types a `@typedoc`. Rely on the spec for types, do not repeat them in prose. Plumbing on a public module takes `@doc false`; an `@impl` callback needs a `@doc` only when the inherited one is worth overriding.
+- A hidden module has `@moduledoc false` followed by a comment block carrying the context a developer or agent working on it needs, as `Beamlet.Code.Audit` does. Its public functions still have a `@doc`. A private function needs none; one that wants it gets a comment.
+- The first paragraph of a `@moduledoc`, `@doc` or `@typedoc` is one short sentence: ex_doc's listings render it, and on `Host.*` so do `print_modules` and the function index. The explanation starts in the second paragraph. A convention about one module lives in that module's moduledoc, not in the server instructions.
 - Tone: friendly, curious, technically fluent. Concrete, example-led, no AI hype.
 
 ## Testing
