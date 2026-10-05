@@ -105,8 +105,12 @@ defmodule Beamlet.MixProject do
         "guides/getting-started.md",
         "guides/working-with-your-beamlet.md",
         "guides/tokens-and-policies.md",
-        "guides/operating-a-beamlet.md"
+        "guides/operating-a-beamlet.md",
+        "guides/deploy-beamlet-on-fly.md"
       ],
+      assets: %{
+        "guides/assets" => "assets"
+      },
       groups_for_extras: [
         Guides: ~r/^guides\/(?!security)/
       ],
