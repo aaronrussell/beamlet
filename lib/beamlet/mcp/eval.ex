@@ -46,7 +46,7 @@ defmodule Beamlet.MCP.Eval do
   alias Beamlet.MCP.Server
 
   schema do
-    field(:code, {:required, :string}, description: "Elixir code to evaluate")
+    field :code, {:required, :string}, description: "Elixir code to evaluate"
   end
 
   @doc """

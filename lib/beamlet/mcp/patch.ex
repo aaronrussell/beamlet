@@ -54,37 +54,37 @@ defmodule Beamlet.MCP.Patch do
 
   schema do
     embeds_many :patches, required: true, description: "The patches to apply, in order" do
-      field(:module, {:required, :string}, description: "The module to edit, like Shopping.List")
+      field :module, {:required, :string}, description: "The module to edit, like Shopping.List"
 
-      field(:find, :string,
-        description:
-          "Anchor: text occurring exactly once in the module's current source. " <>
-            "One anchor per patch, find or select."
-      )
+      field :find, :string,
+        description: """
+        Anchor: text occurring exactly once in the module's current source. \
+        One anchor per patch, find or select.
+        """
 
-      field(:select, :string,
-        description:
-          "Anchor: a function as name/arity, all its clauses with the @doc and @spec " <>
-            "above them. One anchor per patch, find or select."
-      )
+      field :select, :string,
+        description: """
+        Anchor: a function as name/arity, all its clauses with the @doc and @spec \
+        above them. One anchor per patch, find or select.
+        """
 
-      field(:replace, :string,
-        description:
-          "Operation: text replacing the anchor, empty to remove it. " <>
-            "One operation per patch: replace, before or after."
-      )
+      field :replace, :string,
+        description: """
+        Operation: text replacing the anchor, empty to remove it. \
+        One operation per patch: replace, before or after.
+        """
 
-      field(:before, :string,
-        description:
-          "Operation: text inserted before the anchor. " <>
-            "One operation per patch: replace, before or after."
-      )
+      field :before, :string,
+        description: """
+        Operation: text inserted before the anchor. \
+        One operation per patch: replace, before or after.
+        """
 
-      field(:after, :string,
-        description:
-          "Operation: text inserted after the anchor. " <>
-            "One operation per patch: replace, before or after."
-      )
+      field :after, :string,
+        description: """
+        Operation: text inserted after the anchor. \
+        One operation per patch: replace, before or after.
+        """
     end
   end
 

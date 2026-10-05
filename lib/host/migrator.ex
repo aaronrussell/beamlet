@@ -17,7 +17,7 @@ defmodule Host.Migrator do
         def change do
           create table(:shopping_lists) do
             add :name, :string, null: false
-            timestamps(type: :utc_datetime)
+            timestamps type: :utc_datetime
           end
         end
       end

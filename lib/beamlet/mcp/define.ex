@@ -51,13 +51,13 @@ defmodule Beamlet.MCP.Define do
 
   schema do
     embeds_many :modules, required: true, description: "The modules to define, one per entry" do
-      field(:code, {:required, :string}, description: "One top-level defmodule")
+      field :code, {:required, :string}, description: "One top-level defmodule"
 
-      field(:replace, :boolean,
-        description:
-          "Set true to deliberately replace this module if it exists. Harmless on a new one. " <>
-            "Default false."
-      )
+      field :replace, :boolean,
+        description: """
+        Set true to deliberately replace this module if it exists. \
+        Harmless on a new one. Default false.
+        """
     end
   end
 

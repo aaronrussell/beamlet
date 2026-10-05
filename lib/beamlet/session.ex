@@ -18,8 +18,8 @@ defmodule Beamlet.Session do
   use Ecto.Schema
 
   schema "sessions" do
-    field(:secret, :string, virtual: true, redact: true)
-    field(:secret_hash, :binary, redact: true)
+    field :secret, :string, virtual: true, redact: true
+    field :secret_hash, :binary, redact: true
     timestamps()
   end
 

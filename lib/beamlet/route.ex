@@ -32,13 +32,13 @@ defmodule Beamlet.Route do
   alias Beamlet.Principal
 
   schema "__routes" do
-    field(:kind, Ecto.Enum, values: [:live_view, :controller])
-    field(:verb, Ecto.Enum, values: [:get, :post, :put, :patch, :delete])
-    field(:path, :string)
-    field(:module, :string)
-    field(:action, :string)
-    field(:principal, :map)
-    timestamps(updated_at: false, type: :utc_datetime)
+    field :kind, Ecto.Enum, values: [:live_view, :controller]
+    field :verb, Ecto.Enum, values: [:get, :post, :put, :patch, :delete]
+    field :path, :string
+    field :module, :string
+    field :action, :string
+    field :principal, :map
+    timestamps updated_at: false, type: :utc_datetime
   end
 
   @typedoc "An HTTP verb a route answers."

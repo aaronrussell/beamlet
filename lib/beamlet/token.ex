@@ -26,16 +26,16 @@ defmodule Beamlet.Token do
   import Ecto.Changeset
 
   schema "tokens" do
-    field(:kind, Ecto.Enum, values: [:cli, :oauth], default: :cli)
-    field(:name, :string)
-    field(:client, :string)
-    field(:policy, :string, default: "default")
-    field(:secret, :string, virtual: true)
-    field(:secret_hash, :binary)
-    field(:expires_at, :utc_datetime)
-    field(:refresh_secret, :string, virtual: true)
-    field(:refresh_hash, :binary)
-    field(:refresh_expires_at, :utc_datetime)
+    field :kind, Ecto.Enum, values: [:cli, :oauth], default: :cli
+    field :name, :string
+    field :client, :string
+    field :policy, :string, default: "default"
+    field :secret, :string, virtual: true
+    field :secret_hash, :binary
+    field :expires_at, :utc_datetime
+    field :refresh_secret, :string, virtual: true
+    field :refresh_hash, :binary
+    field :refresh_expires_at, :utc_datetime
     timestamps()
   end
 

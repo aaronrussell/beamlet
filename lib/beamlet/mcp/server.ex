@@ -33,9 +33,9 @@ defmodule Beamlet.MCP.Server do
   alias Beamlet.Policies
   alias Beamlet.Policy
 
-  component(Beamlet.MCP.Define)
-  component(Beamlet.MCP.Eval)
-  component(Beamlet.MCP.Patch)
+  component Beamlet.MCP.Define
+  component Beamlet.MCP.Eval
+  component Beamlet.MCP.Patch
 
   @instructions """
   These tools work on your beamlet: a running Elixir application you

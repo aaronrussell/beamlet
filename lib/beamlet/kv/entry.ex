@@ -9,7 +9,7 @@ defmodule Beamlet.KV.Entry do
 
   @primary_key {:key, :string, autogenerate: false}
   schema "__kv" do
-    field(:value, :string)
+    field :value, :string
   end
 
   @type t :: %__MODULE__{key: String.t(), value: String.t()}
