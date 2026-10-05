@@ -4,6 +4,18 @@ Beamlet is a little Elixir server that your AI client builds inside. Ask for a p
 
 Your client talks to your beamlet over MCP. The agent's code, data and pages all live in one directory on the server.
 
+## What it looks like
+
+Ask your client for something:
+
+> I want somewhere on my beamlet to send events from my scripts. Make an endpoint I can POST JSON to, and a page that shows them live as they come in.
+
+The agent builds an endpoint at `/api/events` and a page at `/events`. Post an event with `curl` and it appears on the page as it arrives.
+
+<figure>
+  <img src="assets/events.webp" width="800" height="400" alt="Screenshot of event inbox" />
+</figure>
+
 ## Run Beamlet with Docker
 
 The easiest way to run Beamlet is with its published Docker image. Start it with a volume for its data:

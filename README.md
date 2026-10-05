@@ -1,70 +1,63 @@
 # Beamlet
 
-**TODO: Add description**
+Beamlet is a little Elixir server that your AI client builds inside. Ask for a page, an API or a small app, and the agent writes it as Elixir modules on your beamlet, where it runs straight away and is still there tomorrow.
+
+Your client talks to your beamlet over MCP. The agent's code, data and pages all live in one directory on the server.
+
+## What it looks like
+
+Ask your client for something:
+
+> I want somewhere on my beamlet to send events from my scripts. Make an endpoint I can POST JSON to, and a page that shows them live as they come in.
+
+The agent builds an endpoint at `/api/events` and a page at `/events`. Post an event with `curl` and it appears on the page as it arrives.
+
+![The event inbox on a beamlet, with a curl command to send an event and one event received](guides/assets/events.webp)
+
+## Quick start
+
+Run the published Docker image with a volume for its data:
+
+```shell
+docker run -d \
+  --name my-beamlet \
+  -p 4000:4000 \
+  -v beamlet_data:/data \
+  -e BEAMLET_URL=http://localhost:4000 \
+  ghcr.io/aaronrussell/beamlet:0.1
+```
+
+Set your email and password:
+
+```shell
+docker exec -it my-beamlet beamlet setup
+```
+
+Then sign in at <http://localhost:4000/beamlet>. The home page shows your MCP URL and the steps to connect your client. Once it's connected, start a chat and ask "What can I do with my beamlet?"
+
+[Getting started](https://beamlet.hexdocs.pm/getting-started.html) goes through each step in more detail.
 
 ## Security
 
-A beamlet belongs to one person. Tokens are that person's delegations to their clients. Policies steer each client. Treat any token as full access to the beamlet.
+A beamlet belongs to one person: you. Each client you connect gets its own token, and each token carries a policy that sets what the client's agent may do. A policy is a guardrail, not a sandbox, so give tokens to clients you trust.
 
-Agent code runs inside the beamlet's own VM. Policies, and the scanner that enforces them, are guardrails: they stop an honest model from doing something by accident, and they stop low-effort prompt injection that reaches for ordinary APIs ("fetch this URL", "read this file"). They are not a containment boundary against code that is trying to get out. If you hand a token to an agent that reads the web, assume it can reach anything the beamlet process can.
+Beamlet is self-hosted, secure enough out of the box and hackable by choice. It won't save you from yourself.
 
-The token is the boundary: a request without one reaches nothing beyond the sign-in and OAuth pages. Known gaps in 0.1:
+Read [Security](https://beamlet.hexdocs.pm/security.html) before you put a beamlet online.
 
-- The sign-in page has no rate limit, so choose a strong password.
-- A session lasts until you sign out, set a new password with `beamlet setup`, or the browser drops the cookie.
-- Agent pages share the beamlet's origin with the sign-in, so script on an agent page you visit while signed in can approve a connection as you on the consent page. A token already amounts to that much.
+## Documentation
 
-## Installation
+The guides are on [HexDocs](https://beamlet.hexdocs.pm):
 
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed by adding `beamlet` to your list of dependencies in `mix.exs`:
+- [Getting started](https://beamlet.hexdocs.pm/getting-started.html) to run a beamlet and connect your first client.
+- [Working with your beamlet](https://beamlet.hexdocs.pm/working-with-your-beamlet.html) for what to ask for and what happens when you do.
+- [Tokens and policies](https://beamlet.hexdocs.pm/tokens-and-policies.html) to connect more clients and limit what each can do.
+- [Operating a beamlet](https://beamlet.hexdocs.pm/operating-a-beamlet.html) for configuration, upgrades and the log.
+- [Deploy Beamlet on Fly.io](https://beamlet.hexdocs.pm/deploy-beamlet-on-fly.html) to put your beamlet online for ChatGPT and Claude.
+- [Security](https://beamlet.hexdocs.pm/security.html) for what you're exposing and what to do about it.
 
-```elixir
-def deps do
-  [
-    {:beamlet, "~> 0.1.0"}
-  ]
-end
-```
+## Licence
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc) and published on [HexDocs](https://hexdocs.pm). Once published, the docs can be found at <https://hexdocs.pm/beamlet>.
+This package is open source and released under the [Apache License 2.0](LICENSE).
 
-## Docker
-
-The standalone server in `server/` ships as a Docker image built from the repo root. Run it with a volume mounted at `/data`, which holds everything the beamlet keeps:
-
-    docker build -t beamlet .
-    docker run -d --name beamlet -p 4000:4000 -v beamlet_data:/data beamlet
-
-Then set up the owner, which asks for your email and a password to sign in with, and create a token with the CLI inside the container:
-
-    docker exec -it beamlet bin/beamlet setup
-    docker exec beamlet bin/beamlet tokens.create laptop
-
-The container runs as user `beamlet` (uid 1000). A named volume, as above, is owned correctly from the start; a bind mount of a host directory must be writable by that uid.
-
-Configuration is by environment variable:
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `BEAMLET_DATA_DIR` | `/data` | The data dir. Mount a volume there. |
-| `BEAMLET_URL` | `http://localhost:4000` | The address the beamlet is reached at. LiveView rejects sockets from any other origin. |
-| `SECRET_KEY_BASE` | generated | Signs cookies. Generated on first boot and kept in the data dir when unset. |
-| `PORT` | `4000` | The port the server listens on. |
-| `BEAMLET_EVAL_TIMEOUT` | `30000` | Milliseconds one eval may run before it is stopped and its output so far returned. |
-| `BEAMLET_DEFINE_TIMEOUT` | `30000` | Milliseconds one define or patch may spend compiling. |
-| `BEAMLET_MCP_REQUEST_TIMEOUT` | `65000` | Milliseconds the server waits for any MCP request before answering "Server unavailable". Must be greater than both timeouts above. |
-
-TLS is left to whatever sits in front of the container.
-
-## Fly
-
-`fly.toml` describes one machine in one region with a volume at `/data`. `fly launch` copies it, asks for an app name and a region, creates the volume there and deploys:
-
-    fly launch
-
-It does not touch the `[env]` block, so if the app is not called `beamlet`, set `BEAMLET_URL` in `fly.toml` to the new hostname first. LiveView rejects sockets from any other origin.
-
-Then set up the owner and create a token over SSH:
-
-    fly ssh console --pty -C "bin/beamlet setup"
-    fly ssh console -C "bin/beamlet tokens.create laptop"
+© Copyright 2026 [Push Code Ltd](https://www.pushcode.com).
