@@ -71,7 +71,7 @@ fly ssh console --pty -C "beamlet setup"
 fly apps open /beamlet
 ```
 
-`setup` asks for your email and a password. Sign in with them, and follow your client's steps on the home page.
+`setup` creates the owner, your beamlet's one account. It is not your Fly account. It asks for an email and a password, which you then use to sign in, and after that you follow your client's steps on the home page.
 
 ## Looking after it
 
@@ -84,11 +84,17 @@ fly ssh console -C "beamlet tokens.create cursor"
 
 ### The config file
 
-Write `config.exs` on your machine, as in [Tokens and policies](tokens-and-policies.md). `fly sftp shell` opens a session on the machine, where `put` copies the file onto the volume:
+Write `config.exs` on your machine, as in [Tokens and policies](tokens-and-policies.md). `fly sftp put` copies it onto the volume:
 
 ```shell
-fly sftp shell
-put config.exs /data/config.exs
+fly sftp put config.exs /data/config.exs
+```
+
+`put` will not replace a file that is already there. To change the file, remove the old one first, then `put` again:
+
+```shell
+fly ssh console -C "rm /data/config.exs"
+fly sftp put config.exs /data/config.exs
 ```
 
 Then check it, and restart to put it live:

@@ -22,7 +22,6 @@ context/             design notes
 guides/              the hexdocs extras: the operator's guides,
                      with their images under assets/
 Dockerfile           builds and runs the server; context is the repo root
-fly.toml             the image on Fly: one machine, one volume
 .github/workflows/   ci.yml on main and PRs, release.yml on a
                      version tag
 ```
