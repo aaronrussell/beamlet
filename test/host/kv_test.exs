@@ -149,6 +149,84 @@ defmodule Host.KVTest do
     end
   end
 
+  describe "update" do
+    test "a missing key stores the default without calling the function" do
+      assert Host.KV.update("kv-test:hits", 1, fn _ -> flunk("called") end) == 1
+      assert Host.KV.get("kv-test:hits") == 1
+    end
+
+    test "a stored value goes through the function" do
+      :ok = Host.KV.put("kv-test:hits", 41)
+
+      assert Host.KV.update("kv-test:hits", 1, &(&1 + 1)) == 42
+      assert Host.KV.get("kv-test:hits") == 42
+    end
+
+    test "a stored nil is a value, not a missing key" do
+      :ok = Host.KV.put("kv-test:nil", nil)
+
+      assert Host.KV.update("kv-test:nil", "unused", &is_nil/1) == true
+    end
+
+    test "a value that is not JSON is refused and nothing is written" do
+      :ok = Host.KV.put("kv-test:kept", 1)
+
+      assert_raise ArgumentError, ~r/does not store the atom :two/, fn ->
+        Host.KV.update("kv-test:kept", 0, fn _ -> :two end)
+      end
+
+      assert_raise ArgumentError, ~r/does not store the map key :count/, fn ->
+        Host.KV.update("kv-test:missing", %{count: 1}, & &1)
+      end
+
+      assert Host.KV.get("kv-test:kept") == 1
+      assert Host.KV.fetch("kv-test:missing") == :error
+    end
+
+    test "a write landing while the function runs makes it run again on the newer value" do
+      :ok = Host.KV.put("kv-test:hits", 1)
+
+      result =
+        Host.KV.update("kv-test:hits", 0, fn n ->
+          send(self(), {:ran, n})
+          if n == 1, do: Host.KV.put("kv-test:hits", 10)
+          n + 1
+        end)
+
+      assert result == 11
+      assert_received {:ran, 1}
+      assert_received {:ran, 10}
+      assert Host.KV.get("kv-test:hits") == 11
+    end
+
+    test "a key still changing under the function after a second of retries gives up" do
+      :ok = Host.KV.put("kv-test:busy", 0)
+      message = ~r/gave up on "kv-test:busy" after retrying for a second: .*free of I\/O/
+
+      assert_raise RuntimeError, message, fn ->
+        Host.KV.update("kv-test:busy", 0, fn n ->
+          Host.KV.put("kv-test:busy", n + 2)
+          n + 1
+        end)
+      end
+
+      assert rem(Host.KV.get("kv-test:busy"), 2) == 0
+    end
+
+    test "an update inside a Host.Repo.transaction rolls back with it" do
+      :ok = Host.KV.put("kv-test:tx", 1)
+
+      assert_raise RuntimeError, "boom", fn ->
+        Host.Repo.transaction(fn ->
+          assert Host.KV.update("kv-test:tx", 0, &(&1 + 1)) == 2
+          raise "boom"
+        end)
+      end
+
+      assert Host.KV.get("kv-test:tx") == 1
+    end
+  end
+
   describe "prefixes" do
     setup do
       :ok = Host.KV.put("kv-test:a:1", 1)

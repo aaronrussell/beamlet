@@ -2,12 +2,13 @@ defmodule Host.KV do
   @moduledoc """
   Durable key/value storage for small state under string keys.
 
-  A cursor, a last-run time, a preference. Values are JSON: `nil`,
-  booleans, numbers, strings, lists, and maps with string keys, and
-  what you put is what you get back. Anything else raises on `put/2`,
-  so store an atom as a string (`"active"` rather than `:active`), a
-  map with string keys (`%{"count" => 1}` rather than `%{count: 1}`)
-  and a time as ISO 8601 (`DateTime.to_iso8601(now)`).
+  A cursor, a counter, a last-run time, a preference. Values are
+  JSON: `nil`, booleans, numbers, strings, lists, and maps with
+  string keys, and what you put is what you get back. Anything else
+  raises on `put/2`, so store an atom as a string (`"active"` rather
+  than `:active`), a map with string keys (`%{"count" => 1}` rather
+  than `%{count: 1}`) and a time as ISO 8601
+  (`DateTime.to_iso8601(now)`).
 
   Keys are one shared namespace across every agent and module on your
   beamlet, so prefix yours with your domain, e.g. `"poller:last_id"`.
@@ -24,18 +25,20 @@ defmodule Host.KV do
         json(conn, %{ok: true})
       end
 
-  Anything you would filter, sort or join on belongs in a table of
-  its own, through a migration (`Host.Migrator`) and an
-  `Ecto.Schema`, and so does a total you increment: count the rows,
-  or keep a counter row the database bumps in one upsert, since a
-  read-increment-write here loses updates under concurrent requests.
-  Reads return the value or a default; `fetch/1` is the one that
-  tells a stored `nil` from a missing key.
+  A value worked out from the one before it, a counter or a list of
+  recent ids, changes through `update/3`, since a `get/2` then a
+  `put/2` loses updates under concurrent requests. Anything you would
+  filter, sort or join on belongs in a table of its own, through a
+  migration (`Host.Migrator`) and an `Ecto.Schema`. Reads return the
+  value or a default; `fetch/1` is the one that tells a stored `nil`
+  from a missing key.
   """
 
   import Ecto.Query
 
   alias Beamlet.KV.Entry
+
+  @retry_ms 1_000
 
   @typedoc "A value the store holds: JSON's shapes, with maps keyed by strings."
   @type value ::
@@ -93,6 +96,32 @@ defmodule Host.KV do
   end
 
   @doc """
+  Updates the value under `key` with `fun` and returns the new value,
+  storing `default` as it is when the key is missing, e.g.
+  `update("api:hits", 1, &(&1 + 1))`.
+
+  No update is lost under concurrent requests: if another write lands
+  on `key` while `fun` runs, `fun` runs again on the newer value. So
+  keep `fun` fast and pure, computing the new value from the old one
+  alone, and do I/O and other side effects before or after the call.
+
+      Host.KV.update("webhooks:recent", [id], fn ids -> Enum.take([id | ids], 20) end)
+
+  A value that is not JSON-shaped raises as `put/2` does. If `key`
+  is still changing under `fun` after a second of retries, the update
+  raises: a sign that `fun` is too slow for how often `key` is
+  written.
+  """
+  @spec update(String.t(), value(), (value() -> value())) :: value()
+  def update(key, default, fun) when is_binary(key) and is_function(fun, 1) do
+    check!(default, [])
+
+    Host.Repo.checkout(fn ->
+      attempt(key, default, fun, System.monotonic_time(:millisecond) + @retry_ms)
+    end)
+  end
+
+  @doc """
   Removes `key`.
 
   Removing a key that is not there is a no-op.
@@ -146,6 +175,54 @@ defmodule Host.KV do
   def delete_all(prefix) when is_binary(prefix) do
     prefix |> under() |> Host.Repo.delete_all()
     :ok
+  end
+
+  # Compare-and-swap: fun runs with nothing locked, since SQLite has
+  # one write lock for the whole agent database and holding it while
+  # agent code runs would stall every other writer. The write applies
+  # only if the row still holds the text that was read, compared byte
+  # for byte; otherwise another write landed and the attempt starts
+  # over. Inside a Host.Repo.transaction no other connection's write
+  # lands between the read and the write: the transaction holds the
+  # write lock already, or SQLite raises busy at the write.
+  #
+  # The retries are bounded by time, not by count: a writer that loses
+  # the race for the write lock sleeps in SQLite's busy handler while
+  # other commits land, so a fast fun on a busy key can take dozens of
+  # attempts in tens of milliseconds, where a slow fun takes a few in a
+  # second.
+  defp attempt(key, default, fun, deadline) do
+    case Host.Repo.get(Entry, key) do
+      nil ->
+        {count, _} =
+          Host.Repo.insert_all(Entry, [%{key: key, value: JSON.encode!(default)}],
+            on_conflict: :nothing,
+            conflict_target: :key
+          )
+
+        if count == 1, do: default, else: retry(key, default, fun, deadline)
+
+      %Entry{value: text} ->
+        value = fun.(decode!(key, text))
+        check!(value, [])
+
+        {count, _} =
+          Host.Repo.update_all(from(e in Entry, where: e.key == ^key and e.value == ^text),
+            set: [value: JSON.encode!(value)]
+          )
+
+        if count == 1, do: value, else: retry(key, default, fun, deadline)
+    end
+  end
+
+  defp retry(key, default, fun, deadline) do
+    if System.monotonic_time(:millisecond) > deadline do
+      raise "Host.KV.update/3 gave up on #{inspect(key)} after retrying for a second: " <>
+              "other writes kept landing on it while your function ran. Keep the function " <>
+              "fast and free of I/O: do the slow work first and pass its result in"
+    end
+
+    attempt(key, default, fun, deadline)
   end
 
   # The value is checked against JSON's shapes before it is encoded,
