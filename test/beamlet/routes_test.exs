@@ -191,8 +191,7 @@ defmodule Beamlet.RoutesTest do
     end
 
     test "the empty generation 404s everything under the forward", %{conn: conn} do
-      assert conn |> get("/anything") |> response(404) ==
-               "Not Found. Nothing is mounted at this path; your beamlet has its own pages at /beamlet."
+      assert conn |> get("/anything") |> response(404) == "Not Found"
 
       assert conn
              |> put_req_header("accept", "application/json")

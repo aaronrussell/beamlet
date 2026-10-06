@@ -77,7 +77,7 @@ Each `eval` starts fresh, and nothing is carried over from one chat to the next.
 
 ## What to expect
 
-The frontier models do well, and so do the strong open-weight ones. Small local models vary, and some work well.
+The frontier models and strong open-weight models all do well. Models small enough to run at home can be suitable for smaller isolated tasks, but struggle with longer coding sessions which demand a large context window.
 
 Expect the agent to hit errors and fix them as it goes. It writes some code, your beamlet answers with an error saying what to do instead, and it tries again. That's the normal loop, not a fault.
 

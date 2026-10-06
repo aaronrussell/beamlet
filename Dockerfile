@@ -49,6 +49,10 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
+# `fly ssh console` runs as root, and git refuses a repository another
+# user owns, so the code dir is trusted for everyone.
+RUN git config --system --add safe.directory /data/code
+
 RUN useradd --uid 1000 --user-group --create-home --home-dir /app --shell /usr/sbin/nologin beamlet && \
     mkdir /data && chown beamlet:beamlet /data
 

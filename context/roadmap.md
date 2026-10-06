@@ -2,7 +2,7 @@
 
 **Status:** The work agreed, anchored to versions, in order. Each step gets a planning pass that pins its spec before implementation. What is settled lives in `design.md`. Beamlet is beta until 1.0; a 0.x minor may change any surface and says so in the changelog.
 
-**Last updated:** 2026-10-06 (step 17b done)
+**Last updated:** 2026-10-06 (step 17c done)
 
 ---
 
@@ -35,11 +35,12 @@ Steps 1 to 8 and 10 to 16 are done and step 9 dropped; design § 2 Login and OAu
 
 17b. **`Host.KV.update/3`.** Done 2026-10-06. Both runs needed a count of API requests, and both built a table with an upsert, as the moduledoc told them to, since a read-increment-write through `get` and `put` loses updates; Qwen took twenty minutes over it. `update(key, default, fun)` in `Map.update/4`'s shape returns the new value, compare-and-swap underneath: `fun` runs with nothing locked, the write applies only where the row still holds the text read, and a write that changes no row retries on the newer value, for up to a second (design § Key/value). Every failure raises, so a surrounding transaction rolls back. `increment/2` as one upsert was the planned shape and lost to the general one, which covers a list of recent ids as well as a counter and needs no rule for a stored non-number; a general update in one `BEGIN IMMEDIATE` transaction lost as the roadmap first recorded, holding the database's one write lock while agent code runs. A cap of ten attempts was agreed and reversed by measurement before it shipped: five concurrent writers on one key needed over twenty. The `@doc` asks for a fast, pure `fun`, and the moduledoc's counter advice moved from tables to `update/3`. A concurrency test on the real pool, fifty tasks of twenty updates each, fails without the compare, most of the thousand lost.
 
-17c. **Small fixes from the walkthrough.**
-- The image trusts `/data/code` for every user (`git config --system --add safe.directory /data/code`). `fly ssh console` runs as root, and git refuses a repository another user owns.
+17c. **Small fixes from the walkthrough.** Done 2026-10-06.
+- The image trusts `/data/code` for every user (`git config --system --add safe.directory /data/code`). `fly ssh console` runs as root, and git refuses a repository another user owns. Checked on the next rc, not by the suite.
 - `Host.Web` documents `page_title`, which the agent layout's `live_title` already reads: in the example's `mount/3`, and a sentence on the layout. No page in either run set a title.
-- `beamlet setup` prints a line before the email prompt saying what it sets up: the owner, the beamlet's one account, on first use, and a change to the owner after that. Run 1 met a bare `Email:` prompt over `fly ssh console` with nothing to say whose.
-- The 404 becomes a plain "Not Found" everywhere, `/` included, with no pointer to `/beamlet`. A welcome for a fresh beamlet is in Deferred.
+- `beamlet setup` prints a line before the email prompt saying what it sets up: the owner, the beamlet's one account, on first use, and a change to the owner after that, where a blank answer keeps the current value. Run 1 met a bare `Email:` prompt over `fly ssh console` with nothing to say whose.
+- The 404 is a plain "Not Found" everywhere, `/` included, with no pointer to `/beamlet`: `Beamlet.Web.ErrorView` lost its 404 clause (design § Web). A welcome for a fresh beamlet is in Deferred.
+- Working with your beamlet's What to expect no longer says strong open-weight models do well without qualification: the large ones do, while models small enough to run at home tail off as a session grows, and the reader is told to check the context length the runtime loaded. A troubleshooting entry for a full context was weighed and held back, since a reader cannot easily tell that is what happened.
 
 18. **Release.** Version 0.1.0, from a release candidate cut after steps 17a to 17c: the tag publishes the image through step 10's workflow and the package goes to hex by hand with `mix hex.publish`. The GHCR package is already public, having taken the repo's visibility when the rc linked it. Before the tag, the CHANGELOG's first entry, for 0.1.0, in the shape later entries follow, and the README's links to the guides checked against the published docs.
 19. **Use it.** After the release, a beamlet on a server under Docker from the published image, used for real: no script, verification through real use. What it turns up goes into 0.1.x patches or the versions after. Working with your beamlet's What to expect and troubleshooting sections grow from it. It also proves the upgrade step the walkthrough could not: `fly deploy` with the `0.1` tag unchanged picking up a patch.

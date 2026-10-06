@@ -92,6 +92,7 @@ defmodule Beamlet.CLITest do
                  CLI.main(["setup"])
                end)
 
+      assert output =~ "Create your beamlet's owner account."
       assert output =~ "Email: "
       assert output =~ "Password: "
       assert output =~ "Again: "
@@ -143,6 +144,7 @@ defmodule Beamlet.CLITest do
 
       assert {:ok, output} = with_io([input: "\n\n"], fn -> CLI.main(["setup"]) end)
 
+      assert output =~ "Update your beamlet's owner account."
       assert output =~ "Email [owner@example.com]: "
       assert output =~ "Password (blank keeps the current one): "
       refute output =~ "Again: "

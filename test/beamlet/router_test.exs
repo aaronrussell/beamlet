@@ -83,11 +83,11 @@ defmodule Beamlet.RouterTest do
     assert conn |> post("/beamlet/anything/else") |> response(404)
   end
 
-  test "the root is an agent's: a pointer to /beamlet until one mounts it", %{
+  test "the root is an agent's: a plain 404 until one mounts it", %{
     conn: conn,
     token: token
   } do
-    assert conn |> get("/") |> response(404) =~ "your beamlet has its own pages at /beamlet"
+    assert conn |> get("/") |> response(404) == "Not Found"
 
     %{hello: hello} = Beamlet.RouteFixtures.define!(principal(token))
 

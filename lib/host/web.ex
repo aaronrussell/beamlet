@@ -10,7 +10,7 @@ defmodule Host.Web do
         use Host.Web, :live_view
 
         def mount(_params, _session, socket) do
-          {:ok, assign(socket, todos: Todo.List.all())}
+          {:ok, assign(socket, page_title: "Todos", todos: Todo.List.all())}
         end
 
         def render(assigns) do
@@ -33,10 +33,12 @@ defmodule Host.Web do
   or `<.link patch={...}>` keeps navigation on the LiveView socket
   where a plain `<a href>` reloads the page. Pages render inside the
   layout your beamlet gives agent pages, with Tailwind utility
-  classes available; no stylesheet or asset setup is needed. The layout paints the page
-  background and text colour for light and dark mode, following the
-  visitor's system setting, so a page's own `dark:` classes land on a
-  matching canvas. For live updates, broadcast from the action that
+  classes available; no stylesheet or asset setup is needed. The
+  layout paints the page background and text colour for light and
+  dark mode, following the visitor's system setting, so a page's own
+  `dark:` classes land on a matching canvas. It also titles the
+  browser tab with the page's `page_title` assign, so set one in
+  `mount/3`. For live updates, broadcast from the action that
   receives the change with `Host.PubSub` and subscribe in the
   LiveView's `mount/3`.
   '''

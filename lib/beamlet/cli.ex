@@ -198,6 +198,8 @@ defmodule Beamlet.CLI do
   # The email is checked before the password is asked for, so a bad
   # one fails before anyone types a password.
   defp create_owner do
+    puts("Create your beamlet's owner account. Sign in to the app at /beamlet.")
+
     with {:ok, email} <- read_email(nil),
          :ok <- check_email(%User{}, email),
          {:ok, password} <- read_new_password(:required),
@@ -209,6 +211,8 @@ defmodule Beamlet.CLI do
   end
 
   defp update_owner(user) do
+    puts("Update your beamlet's owner account. A blank answer keeps the current value.")
+
     with {:ok, email} <- read_email(user.email),
          :ok <- check_email(user, email),
          {:ok, password} <- read_new_password(:optional),
