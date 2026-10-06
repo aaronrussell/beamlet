@@ -55,9 +55,11 @@ defmodule Host.Migrator do
         IO.puts("No pending migrations")
 
       pending ->
-        Enum.each(pending, fn %{version: version, module: mod} ->
-          up!(version, mod)
-          IO.puts("Applied migration #{version} (#{inspect(mod)})")
+        with_fresh_connection(fn repo ->
+          Enum.each(pending, fn %{version: version, module: mod} ->
+            up!(repo, version, mod)
+            IO.puts("Applied migration #{version} (#{inspect(mod)})")
+          end)
         end)
     end
 
@@ -82,7 +84,7 @@ defmodule Host.Migrator do
                 "git history; defining it again would create a new version, not this one."
 
       %{version: version, module: mod} ->
-        down!(version, mod)
+        with_fresh_connection(&down!(&1, version, mod))
         IO.puts("Rolled back migration #{version} (#{inspect(mod)})")
     end
 
@@ -102,21 +104,44 @@ defmodule Host.Migrator do
     :ok
   end
 
-  defp up!(version, mod) do
-    Ecto.Migrator.up(Host.Repo, version, mod)
+  # Each SQLite connection caches the schema, and ALTER TABLE's column
+  # operations check against that cache without first checking it is
+  # current, as other statements do. A pooled connection that has run
+  # nothing since another one added a column fails to drop it with "no
+  # such column", so migrations run on a connection opened for them,
+  # whose first statement reads the schema as it is, on the ordinary
+  # pool whatever pool the repo's config names.
+  defp with_fresh_connection(fun) do
+    {:ok, repo} =
+      Host.Repo.start_link(name: nil, pool_size: 1, pool: DBConnection.ConnectionPool)
+
+    try do
+      fun.(repo)
+    after
+      Supervisor.stop(repo)
+    end
+  end
+
+  defp up!(repo, version, mod) do
+    Ecto.Migrator.up(Host.Repo, version, mod, dynamic_repo: repo)
   rescue
     exception ->
       reraise "migration #{version} (#{inspect(mod)}) failed: #{Exception.message(exception)}",
               __STACKTRACE__
   end
 
-  defp down!(version, mod) do
-    Ecto.Migrator.down(Host.Repo, version, mod)
+  defp down!(repo, version, mod) do
+    Ecto.Migrator.down(Host.Repo, version, mod, dynamic_repo: repo)
   rescue
-    exception ->
+    exception in Ecto.MigrationError ->
       reraise "rollback of migration #{version} (#{inspect(mod)}) failed: " <>
                 "#{Exception.message(exception)} — give it a down/0, or use change/0 " <>
                 "commands Ecto can reverse",
+              __STACKTRACE__
+
+    exception ->
+      reraise "rollback of migration #{version} (#{inspect(mod)}) failed: " <>
+                Exception.message(exception),
               __STACKTRACE__
   end
 

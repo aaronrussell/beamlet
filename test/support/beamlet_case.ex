@@ -9,11 +9,20 @@ defmodule Beamlet.Case do
   when it ends while the schema migrated at boot stays.
 
   By default every test gets a beamlet of its own, booted with no
-  defined modules, a fresh history and no files: the code dir is a
-  copy of the one the run's first boot wrote, so a boot finds a clean
-  repo and skips git's `init`, and the router in the VM is the
-  compiled-in placeholder. The last test's dirs stay inspectable
-  after the run.
+  defined modules, a fresh history, an empty agent database and no
+  files: the code dir is a copy of the one the run's first boot
+  wrote, so a boot finds a clean repo and skips git's `init`, and the
+  router in the VM is the compiled-in placeholder. The last test's
+  dirs stay inspectable after the run.
+
+  `Host.Migrator` runs migrations on a connection of its own, which
+  the sandbox's open transaction would block and whose commits it
+  could not see. A module whose tests migrate turns the sandbox off
+  for the agent database, which then runs on Ecto's ordinary pool as
+  in production, so what its tests write there is committed, and the
+  next test's boot deletes it:
+
+      use Beamlet.Case, agent_sandbox: false
 
   A module whose tests change only rows, which the sandbox isolates,
   shares one beamlet across its tests instead, started before the
@@ -49,6 +58,10 @@ defmodule Beamlet.Case do
       @tag policies: [restricted: [tools: [:eval]]]
       @tag web: [prefix: "/pages"]
 
+  The agent database's repo options take the same shape:
+
+      @tag agent_repo: [pool_size: 10]
+
   One beamlet runs per VM, its processes and tables named, so a
   module using this case is never async. Tests that define modules
   use `unique_namespace/0` and `purge_on_exit/1`, since loaded modules
@@ -68,9 +81,18 @@ defmodule Beamlet.Case do
       raise ArgumentError, "Beamlet.Case cannot be async: one beamlet runs per VM"
     end
 
+    agent_sandbox = Keyword.get(opts, :agent_sandbox, true)
+
+    if opts[:shared] && !agent_sandbox do
+      raise ArgumentError,
+            "Beamlet.Case cannot share a beamlet without the agent database's sandbox: " <>
+              "what one test commits there, the next would see"
+    end
+
     quote do
       @endpoint Beamlet.TestEndpoint
       @moduletag beamlet: if(unquote(opts[:shared]), do: :shared, else: :per_test)
+      @moduletag agent_sandbox: unquote(agent_sandbox)
 
       import Beamlet.Case
     end
@@ -95,12 +117,24 @@ defmodule Beamlet.Case do
 
     preserve_compiler_tracers()
 
+    agent_repo =
+      if(context.agent_sandbox, do: [], else: [pool: DBConnection.ConnectionPool])
+      |> Keyword.merge(context[:agent_repo] || [])
+
+    if agent_repo != [] do
+      configured = Application.fetch_env!(:beamlet, Host.Repo)
+      Application.put_env(:beamlet, Host.Repo, Keyword.merge(configured, agent_repo))
+      on_exit(fn -> Application.put_env(:beamlet, Host.Repo, configured) end)
+    end
+
     case context.beamlet do
       :shared -> refresh_shared!()
       :per_test -> boot!()
     end
 
-    for repo <- [Beamlet.Repo, Host.Repo] do
+    repos = if context.agent_sandbox, do: [Beamlet.Repo, Host.Repo], else: [Beamlet.Repo]
+
+    for repo <- repos do
       owner = Sandbox.start_owner!(repo, shared: true)
       on_exit(fn -> Sandbox.stop_owner(owner) end)
     end
@@ -119,8 +153,12 @@ defmodule Beamlet.Case do
   # The template is the code dir the run's first boot wrote, so every
   # later boot finds a repo with its initial snapshot and sweeps it
   # rather than running git's init and first commit, three processes.
+  # The agent database goes too, since a test outside its sandbox
+  # commits what it writes there.
   defp boot! do
     template = code_template_dir()
+    agent_db_file = Beamlet.Config.agent_db_file()
+    Enum.each(["", "-wal", "-shm"], &File.rm(agent_db_file <> &1))
     File.rm_rf!(Beamlet.Config.code_dir())
     if File.dir?(template), do: File.cp_r!(template, Beamlet.Config.code_dir())
     File.rm_rf!(Beamlet.Config.files_dir())

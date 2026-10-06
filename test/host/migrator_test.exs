@@ -1,5 +1,5 @@
 defmodule Host.MigratorTest do
-  use Beamlet.Case
+  use Beamlet.Case, agent_sandbox: false
 
   import ExUnit.CaptureIO
   import Ecto.Query
@@ -63,6 +63,28 @@ defmodule Host.MigratorTest do
       )
 
     Calendar.strftime(at, "%Y-%m-%d %H:%M")
+  end
+
+  # Holds every pooled connection at once, each reading the table, so
+  # each caches the schema as it is now.
+  defp read_schema_on_every_connection(table) do
+    test = self()
+    pool_size = Host.Repo.config()[:pool_size]
+
+    holders =
+      for _ <- 1..pool_size do
+        Task.async(fn ->
+          Host.Repo.checkout(fn ->
+            Host.Repo.query!("SELECT count(*) FROM #{table}")
+            send(test, :read)
+            receive do: (:release -> :ok)
+          end)
+        end)
+      end
+
+    for _ <- holders, do: assert_receive(:read)
+    for holder <- holders, do: send(holder.pid, :release)
+    Task.await_many(holders)
   end
 
   defp printed_migrations, do: capture_io(fn -> assert :ok = Host.Migrator.print_migrations() end)
@@ -306,6 +328,41 @@ defmodule Host.MigratorTest do
                "No applied migrations to roll back\n"
     end
 
+    # The pool hands out the connection idle longest, so with more
+    # connections than the migrator checks out between the add and the
+    # drop, a pooled drop lands on one that cached the schema before
+    # the column existed.
+    @tag agent_repo: [pool_size: 10]
+    test "a column one migration added rolls back after every connection read the schema",
+         ctx do
+      ns = unique_namespace()
+      {create, table} = new_migration_names(ns)
+      add = Module.concat([ns, AddDone])
+
+      source = """
+      defmodule #{inspect(add)} do
+        @moduledoc "Adds done to the #{table} table."
+        use Ecto.Migration
+
+        def change do
+          alter table(:#{table}) do
+            add :done, :boolean
+          end
+        end
+      end
+      """
+
+      assert {:ok, _} = define!(ctx.principal, migration(create, table), [create])
+      capture_io(fn -> Host.Migrator.migrate() end)
+      read_schema_on_every_connection(table)
+
+      assert {:ok, _} = define!(ctx.principal, source, [add])
+      capture_io(fn -> Host.Migrator.migrate() end)
+
+      assert capture_io(fn -> assert :ok = Host.Migrator.rollback() end) ==
+               "Rolled back migration 2 (#{inspect(add)})\n"
+    end
+
     test "a failed rollback names the migration and the way out", ctx do
       ns = unique_namespace()
       {mod, table} = new_migration_names(ns)
@@ -330,6 +387,33 @@ defmodule Host.MigratorTest do
       assert error.message =~
                " — give it a down/0, or use change/0 commands Ecto can reverse"
 
+      assert applied() == [1]
+    end
+
+    test "a rollback the database refuses names the migration and the database's error",
+         ctx do
+      ns = unique_namespace()
+      {mod, table} = new_migration_names(ns)
+
+      source = """
+      defmodule #{inspect(mod)} do
+        @moduledoc "Creates the #{table} table, and drops the wrong one."
+        use Ecto.Migration
+
+        def up, do: execute("CREATE TABLE #{table} (id INTEGER PRIMARY KEY)")
+        def down, do: execute("DROP TABLE #{table}_typo")
+      end
+      """
+
+      assert {:ok, _} = define!(ctx.principal, source, [mod])
+      capture_io(fn -> Host.Migrator.migrate() end)
+
+      error = assert_raise RuntimeError, fn -> Host.Migrator.rollback() end
+
+      assert error.message =~
+               "rollback of migration 1 (#{inspect(mod)}) failed: no such table: #{table}_typo"
+
+      refute error.message =~ "down/0"
       assert applied() == [1]
     end
 

@@ -1,5 +1,5 @@
 defmodule Beamlet.PatchTest do
-  use Beamlet.Case
+  use Beamlet.Case, agent_sandbox: false
 
   import ExUnit.CaptureIO
 
