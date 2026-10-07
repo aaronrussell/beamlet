@@ -2,7 +2,7 @@
 
 **Status:** Standing context: the threat model, the rule for deciding what to fix, and the risks accepted. Written from the 0.1 code review and checked against the code by the pre-release review. The mechanism lives in `design.md`; this note says what it defends, what it does not, and why, and points there. Update it in the same piece of work as any change that adds an input Beamlet reads back, touches the token edge or the app, changes a grant or a guardrail, or accepts or closes a risk.
 
-**Last updated:** 2026-10-05 (step 15: the routes in the beamlet's database, and the rule for where a record lives)
+**Last updated:** 2026-10-07 (references to the roadmap's backlog)
 
 ---
 
@@ -34,7 +34,7 @@ So the token is the boundary. What a token reaches past its policy is what the o
 - **Secrets.** Tokens, refresh tokens, session secrets and OAuth codes are random, shown once and stored as SHA-256 hashes. The server's `filter_parameters` keeps the password, `code`, `code_verifier` and `refresh_token` out of the logs.
 - **OAuth.** S256-only PKCE; single-use codes bound to client, redirect, policy and resource; exact redirect matching, except that a listed loopback URI matches either loopback host on any port (RFC 8252); no script-capable redirect schemes; refresh rotation as a compare-and-swap, so a refresh secret redeems once.
 - **Sign-in.** A dummy verify keeps timing flat for an unknown email, a missing owner and a wrong password, and a password over 128 bytes is refused before hashing.
-- **The app and the agent side kept apart** (design § Login and OAuth, § Web). The app's session is its own cookie, scoped to `/beamlet` and HTTP-only, carrying the secret of a session row rather than an identity, so an agent route that writes the endpoint's session or signs a cookie with `secret_key_base` gains nothing. The app's LiveViews use their own socket, so agent pages do not receive the app session by accident; § 6 says what a page that chooses its socket gets. `Beamlet.Router` answers 404 for every `/beamlet` path it does not own, so no agent route ever receives the app's cookie. A new piece of the app takes the app's plumbing, never the agent side's. The split holds while nothing in the host fetches the session before the forward: a session already fetched stays the host's, and a sign-in would land in the cookie agent pages read and write. The standalone server fetches none; `Beamlet.Router` warns an embedder, and a plug enforcing it is deferred (design § 4).
+- **The app and the agent side kept apart** (design § Login and OAuth, § Web). The app's session is its own cookie, scoped to `/beamlet` and HTTP-only, carrying the secret of a session row rather than an identity, so an agent route that writes the endpoint's session or signs a cookie with `secret_key_base` gains nothing. The app's LiveViews use their own socket, so agent pages do not receive the app session by accident; § 6 says what a page that chooses its socket gets. `Beamlet.Router` answers 404 for every `/beamlet` path it does not own, so no agent route ever receives the app's cookie. A new piece of the app takes the app's plumbing, never the agent side's. The split holds while nothing in the host fetches the session before the forward: a session already fetched stays the host's, and a sign-in would land in the cookie agent pages read and write. The standalone server fetches none; `Beamlet.Router` warns an embedder, and a plug enforcing it is in the roadmap.
 
 ## 4. The guardrails
 
@@ -71,21 +71,21 @@ The cost of skipping this: `Host.HTTP` was first built as a fail-closed allowlis
 
 Each with why it is accepted and what reopens it.
 
-- **Script on an agent page can act as the signed-in owner.** It can drive the consent page, and it can join its own LiveView on the app's socket, so the page's server code receives the app session and the owner's session secret, which has no expiry and outlives the token that wrote the page. A token holder acting as the owner, which § 1 concedes. Fix chosen for 0.4: the password on every Allow, signed in or not, so neither the page nor the secret mints a token, and client ids on the beamlet's own host refused. A separate origin for agent pages is the complete fix for both, needed if pages are shared publicly.
+- **Script on an agent page can act as the signed-in owner.** It can drive the consent page, and it can join its own LiveView on the app's socket, so the page's server code receives the app session and the owner's session secret, which has no expiry and outlives the token that wrote the page. A token holder acting as the owner, which § 1 concedes. Fix chosen (roadmap): the password on every Allow, signed in or not, so neither the page nor the secret mints a token, and client ids on the beamlet's own host refused. A separate origin for agent pages is the complete fix for both, needed if pages are shared publicly.
 - **No rate limit on the sign-in.** One owner, one password; the README asks for a strong one. Revisit when the admin UI adds sensitive actions.
 - **A session has no expiry of its own.** It ends at sign-out, a new password, or when the browser drops the cookie.
-- **A new password from `beamlet setup` does not disconnect open app pages.** Every session is deleted, so the next reload goes to the login; the CLI has no way to the server's PubSub (roadmap, Deferred).
+- **A new password from `beamlet setup` does not disconnect open app pages.** Every session is deleted, so the next reload goes to the login; the CLI has no way to the server's PubSub (roadmap).
 - **DNS rebinding** in the outbound guard and the client-document fetch: the name is resolved again when the connection is made. Pinning the address costs a Finch pool per host.
 - **Shell access edits anything**, the code dir and the databases included, and the operator config file can set any application's keys. Shell access is the owner.
-- **Small items** with a fix each, unscheduled: the roadmap's "Security minors" under Deferred.
+- **Small items** with a fix each, unscheduled: the security minors under the roadmap's Hardening.
 
 ## 7. What reopens the stance
 
 The stance holds while each of these stays true. When one changes, revisit § 1 and re-sort group 2.
 
 - **One person.** More than one user would need isolation between principals, which policies cannot give.
-- **The owner wrote or approved the code.** Agent-installed dependencies (roadmap 0.5) run package code under grants.
+- **The owner wrote or approved the code.** Agent-installed dependencies (roadmap) run package code under grants.
 - **Agent pages are seen by the owner only.** Sharing them publicly puts visitors' browsers on the app's origin; that is the trigger for a separate origin.
-- **Agent paths never see an identity.** Private routes (design § 4) need the owner recognised there, through a second, weaker cookie that is never the app's.
-- **Every principal comes from a token.** A principal handed in by an embedder calling tools in-process (design § 4) has no edge to authenticate it.
+- **Agent paths never see an identity.** Private routes (roadmap) need the owner recognised there, through a second, weaker cookie that is never the app's.
+- **Every principal comes from a token.** A principal handed in by an embedder calling tools in-process (roadmap, an idea) has no edge to authenticate it.
 - **Agent code shares the VM.** An isolation boundary would make the policy containment, and group 2 findings worth fixing again.

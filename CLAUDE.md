@@ -92,10 +92,11 @@ Run the affected tests while working and `mix precommit` before claiming done, a
 
 - **The design grows with the code.** `context/design.md` is short on purpose and records only what is settled. When a decision lands or changes in code, update it in the same piece of work. Do not carry principles over from `../omni_host` unexamined; each one earns its place when the code that needs it arrives.
 - **Each step gets a planning pass** that pins the spec before implementation.
+- **The roadmap stays scannable.** Work only; findings go to the guides or the design. Next holds numbered steps, lifted out once done and settled elsewhere. The backlog is grouped by area, not origin, and holds only what could be started, at most a short paragraph each; a longer spec goes in `context/notes/` and folds into the design when it lands. Watch items say what would promote them; ideas are one line, tagged with the release they were noted in. Review both when planning a release, and delete an idea still floating after a few.
 
 ## Where to look
 
 - **Design** — `context/design.md`: framing, settled decisions, what is deliberately open.
 - **Security** — `context/security.md`: the stance, what is trusted, the escape classes left open on purpose, the rule for deciding what to fix, and the accepted risks. Read it before a change that adds an input Beamlet reads back, touches the token edge or the app, widens a grant, or makes an outbound request, and update it in the same piece of work.
-- **Roadmap** — `context/roadmap.md`: what each version ships and the steps inside it. `../omni_host/context/beamlet.md` holds the shaping note behind the port: the shape discussion, the seam crossed, and the context carried from the spike.
+- **Roadmap** — `context/roadmap.md`: the next release's steps, the backlog grouped by area, what to watch and loose ideas; long specs sit in `context/notes/`. `../omni_host/context/beamlet.md` holds the shaping note behind the port: the shape discussion, the seam crossed, and the context carried from the spike.
 - **Reference implementation** — `../omni_host/lib/omni_host/code`, `../omni_host/lib/host`, `../omni_host/lib/omni_host/mcp`, with `../omni_host/context/code-mode.md` as its design record and `../omni_host/context/mcp-spike.md` for what MCP clients actually do with instructions, descriptions and errors.

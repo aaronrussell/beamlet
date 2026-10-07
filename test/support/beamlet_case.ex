@@ -37,6 +37,12 @@ defmodule Beamlet.Case do
   after each test, and a test that changed them fails, since the next
   test would see what it left.
 
+  Sharing a beamlet among tests that change code was weighed and kept
+  out: the suite's most precise assertions, on the defined set, the
+  history and migration numbers, would depend on what ran before.
+  `mix test --partitions` with a data dir per partition runs faster
+  but needs a wrapper or a CI matrix, and was not adopted.
+
   Every test also gets the owner and one token, as `user` and `token`,
   created through `Beamlet.Owner` and `Beamlet.Tokens` so a test
   authenticates the way production does; the owner's password comes as
