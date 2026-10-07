@@ -643,4 +643,97 @@ defmodule Beamlet.DefineTest do
       assert stored(data_dir, ns, "counter.ex") == source
     end
   end
+
+  describe "warnings" do
+    test "a define that warns lands, listing the warnings and pointing at patch", %{
+      principal: principal
+    } do
+      ns = unique_namespace()
+      mod = Module.concat([ns, Warns])
+      purge_on_exit([mod])
+
+      code = """
+      defmodule #{ns}.Warns do
+        @moduledoc "Warns."
+
+        @doc "Calls nothing."
+        def broken, do: String.nope(1)
+      end
+      """
+
+      assert {:ok, summary} = quiet(fn -> define(code, principal) end)
+      path = lib_path(ns, "warns.ex")
+
+      assert summary ==
+               "Defined #{ns}.Warns (new)\n\n" <>
+                 "Compiled with 1 warning. The module is live as written, and each warning " <>
+                 "may be a bug: fix it with patch, not another define.\n" <>
+                 "#{path}:5: String.nope/1 is undefined or private\n" <>
+                 "    def broken, do: String.nope(1)"
+
+      assert loaded?(mod)
+    end
+
+    test "paths inside a warning locate as the module's path", %{
+      principal: principal,
+      data_dir: data_dir
+    } do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, Typed])])
+
+      code = """
+      defmodule #{ns}.Typed do
+        @moduledoc "Typed."
+
+        @doc "Upcases an atom."
+        def up(x) when is_atom(x), do: String.upcase(x)
+
+        @doc "Calls nothing."
+        def broken, do: String.nope(1)
+      end
+      """
+
+      assert {:ok, summary} = quiet(fn -> define(code, principal) end)
+
+      assert summary =~ "#{lib_path(ns, "typed.ex")}:8: String.nope/1 is undefined or private"
+      refute summary =~ ".staging"
+      refute summary =~ data_dir
+      refute summary =~ Path.relative_to_cwd(data_dir)
+    end
+
+    test "a replace lists its dependents' warnings under their own path", %{
+      principal: principal
+    } do
+      ns = unique_namespace()
+      purge_on_exit([Module.concat([ns, Item]), Module.concat([ns, Basket])])
+
+      item = """
+      defmodule #{ns}.Item do
+        @moduledoc "An item."
+        defstruct [:name]
+      end
+      """
+
+      basket = """
+      defmodule #{ns}.Basket do
+        @moduledoc "A basket."
+
+        @doc "A sample item."
+        def sample, do: %#{ns}.Item{name: String.nope(1)}
+      end
+      """
+
+      assert {:ok, _summary} = quiet(fn -> define(item, principal) end)
+      assert {:ok, _summary} = quiet(fn -> define(basket, principal) end)
+
+      assert {:ok, summary} =
+               quiet(fn ->
+                 define(String.replace(item, "An item.", "A thing."), principal, replace: true)
+               end)
+
+      assert summary =~ "Recompiled dependents: #{ns}.Basket\n\n"
+      assert summary =~ "fix it with patch, not another define."
+      assert summary =~ "#{lib_path(ns, "basket.ex")}:5: String.nope/1 is undefined or private"
+    end
+  end
 end

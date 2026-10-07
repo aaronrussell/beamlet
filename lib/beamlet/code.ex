@@ -361,6 +361,7 @@ defmodule Beamlet.Code do
   #   stage/2     staged ({module, staging file}), files (what the
   #               compiler takes: staged and dependents' files),
   #               previous (the versions unloaded), locators
+  #   compile/3   warnings, kept for the summary once verify/3 passes
   #
   # Every stage after stage/2 has changed something, so any failure
   # from there rolls back here, and nowhere else.
@@ -371,7 +372,7 @@ defmodule Beamlet.Code do
       result =
         with {:ok, warnings} <- compile(state, run, caller_ref),
              :ok <- verify(state, run, warnings) do
-          commit(state, run)
+          commit(state, Map.put(run, :warnings, warnings))
         end
 
       case result do
@@ -454,8 +455,8 @@ defmodule Beamlet.Code do
       end)
 
     case outcome do
-      {:ok, {:ok, _modules, %{compile_warnings: warnings}}} ->
-        {:ok, warnings}
+      {:ok, {:ok, _modules, %{compile_warnings: compile, runtime_warnings: runtime}}} ->
+        {:ok, compile ++ runtime}
 
       {:ok, {:error, diagnostics, _warnings}} ->
         render = %{
@@ -989,7 +990,64 @@ defmodule Beamlet.Code do
       end
 
     caller_lines = runtime_caller_lines(state, run.replaced, run.entry_modules)
-    Enum.join(lines ++ caller_lines, "\n")
+    Enum.join(lines ++ caller_lines ++ warning_lines(state, run), "\n")
+  end
+
+  # Warnings never block, so the modules are live as written and the
+  # fix is a patch, not the whole module again. Every file the run
+  # compiled counts, dependents included, since a replace can break a
+  # caller's types. A patch label names what produced an error, and a
+  # warning may sit in code the patch never touched, so warnings carry
+  # none.
+  defp warning_lines(state, run) do
+    order = run.files |> Enum.with_index() |> Map.new()
+    locators = Map.new(run.locators, fn {file, locator} -> {file, %{locator | label: nil}} end)
+
+    render = %{
+      context: run.context,
+      locators: locators,
+      code_dir: state.code_dir,
+      staging_dir: state.staging_dir
+    }
+
+    warnings =
+      run.warnings
+      |> Enum.filter(&Map.has_key?(locators, &1.file))
+      |> Enum.sort_by(&{Map.fetch!(order, &1.file), diag_line(&1)})
+
+    case warnings do
+      [] ->
+        []
+
+      _some ->
+        modules = warnings |> Enum.map(&Map.fetch!(locators, &1.file).module) |> Enum.uniq()
+        count = length(warnings)
+
+        rendered =
+          Enum.map(warnings, &(&1 |> render_diagnostic(render) |> locate_paths(state)))
+
+        ["", warning_steer(run.verb, count, length(modules)) | Enum.intersperse(rendered, "")]
+    end
+  end
+
+  defp warning_steer(verb, count, module_count) do
+    {noun, them} = if count == 1, do: {"1 warning", "it"}, else: {"#{count} warnings", "them"}
+    live = if module_count == 1, do: "The module is", else: "The modules are"
+    fix = if verb == :patch, do: "another patch", else: "patch, not another define"
+
+    "Compiled with #{noun}. #{live} live as written, and each warning may be a bug: " <>
+      "fix #{them} with #{fix}."
+  end
+
+  # Type warnings name files inside the message, in their traces, as
+  # Path.relative_to_cwd/1 has them: a staged copy, or a dependent
+  # where it is stored. Below either dir is the locator. The staging
+  # dir sits inside the code dir, so it goes first.
+  defp locate_paths(text, state) do
+    [state.staging_dir, state.code_dir]
+    |> Enum.flat_map(&[&1, Path.relative_to_cwd(&1)])
+    |> Enum.uniq()
+    |> Enum.reduce(text, &String.replace(&2, &1 <> "/", ""))
   end
 
   # Callers outside the entries survive a replace unrecompiled, since

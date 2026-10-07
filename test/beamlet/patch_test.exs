@@ -196,6 +196,30 @@ defmodule Beamlet.PatchTest do
     end
   end
 
+  describe "warnings" do
+    test "a patch that leaves a warning lists it, unlabelled, and points at another patch",
+         ctx do
+      {ns, mod} = list_module(ctx)
+
+      assert {:ok, summary} =
+               patch(
+                 [%{module: mod, find: "Enum.sum(items)", replace: "String.nope(items)"}],
+                 ctx.principal
+               )
+
+      assert summary ==
+               "Patched #{inspect(mod)}\n  - changed total/1\n\n" <>
+                 "Compiled with 1 warning. The module is live as written, and each warning " <>
+                 "may be a bug: fix it with another patch.\n" <>
+                 "lib/#{Macro.underscore(ns)}/list.ex:8: String.nope/1 is undefined or private\n" <>
+                 "     6 |\n" <>
+                 "     7 |   @doc \"Totals the items.\"\n" <>
+                 "     8 |   def total(items), do: String.nope(items)\n" <>
+                 "     9 |\n" <>
+                 "    10 |   @doc \"Renders the items.\""
+    end
+  end
+
   describe "select" do
     test "replace swaps the block, docs included, with the clause count", ctx do
       {_ns, mod} = list_module(ctx)
