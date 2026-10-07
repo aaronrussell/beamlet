@@ -18,16 +18,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
-      - name: Check the tag against both mix.exs versions
+      # The server's mix.exs reads its version from the library's.
+      - name: Check the tag against the mix.exs version
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          for file in mix.exs server/mix.exs; do
-            version=$(sed -nE 's/^ *(@version |version: )"([^"]+)".*/\2/p' "$file")
-            if [ "$version" != "$tag" ]; then
-              echo "::error file=$file::version is $version, the tag is $GITHUB_REF_NAME"
-              exit 1
-            fi
-          done
+          version=$(sed -nE 's/^ *@version "([^"]+)".*/\1/p' mix.exs)
+          if [ "$version" != "$tag" ]; then
+            echo "::error file=mix.exs::version is $version, the tag is $GITHUB_REF_NAME"
+            exit 1
+          fi
 
   build:
     needs: [ci, version]

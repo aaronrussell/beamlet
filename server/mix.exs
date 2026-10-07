@@ -1,10 +1,16 @@
 defmodule BeamletServer.MixProject do
   use Mix.Project
 
+  # The server ships with the library it wraps, so it takes its version.
+  @version Path.expand("../mix.exs", __DIR__)
+           |> File.read!()
+           |> then(&Regex.run(~r/@version "([^"]+)"/, &1, capture: :all_but_first))
+           |> hd()
+
   def project do
     [
       app: :beamlet_server,
-      version: "0.1.0-rc.2",
+      version: @version,
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,

@@ -1,13 +1,15 @@
 defmodule Beamlet.MixProject do
   use Mix.Project
 
-  @version "0.1.0-rc.2"
+  @name "Beamlet"
+  @description "An Elixir server that AI agents build from the inside, over MCP."
+  @version "0.1.0"
   @source_url "https://github.com/aaronrussell/beamlet"
 
   def project do
     [
       app: :beamlet,
-      name: "Beamlet",
+      name: @name,
       version: @version,
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -74,7 +76,7 @@ defmodule Beamlet.MixProject do
 
   defp pkg do
     [
-      description: "An Elixir server that AI agents build from the inside, over MCP.",
+      description: @description,
       licenses: ["Apache-2.0"],
       maintainers: ["Aaron Russell"],
       files: ~w(lib priv/repo priv/static .formatter.exs mix.exs CHANGELOG.md LICENSE README.md),
