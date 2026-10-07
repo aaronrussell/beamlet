@@ -4,11 +4,9 @@ Work tracking for Beamlet: the next release, the backlog, what to watch and loos
 
 ---
 
-## Next — 0.1.0
+## Next — 0.2.0
 
-Steps 1 to 17 are done and lifted out.
-
-18. **Release.** Version 0.1.0, from a release candidate cut after the walkthrough fixes: the tag publishes the image through the release workflow and the package goes to hex by hand with `mix hex.publish`. The GHCR package is already public, having taken the repo's visibility when the rc linked it. On the rc, check that `git -C /data/code log` works under `fly ssh console`, which runs as root: the image's `safe.directory` line landed after `0.1.0-rc.2` and the suite cannot reach it. Before the tag, the CHANGELOG: a header saying Beamlet is beta until 1.0 and a 0.x minor may change any surface and says so, then the first entry, for 0.1.0, in the shape later entries follow, and the README's links to the guides checked against the published docs.
+- TBD
 
 ## Backlog
 
