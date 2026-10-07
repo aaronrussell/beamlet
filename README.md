@@ -1,5 +1,9 @@
 # Beamlet
 
+![Hex.pm](https://img.shields.io/hexpm/v/beamlet?color=informational)
+![License](https://img.shields.io/github/license/aaronrussell/beamlet?color=informational)
+![Build Status](https://img.shields.io/github/actions/workflow/status/aaronrussell/beamlet/elixir.yml?branch=main)
+
 Beamlet is an Elixir server that your AI agent builds from the inside. Ask for a page, an API or a small app, and the agent writes it as Elixir modules that become part of your beamlet. Keep asking and it grows into whatever you want.
 
 You talk to your beamlet from an AI client such as Claude, ChatGPT or Claude Code, connected over MCP. The agent's code, data and pages all live in one directory on the server.
