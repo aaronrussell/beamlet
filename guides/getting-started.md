@@ -1,24 +1,28 @@
 # Getting started
 
-Beamlet is a little Elixir server that your AI client builds inside. Ask for a page, an API or a small app, and the agent writes it as Elixir modules on your beamlet, where it runs straight away and is still there tomorrow.
+Beamlet is an Elixir server that your AI agent builds from the inside. Ask for a page, an API or a small app, and the agent writes it as Elixir modules that become part of your beamlet. Keep asking and it grows into whatever you want.
 
-Your client talks to your beamlet over MCP. The agent's code, data and pages all live in one directory on the server.
+You talk to your beamlet from an AI client such as Claude, ChatGPT or Claude Code, connected over MCP. The agent's code, data and pages all live in one directory on the server.
 
-## What it looks like
+## A quick look
 
-Ask your client for something:
+Start a chat and ask:
 
-> I want somewhere on my beamlet to send events from my scripts. Make an endpoint I can POST JSON to, and a page that shows them live as they come in.
+> Build me a reading list on my beamlet at /books where I can add books and tick them off when I've read them.
 
-The agent builds an endpoint at `/api/events` and a page at `/events`. Post an event with `curl` and it appears on the page as it arrives.
+The agent writes a table, a migration and a LiveView, and the page is at `/books` on your beamlet. Now ask for more:
+
+> Add an endpoint I can POST a book to, so I can send one from my phone.
+
+The agent reads what it built last time and adds `/api/books` beside it, writing to the same table.
 
 <figure>
-  <img src="assets/events.webp" width="800" height="400" alt="Screenshot of event inbox" />
+  <img src="assets/reading-list.webp" width="800" height="400" alt="Screenshot of reading list" />
 </figure>
 
-## Run Beamlet with Docker
+## Running Beamlet
 
-The easiest way to run Beamlet is with its published Docker image. Start it with a volume for its data:
+The easiest way to run Beamlet is with Docker. Run the published image with a volume for its data:
 
 ```shell
 docker run -d \

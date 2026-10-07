@@ -25,7 +25,7 @@ defmodule Beamlet.Web.SessionLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.split tagline="A little Elixir machine for your agents.">
+    <Layouts.split tagline="A little Elixir server to make your own.">
       <h1 class="text-xl">Sign in</h1>
 
       <.flash :if={Phoenix.Flash.get(@flash, :error)} id="flash-error" kind="error">

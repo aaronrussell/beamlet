@@ -1,6 +1,7 @@
 defmodule Beamlet do
   @moduledoc """
-  Beamlet is a programmable Elixir code server for AI agents.
+  Beamlet is an Elixir server that your AI agent builds from the
+  inside.
 
   An agent connects over MCP and works on your beamlet, a running
   Elixir application. It defines modules, runs code, and builds APIs

@@ -2,7 +2,7 @@
 
 **Status:** Working note, deliberately light. It records what is settled and why, one decision at a time as the code lands. Nothing is carried over from `../omni_host` unexamined. History lives in git; this note keeps the decisions and the reasons that still bear on the next one, and an alternative only where someone would plausibly propose it again.
 
-**Last updated:** 2026-10-06 (step 17b: `Host.KV.update/3`)
+**Last updated:** 2026-10-07 (the launch copy: one definition, one tagline)
 
 ---
 
@@ -12,7 +12,9 @@
 
 *A little Elixir server to make your own.*
 
-Beamlet is a programmable Elixir code server for AI agents. Agents can define modules, execute code, and build APIs and live dashboards inside a running application. Available as an embeddable Elixir package and a standalone MCP server, independently of Omni.
+Beamlet is an Elixir server that your AI agent builds from the inside. Agents can define modules, execute code, and build APIs and live dashboards inside a running application. Available as an embeddable Elixir package and a standalone MCP server, independently of Omni.
+
+**The launch copy** (2026-10-07). One definition and one tagline. The definition is the sentence above; its short form, "An Elixir server that AI agents build from the inside, over MCP", is the package description and the GitHub about text, and its long form opens the README, the Getting started guide and the `Beamlet` moduledoc, followed by: "Ask for a page, an API or a small app, and the agent writes it as Elixir modules that become part of your beamlet. Keep asking and it grows into whatever you want." The tagline is the italic line above, on the sign-in page. The name carries the diminutive, so the definition does not: "a little Elixir server" doubled it. "Code server" stays internal (it is also coder's VS Code product), "for AI agents" lost because the beamlet is for its owner, and "still there tomorrow" lost because persistence stated as reassurance reads as a floor; "become part of" and "grows" make it a consequence.
 
 A small, persistent computing environment to tinker with, not a disposable code runner. Primarily for Elixir developers having fun building things with agents, rather than an enterprise automation platform. The tone is friendly, curious and technically fluent: playful without being childish, concrete rather than full of AI hype.
 

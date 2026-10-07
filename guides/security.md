@@ -1,8 +1,6 @@
 # Security
 
-A beamlet belongs to one person: you. Each client you connect gets its own token, and each token carries a policy that sets what the client's agent may do. A policy is a guardrail, not a sandbox, so give tokens to clients you trust.
-
-Beamlet is self-hosted, secure enough out of the box and hackable by choice. It won't save you from yourself.
+A beamlet belongs to one person: you. Each client you connect gets its own token, and each token carries a policy that sets what the client's agent may do. A policy is a guardrail, not a sandbox, so treat any token as full access to your beamlet, and give one only to a client you trust.
 
 ## The token is the boundary
 

@@ -4,7 +4,7 @@ Guidance for Claude Code working in `beamlet`. Design decisions live in `context
 
 ## What this project is
 
-Beamlet is a programmable Elixir code server for AI agents. Agents define modules, execute code, and build APIs and live dashboards inside a running application, over MCP. It ships as an embeddable Elixir package and as a standalone server. A running instance is *a beamlet*; the agent works *on your beamlet*, it is not the beamlet. Beamlet is not an Omni package and does not depend on Omni. It is a port of the code-mode work in `../omni_host`, rebuilt step by step with its own view of the world; that code is the reference for what is being ported, not the specification for it.
+Beamlet is an Elixir server that your AI agent builds from the inside. Agents define modules, execute code, and build APIs and live dashboards inside a running application, over MCP. It ships as an embeddable Elixir package and as a standalone server. A running instance is *a beamlet*; the agent works *on your beamlet*, it is not the beamlet. Beamlet is not an Omni package and does not depend on Omni. It is a port of the code-mode work in `../omni_host`, rebuilt step by step with its own view of the world; that code is the reference for what is being ported, not the specification for it.
 
 ## Layout
 

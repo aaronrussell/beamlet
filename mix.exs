@@ -74,7 +74,7 @@ defmodule Beamlet.MixProject do
 
   defp pkg do
     [
-      description: "A little Elixir server that your AI client builds inside, over MCP.",
+      description: "An Elixir server that AI agents build from the inside, over MCP.",
       licenses: ["Apache-2.0"],
       maintainers: ["Aaron Russell"],
       files: ~w(lib priv/repo priv/static .formatter.exs mix.exs CHANGELOG.md LICENSE README.md),

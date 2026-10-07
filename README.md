@@ -1,22 +1,26 @@
 # Beamlet
 
-Beamlet is a little Elixir server that your AI client builds inside. Ask for a page, an API or a small app, and the agent writes it as Elixir modules on your beamlet, where it runs straight away and is still there tomorrow.
+Beamlet is an Elixir server that your AI agent builds from the inside. Ask for a page, an API or a small app, and the agent writes it as Elixir modules that become part of your beamlet. Keep asking and it grows into whatever you want.
 
-Your client talks to your beamlet over MCP. The agent's code, data and pages all live in one directory on the server.
+You talk to your beamlet from an AI client such as Claude, ChatGPT or Claude Code, connected over MCP. The agent's code, data and pages all live in one directory on the server.
 
-## What it looks like
+## A quick look
 
-Ask your client for something:
+Start a chat and ask:
 
-> I want somewhere on my beamlet to send events from my scripts. Make an endpoint I can POST JSON to, and a page that shows them live as they come in.
+> Build me a reading list on my beamlet at /books where I can add books and tick them off when I've read them.
 
-The agent builds an endpoint at `/api/events` and a page at `/events`. Post an event with `curl` and it appears on the page as it arrives.
+The agent writes a table, a migration and a LiveView, and the page is at `/books` on your beamlet. Now ask for more:
 
-![The event inbox on a beamlet, with a curl command to send an event and one event received](guides/assets/events.webp)
+> Add an endpoint I can POST a book to, so I can send one from my phone.
 
-## Quick start
+The agent reads what it built last time and adds `/api/books` beside it, writing to the same table.
 
-Run the published Docker image with a volume for its data:
+![The reading list on a beamlet, with a form to add a book and the books on the shelf](guides/assets/reading-list.webp)
+
+## Running Beamlet
+
+The easiest way to run Beamlet is with Docker. Run the published image with a volume for its data:
 
 ```shell
 docker run -d \
@@ -39,9 +43,7 @@ Then sign in at <http://localhost:4000/beamlet>. The home page shows your MCP UR
 
 ## Security
 
-A beamlet belongs to one person: you. Each client you connect gets its own token, and each token carries a policy that sets what the client's agent may do. A policy is a guardrail, not a sandbox, so give tokens to clients you trust.
-
-Beamlet is self-hosted, secure enough out of the box and hackable by choice. It won't save you from yourself.
+A beamlet belongs to one person: you. Each client you connect gets its own token, and each token carries a policy that sets what the client's agent may do. A policy is a guardrail, not a sandbox, so treat any token as full access to your beamlet, and give one only to a client you trust.
 
 Read [Security](https://beamlet.hexdocs.pm/security.html) before you put a beamlet online.
 
