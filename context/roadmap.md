@@ -4,7 +4,14 @@ Work tracking for Beamlet: the next release, the backlog, what to watch and loos
 
 ---
 
-## Next — 0.2.0
+## Next
+
+### v0.1.1
+
+- **Harden the Docker image** (2026-10-08). Bound what code past the policy reaches beyond the beamlet: the private network, the cloud metadata address, protocols other than TCP, the release itself. The release is copied in owned by root, not `beamlet`, with `RELEASE_TMP=/tmp`; check nothing else writes under `/app`, the `beamlet` user's home. The image installs `iptables` and starts as root: an entrypoint sets IPv4 and IPv6 rules (loopback, DNS, replies to inbound; outbound TCP to public addresses only, not port 25), opens the hosts in `http: [allow: ...]`, read from Beamlet's config with `eval` before dropping privileges and resolved at start, then `setpriv`s to `beamlet` with every capability gone and no-new-privileges set. Without `NET_ADMIN` it refuses to start with a message saying what to add, unless an explicit opt-out variable is set. `bin/beamlet` drops to `beamlet` when run as root, since `docker exec` now runs as root. Spike first: `iptables` on Fly, IPv6 on Docker and Fly (Fly's internal DNS is on a private IPv6 address the rules must leave open, its private network one they must close). Update every `docker run` (README, getting started, operating), the Fly guide if it needs anything, and fold the result into `security.md` and `design.md`. landrun, srt and smokescreen were assessed and left out; `notes/security-guide.md` says why.
+- **Redraft the security guide** (2026-10-08). From disclaiming the sandbox to saying what the risks are, how someone gets in, and what the owner can do about each, with references. Prompted by a reply to the launch post. See `notes/security-guide.md`.
+
+### 0.2.0
 
 - TBD
 
