@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-09
+
 ### Added
 
 - The Docker image has a firewall that keeps agent code off your network, opened to the hosts you choose with `BEAMLET_HTTP_ALLOW`. It needs `--cap-add NET_ADMIN`.
@@ -38,5 +40,6 @@ First public release of Beamlet, an Elixir server that AI agents build from the 
 
 ---
 
-[Unreleased]: https://github.com/aaronrussell/beamlet/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/aaronrussell/beamlet/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/aaronrussell/beamlet/releases/tag/v0.1.1
 [0.1.0]: https://github.com/aaronrussell/beamlet/releases/tag/v0.1.0
