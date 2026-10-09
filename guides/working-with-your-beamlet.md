@@ -91,7 +91,7 @@ If a client can't see `define` or `patch`, its token's policy withholds them. [T
 
 **A page answers 404.** Its route isn't mounted. Ask the agent which routes are mounted, and to mount the page again.
 
-**A request to a host on your network is refused.** Agent code reaches only the public internet unless you allow a host, in [Operating a beamlet](operating-a-beamlet.md#the-firewall).
+**A request to a host on your network is refused.** Agent code reaches only the public internet unless you allow a host, in [Operating a beamlet](operating-a-beamlet.md#firewall).
 
 **Your client asks you to sign in again.** Its token expired or was deleted. An OAuth client stays signed in while you use it at least once a month. Sign in again, or [create a new token](tokens-and-policies.md#creating-and-managing-tokens) for a client that uses one.
 

@@ -2,7 +2,7 @@
 
 **Status:** Standing context: the threat model, the rule for deciding what to fix, and the risks accepted. Written from the 0.1 code review and checked against the code by the pre-release review. The mechanism lives in `design.md`; this note says what it defends, what it does not, and why, and points there. Update it in the same piece of work as any change that adds an input Beamlet reads back, touches the token edge or the app, changes a grant or a guardrail, or accepts or closes a risk.
 
-**Last updated:** 2026-10-09 (the image's firewall and users)
+**Last updated:** 2026-10-09 (the image's firewall and users; § 8 from the security guide's redraft)
 
 ---
 
@@ -90,3 +90,18 @@ The stance holds while each of these stays true. When one changes, revisit § 1 
 - **Agent paths never see an identity.** Private routes (roadmap) need the owner recognised there, through a second, weaker cookie that is never the app's.
 - **Every principal comes from a token.** A principal handed in by an embedder calling tools in-process (roadmap, an idea) has no edge to authenticate it.
 - **Agent code shares the VM.** An isolation boundary would make the policy containment, and group 2 findings worth fixing again.
+
+## 8. What is at stake and the ways in
+
+Worked out for the security guide's redraft (2026-10-09), which carries the owner's version. Assumes code past the policy running as `beamlet` in the image.
+
+**What is at stake**, by harm:
+
+1. **The owner's data.** Read, destroy or quietly alter anything in `/data`. A token grants it; no escape needed. Backups, and keeping in a beamlet only what a token holder may read.
+2. **Secrets.** Beamlet's own, `secret_key_base` and the token and session tables, need an escape and give lasting access: a planted token, a module in the code dir, which compiles at boot, or code in `config.exs`, which `beamlet` can write and every release command evaluates, each survives deleting the token. `beamlet reset` keeps the tokens, the owner and the config file and wipes only what agents built, so a suspected escape means a fresh data dir; a command rotating every credential (roadmap) covers a leak, not an escape. Third-party credentials given to agent code are readable by agent code, escape or not.
+3. **Abuse from the beamlet.** Phishing or malware pages on the owner's domain, spam, attacks on other services, mining. Much of it needs no escape, since a beamlet exists to serve pages and make requests; escaped code can also hide outside the visible routes and run binaries from `/tmp` or `/data`. Mitigated by noticing, and by resource limits the image cannot set: `--memory`, `--cpus`, `--pids-limit`, or the machine size on Fly.
+4. **Reaching beyond the beamlet.** The private network, the metadata address, the owner's other Fly apps, the host. Closed by the firewall and the container (§ 3). Escape to the host needs a kernel bug; on Fly the container is a Firecracker VM of its own.
+
+**The ways in**, likeliest first: a leaked token, since tokens sit in plain text in client config files; prompt injection through ordinary APIs, since the default policy allows `Host.HTTP` to public hosts and a beamlet holds all three legs of the lethal trifecta (private data, untrusted content, a way out); bugs in what agents build, public pages with SQL injection, or XSS on the app's origin (§ 6); a crafted escape, which takes Beamlet-specific knowledge and grows with Beamlet's profile; a weak password, with no rate limit (§ 6); a bug at Beamlet's edge; phishing the owner's consent; the hosting account. The two likeliest need no escape, so the guide leads with them. A leaked token in a person's hands is not steered by its policy at all: it can become an escape.
+
+**Layers around the process.** Anything wrapped around the server wraps the whole beamlet, since agent code runs in the BEAM: it bounds what code past the policy reaches beyond the beamlet, never the beamlet's own data. So the guide's sandboxing advice is choosing the box by what else shares the machine. landrun, srt and smokescreen were left out (design § Deployment), each with where it would earn a place: srt for a local beamlet on a Mac, once `Host.HTTP` speaks a proxy, since Req, Finch and Mint ignore `HTTP_PROXY`; landrun on a bare Linux VM, or around an agent node that need not read `beamlet.db`; smokescreen if a domain allowlist becomes a feature, though one in `Host.HTTP` comes first. Untested under gVisor: the entrypoint's `iptables` rules, so the guide names a VM rather than a runtime. Any of these, or a microVM, earns its place around agent code once it has a node of its own (§ 1).

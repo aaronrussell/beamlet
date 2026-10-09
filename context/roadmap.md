@@ -8,7 +8,7 @@ Work tracking for Beamlet: the next release, the backlog, what to watch and loos
 
 ### v0.1.1
 
-- **Redraft the security guide** (2026-10-08). From disclaiming the sandbox to saying what the risks are, how someone gets in, and what the owner can do about each, with references. Prompted by a reply to the launch post. See `notes/security-guide.md`.
+- TBD
 
 ### 0.2.0
 
@@ -24,6 +24,7 @@ Grouped by area.
 - **Agent-installed dependencies.** Hex packages at runtime: the agent proposes, the owner approves, the beamlet installs, the policy grants. A durable manifest with git-audit treatment, applied at boot before the code dir compiles; `Mix.install` is once per VM, so a change means a restart. Reopens the trusted-owner posture (`security.md` § 7) and brings a package-level grant (`allow_app`, declined at step 9 of the port).
 - **Static assets.** Agent-served files and agent-installed JavaScript and CSS, colocated in agent modules as the likely shape; `Beamlet.Assets` is where served files grow. Open: where npm packages live and who runs the install; colocated CSS needs `root_tag_attribute` set in the VM that compiles the module, so the library sets it or requires it of every host; both extract to files under `_build` for a bundler, which the no-bundler substrate would serve itself.
 - **Protocols** (2026-09-30). `defprotocol`, `defimpl` and `@derive` in agent code, all refused today. An agent's own protocol is the easy half; implementing a library one fights build-time consolidation, with two routes open. Demand today is `@derive Jason.Encoder`, which building a map covers. M to L. See `notes/protocols.md`.
+- **A secret store** (2026-10-09). Credentials agent code never holds: the owner stores a key, and `Host.HTTP` adds it to requests for the hosts it is meant for. Closes a key leaking through prompt injection or code past its policy (`security.md` § 8). Needs design: where keys live, how the owner adds one, and how agent code names one.
 
 ### Authoring loop
 
@@ -35,7 +36,7 @@ Grouped by area.
 - **Admin pages.** LiveViews under `/beamlet` behind the login: files with drag-and-drop upload, routes, read-only module source, and the token list with self-service tokens. Sensitive actions ask for the password again.
 - **Uploads to agent routes.** The server has no multipart parser (2026-10-03), since `Plug.Parsers` writes uploads to the system temp dir, where agent code cannot read them. Needs the parser back in the endpoint list and a `Host.*` function moving an upload into the files dir. Goes with the files page.
 - **Consent hardening** (2026-10-01). Script on an agent page can drive the consent page as the signed-in owner (`security.md` § 6). The fix chosen: Allow asks for the password every time, signed in or not, and client ids on the beamlet's own host are refused. A separate origin for agent pages is the complete fix, needed if pages are ever shared publicly.
-- **Private routes.** Routes only the owner can reach: `private: true` on the mount, never the path or the controller, the generated router putting the row in a scope that requires the owner. Access keys on the web identity, never the principal. The app's cookie stays scoped to `/beamlet`, so this needs a second, weaker cookie on agent paths that admits the owner to private routes and to nothing of the app's.
+- **Private routes.** Routes only the owner can reach: `private: true` on the mount, never the path or the controller, the generated router putting the row in a scope that requires the owner. Access keys on the web identity, never the principal. The app's cookie stays scoped to `/beamlet`, so this needs a second, weaker cookie on agent paths that admits the owner to private routes and to nothing of the app's. Leaning (2026-10-09): private by default, public opt-in, and JSON routes reachable with a token, perhaps a new kind, which keys on a principal against the line above and reopens `security.md` § 7.
 - **Disconnect app pages on a new password** (2026-10-01). A new password from `beamlet setup` deletes every session but cannot disconnect open app pages, since the CLI has no way to the server's PubSub; an open page looks signed in until its next reload, and its events still run. Rare. Closed by the CLI reaching the server over distribution, or app pages checking their session before an event or on a timer.
 - **A favicon**, with the brand. There is no `<link rel="icon">`, and `/favicon.ico` answers 404.
 - **A welcome at `/`** for a fresh beamlet, pointing the owner at `/beamlet` in place of the plain 404.
@@ -48,6 +49,8 @@ Grouped by area.
 - **A session plug for embedders.** At the head of the app's pipeline, raising when the session is already fetched, enforcing design § Web's precondition. Once embedding is settled.
 
 ### Hardening
+
+- **A command to rotate every credential** (2026-10-09). For when something that gets you in may have leaked but the beamlet is unchanged: it deletes every token, session and the owner, regenerates `secret_key_base` in the data dir, and moves `config.exs` aside to be checked and copied back. Then `beamlet setup`, sign in, reconnect clients; what agents built stays. Not breach recovery: code past its policy can plant a way back in the code dir, which compiles at boot, so that still means a fresh data dir. Its own command rather than a `reset` flag, since it keeps what `reset` deletes; `recover` over `nuke`, which promises the opposite. Open: `SECRET_KEY_BASE` from the environment cannot be rotated, only reported. The security guide's "If something goes wrong" gains the middle step when it lands.
 
 Security minors from the review (2026-10-01):
 
@@ -87,3 +90,5 @@ One line each, with the release it was noted in.
 - A hosted or external OAuth issuer in place of Beamlet's own. (0.1)
 - A principal handed in by an embedding host calling tools in-process, without a token; a principal that encodes and decodes is the seam. (0.1)
 - Omni as a dependency, as a library for agents to use. (0.1)
+- Token hygiene: an expiry on command-line tokens and a last-used time in `beamlet tokens`. (0.1)
+- An outbound request log for `Host.HTTP`, and an optional domain allowlist there. (0.1)

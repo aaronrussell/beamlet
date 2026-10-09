@@ -30,8 +30,8 @@ The environment sets how your beamlet runs, and the config file sets what it doe
 | `BEAMLET_DATA_DIR` | `/data` | The data dir. The image sets it. |
 | `BEAMLET_DEFINE_TIMEOUT` | `30000` | How long one define or patch may take to compile, in milliseconds. |
 | `BEAMLET_EVAL_TIMEOUT` | `30000` | How long one eval may run, in milliseconds. |
-| `BEAMLET_FIREWALL` | `on` | `off` starts your beamlet without its [firewall](#the-firewall) rules. |
-| `BEAMLET_HTTP_ALLOW` | none | Hosts on your own network that agent code may reach, comma-separated. See [the firewall](#the-firewall). |
+| `BEAMLET_FIREWALL` | `on` | `off` starts your beamlet without its [firewall](#firewall) rules. |
+| `BEAMLET_HTTP_ALLOW` | none | Hosts on your own network that agent code may reach, comma-separated. See [the firewall](#firewall). |
 | `BEAMLET_MCP_REQUEST_TIMEOUT` | `65000` | How long a tool has to answer before the client sees "Server unavailable", in milliseconds. |
 | `BEAMLET_URL` | `http://localhost:4000` | The address your beamlet is reached at. Sign-in and OAuth are built on it. |
 | `PORT` | `4000` | The port it listens on inside the container. |
