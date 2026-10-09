@@ -3,7 +3,7 @@ defmodule Beamlet.MixProject do
 
   @name "Beamlet"
   @description "An Elixir server that AI agents build from the inside, over MCP."
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/aaronrussell/beamlet"
 
   def project do
