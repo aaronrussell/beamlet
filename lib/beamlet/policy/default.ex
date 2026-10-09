@@ -21,12 +21,20 @@ defmodule Beamlet.Policy.Default do
   # Host.File re-checks every path it receives, except wildcard, which
   # touches the real filesystem; System keeps its clock/VM
   # introspection and loses shell, env, and lifecycle control.
+  # Exception loses the forms that take a stacktrace, which reach
+  # ErlangError.normalize/2: it applies the module and function named
+  # in a stacktrace entry's error_info, and a stacktrace is a list the
+  # agent can build. blame_mfa reads any module's clauses from its
+  # beam, and FunctionClauseError.blame/2 reaches it from a hand-built
+  # struct. Calendar loses put_time_zone_database, a VM-wide write that
+  # runs the agent's module in every DateTime call on the default
+  # database, Beamlet's included.
   @elixir %{
     Access => :all,
     Atom => :all,
     Base => :all,
     Bitwise => :all,
-    Calendar => :all,
+    Calendar => {:except, [put_time_zone_database: 1]},
     Calendar.ISO => :all,
     Calendar.TimeZoneDatabase => :all,
     Calendar.UTCOnlyTimeZoneDatabase => :all,
@@ -37,9 +45,20 @@ defmodule Beamlet.Policy.Default do
     Duration => :all,
     Enum => :all,
     Enumerable => :all,
-    Exception => :all,
+    ErlangError => {:except, [normalize: 2]},
+    Exception =>
+      {:except,
+       [
+         blame: 3,
+         blame_mfa: 3,
+         format: 3,
+         format_banner: 3,
+         format_exit: 1,
+         normalize: 3
+       ]},
     Float => :all,
     Function => {:except, [capture: 3]},
+    FunctionClauseError => {:except, [blame: 2]},
     IO =>
       {:only,
        [
@@ -118,7 +137,9 @@ defmodule Beamlet.Policy.Default do
   # granted as a family and derived so a new Elixir exception never
   # goes stale in a manual list (the golden fixture still surfaces
   # each addition for review). Includes exceptions of denied
-  # modules: rescuing File.Error does not grant File.
+  # modules: rescuing File.Error does not grant File. The families
+  # merge before the hand-written rows, so a carve-out on an exception
+  # module wins over its family's :all.
   @elixir_exceptions for mod <- Application.spec(:elixir, :modules),
                          Code.ensure_loaded?(mod),
                          function_exported?(mod, :__struct__, 0),
@@ -207,18 +228,41 @@ defmodule Beamlet.Policy.Default do
   # queries. Ecto.Migration loses execute_file, which reads SQL from a
   # real path. Ecto.Repo itself is not granted: Host.Repo is the one
   # repo agent code reaches, and the adapters, the sandbox and Exqlite
-  # beneath it open database files by path.
+  # beneath it open database files by path. Ecto.Multi loses run/5 and
+  # merge/4, which apply a module and function the agent names; run/3
+  # and merge/2 take a fun instead. Ecto.Schema loses its @doc false
+  # plumbing, which the macros expand to after the scan:
+  # __embeds_module__ compiles the block it is handed, and the rest
+  # call callbacks on whatever module they are given. Ecto.Type loses
+  # its adapter_* plumbing for the same reason.
   @data %{
     Ecto => :all,
     Ecto.Changeset => :all,
     Ecto.Enum => :all,
     Ecto.Migration => {:except, [execute_file: 1, execute_file: 2]},
-    Ecto.Multi => :all,
+    Ecto.Multi => {:except, [merge: 4, run: 5]},
     Ecto.ParameterizedType => :all,
     Ecto.Query => :all,
     Ecto.Query.API => :all,
-    Ecto.Schema => :all,
-    Ecto.Type => :all,
+    Ecto.Schema =>
+      {:except,
+       [
+         __after_verify__: 1,
+         __belongs_to__: 4,
+         __define_timestamps__: 2,
+         __embeds_many__: 4,
+         __embeds_module__: 4,
+         __embeds_one__: 4,
+         __field__: 4,
+         __has_many__: 4,
+         __has_one__: 4,
+         __many_to_many__: 4,
+         __schema__: 1,
+         __schema__: 5,
+         __timestamps__: 1,
+         association: 5
+       ]},
+    Ecto.Type => {:except, [adapter_autogenerate: 2, adapter_dump: 3, adapter_load: 3]},
     Ecto.UUID => :all
   }
 
@@ -293,14 +337,12 @@ defmodule Beamlet.Policy.Default do
   # coverage walk.
   @language %{:__MODULE__ => :all}
 
-  @granted @elixir
-           |> Map.merge(Map.new(@elixir_exceptions, &{&1, :all}))
+  @granted Map.new(@elixir_exceptions ++ @data_exceptions ++ @http_exceptions, &{&1, :all})
+           |> Map.merge(@elixir)
            |> Map.merge(@erlang)
            |> Map.merge(@web)
            |> Map.merge(@data)
-           |> Map.merge(Map.new(@data_exceptions, &{&1, :all}))
            |> Map.merge(@http)
-           |> Map.merge(Map.new(@http_exceptions, &{&1, :all}))
            |> Map.merge(@host)
            |> Map.merge(@language)
 

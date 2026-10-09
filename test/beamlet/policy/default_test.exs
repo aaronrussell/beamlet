@@ -161,6 +161,12 @@ defmodule Beamlet.Policy.DefaultTest do
       refute Policy.allowed?(policy, File)
     end
 
+    test "a carve-out on an exception module wins over its family", %{policy: policy} do
+      assert policy.grants[KeyError] == :all
+      assert policy.grants[ErlangError] == {:except, [normalize: 2]}
+      assert policy.grants[FunctionClauseError] == {:except, [blame: 2]}
+    end
+
     test "limits Macro to its string helpers", %{policy: policy} do
       assert Policy.allowed?(policy, Macro, :underscore, 1)
       assert Policy.allowed?(policy, Macro, :camelize, 1)
@@ -207,6 +213,42 @@ defmodule Beamlet.Policy.DefaultTest do
       refute Policy.allowed?(policy, Ecto.Migration, :execute_file, 1)
       refute Policy.allowed?(policy, Ecto.Repo)
       refute Policy.allowed?(policy, Ecto.Migrator)
+    end
+
+    test "denies the functions that call a module named as data", %{policy: policy} do
+      for {mod, fun, arity} <- [
+            {Exception, :normalize, 3},
+            {Exception, :format, 3},
+            {Exception, :format_banner, 3},
+            {Exception, :format_exit, 1},
+            {Exception, :blame, 3},
+            {Exception, :blame_mfa, 3},
+            {ErlangError, :normalize, 2},
+            {FunctionClauseError, :blame, 2},
+            {Calendar, :put_time_zone_database, 1},
+            {Ecto.Multi, :run, 5},
+            {Ecto.Multi, :merge, 4},
+            {Ecto.Schema, :__embeds_module__, 4},
+            {Ecto.Schema, :association, 5},
+            {Ecto.Type, :adapter_load, 3}
+          ] do
+        refute Policy.allowed?(policy, mod, fun, arity), "#{inspect(mod)}.#{fun}/#{arity}"
+      end
+
+      for {mod, fun, arity} <- [
+            {Exception, :message, 1},
+            {Exception, :normalize, 2},
+            {Exception, :format, 2},
+            {Exception, :format_stacktrace, 1},
+            {FunctionClauseError, :blame, 3},
+            {Calendar, :strftime, 2},
+            {Ecto.Multi, :run, 3},
+            {Ecto.Multi, :merge, 2},
+            {Ecto.Schema, :field, 3},
+            {Ecto.Schema, :__using__, 1}
+          ] do
+        assert Policy.allowed?(policy, mod, fun, arity), "#{inspect(mod)}.#{fun}/#{arity}"
+      end
     end
 
     test "expands the shipped packages, hidden modules excluded", %{policy: policy} do

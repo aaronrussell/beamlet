@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+
+- The default policy closes a few more ways for agent code to call a module indirectly, out of the policy's sight.
+
 ## [0.1.0] - 2026-10-07
 
 First public release of Beamlet, an Elixir server that AI agents build from the inside, over MCP.

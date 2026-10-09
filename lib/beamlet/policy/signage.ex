@@ -40,7 +40,10 @@ defmodule Beamlet.Policy.Signage do
          "Req.Response", Host.HTTP},
     data:
       {"the agent database is reached through Host.Repo; raw SQL is Host.Repo.query!(sql)",
-       Host.Repo}
+       Host.Repo},
+    exception:
+      {"Exception.message/1 gives a rescued exception's text, and " <>
+         "Exception.format_stacktrace/1 its stacktrace", Exception}
   ]
 
   @modules %{
@@ -101,7 +104,9 @@ defmodule Beamlet.Policy.Signage do
     {Phoenix.Component, :embed_templates} => :fs,
     {Phoenix.Controller, :send_download} => :fs,
     {Plug.Conn, :send_file} => :fs,
-    {Ecto.Migration, :execute_file} => :fs
+    {Ecto.Migration, :execute_file} => :fs,
+    {Exception, :format} => :exception,
+    {Exception, :format_banner} => :exception
   }
 
   @doc "The hint for a refused module, or `nil` when the generic copy is all there is."

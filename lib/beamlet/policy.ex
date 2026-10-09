@@ -166,7 +166,8 @@ defmodule Beamlet.Policy do
     %{policy | grants: Map.merge(grants, Map.new(modules, &{&1, :all}))}
   end
 
-  # Whether the module is granted at all, for structs, require and use.
+  # Whether the module is granted at all, in whole or in part, for
+  # require, use and the wording of a refusal.
   @doc false
   @spec allowed?(t(), module()) :: boolean()
   def allowed?(%__MODULE__{grants: grants}, module), do: Map.has_key?(grants, module)

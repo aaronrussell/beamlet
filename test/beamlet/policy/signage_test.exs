@@ -87,6 +87,11 @@ defmodule Beamlet.Policy.SignageTest do
       assert Signage.hint(Policy.default(), Kernel, :spawn) =~ "process primitives"
       assert Signage.hint(Policy.default(), Kernel, :apply) == nil
     end
+
+    test "the stacktrace forms of Exception redirect to message and format_stacktrace" do
+      assert Signage.hint(Policy.default(), Exception, :format) =~ "Exception.message/1"
+      assert Signage.hint(Policy.default(), Exception, :normalize) == nil
+    end
   end
 
   describe "denials/1" do

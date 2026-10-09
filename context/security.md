@@ -40,14 +40,14 @@ So the token is the boundary. What a token reaches past its policy is what the o
 
 What steers a token, each a guardrail under § 1:
 
-- **The policy and the scanner** (design § Policy): which tools, which shape rules, which names agent code may call. The grant table keeps anything that builds or loads code denied, `:crypto`'s engine family included.
+- **The policy and the scanner** (design § Policy): which tools, which shape rules, which names agent code may call. The grant table keeps anything that builds or loads code denied, `:crypto`'s engine family included. The scanner judges names at call sites and the targets the compiler expands, never the values passed as arguments. A function that does harm through its arguments is denied by name, or left granted and listed below.
 - **The outbound guard** on `Host.HTTP` (design § HTTP): loopback, private, link-local and cloud metadata addresses are refused on every hop, opened per beamlet with `config :beamlet, http: [allow: [...]]`. This is the main defence against "fetch this URL" injection, and why `Host.HTTP` refuses the options that would send a request somewhere the guard never checked.
 - **Scoped storage.** `Host.File` under the files dir; an authorizer on the agent database refusing `ATTACH`, `DETACH` and `VACUUM INTO`.
 
 **Known open, by design.** Each of these is a way past the policy that stays open because an easier route of the same kind does. Do not propose closing them one at a time; only an isolation boundary closes the class.
 
-- **Module names as data.** A library function or macro handed a module calls it, and the scanner checks names in call position only (`plug Plug.Static` in an agent controller, `Ecto.Multi.run/5`).
-- **Forged structs.** A map with a `__struct__` key runs that struct's protocol implementations. Struct literals are not checked against the grants for this reason.
+- **Module names as data.** A library function or macro handed a module calls it, and the scanner checks names in call position only: `plug Plug.Static` in an agent controller, a `{mod, fun, args}` value for `with:` on `cast_assoc/3` or for `autogenerate:`, `defaults:` and `preload_order:` in a schema, the repo given to `unsafe_validate_unique/3`, the type given to `Ecto.ParameterizedType.init/2`, and a controller view or a LiveView layout, each of which renders through any module's one-argument function. Where agent code can do without such a function it is denied by name instead: `Ecto.Multi.run/5` and `merge/4`, the `Exception` functions that take a stacktrace, and the plumbing of `Ecto.Schema` and `Ecto.Type`.
+- **Forged structs.** A map with a `__struct__` key runs that struct's protocol implementations, and a struct built by hand carries what its constructors would refuse: an `Ecto.Multi` holding a `{:run, {mod, fun, args}}` operation runs it in `Host.Repo.transaction`. Struct literals are not checked against the grants for this reason.
 - **Macros expand after the scan.** The scanner reads the source as written, so a macro of a granted module expands unscanned: `~w(...)a` makes atoms, and an expression inside `~H` calls what it names, with neither the refusal nor the `Host.File` redirect.
 - **Atoms at runtime.** `String.to_atom/1` and `List.to_atom/1` are denied, completing that rule, but `Jason.decode` with `keys: :atoms` and `~w(...)a` (macros, above) still make them.
 - **Req's options as data.** `Host.HTTP` refuses what bypasses the guard or reaches the disk and leaves the rest to Req.

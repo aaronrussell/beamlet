@@ -867,6 +867,9 @@ defmodule Beamlet.ScannerTest do
 
                  schema "items" do
                    field :name, :string
+                   belongs_to :list, Scan.Fixture.List
+                   has_many :notes, Scan.Fixture.Note
+                   embeds_one :meta, Scan.Fixture.Meta
                    timestamps()
                  end
 
@@ -874,6 +877,26 @@ defmodule Beamlet.ScannerTest do
                  def changeset(item, attrs), do: item |> cast(attrs, [:name]) |> validate_required([:name])
                end
                """)
+    end
+
+    test "Ecto.Schema's plumbing is refused by name" do
+      assert scan_error(~s|Ecto.Schema.__embeds_module__(__ENV__, Mod, [], nil)|, @default) =~
+               "Ecto.Schema.__embeds_module__/4 is not permitted by your policy"
+    end
+
+    test "Exception's stacktrace forms are refused with the way round" do
+      assert scan_error(
+               """
+               try do
+                 raise "boom"
+               rescue
+                 e -> Exception.format(:error, e, __STACKTRACE__)
+               end
+               """,
+               @default
+             ) =~
+               "Exception.format/3 is not permitted by your policy — " <>
+                 "Exception.message/1 gives a rescued exception's text"
     end
 
     test "Ecto.Migration.execute passes; execute_file reads a real path" do

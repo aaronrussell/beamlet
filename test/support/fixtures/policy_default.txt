@@ -18,7 +18,7 @@ BadFunctionError :all
 BadMapError :all
 Base :all
 Bitwise :all
-Calendar :all
+Calendar except put_time_zone_database/1
 Calendar.ISO :all
 Calendar.TimeZoneDatabase :all
 Calendar.UTCOnlyTimeZoneDatabase :all
@@ -41,7 +41,7 @@ Ecto.InvalidChangesetError :all
 Ecto.InvalidURLError :all
 Ecto.Migration except execute_file/1, execute_file/2
 Ecto.MigrationError :all
-Ecto.Multi :all
+Ecto.Multi except merge/4, run/5
 Ecto.MultiplePrimaryKeyError :all
 Ecto.MultipleResultsError :all
 Ecto.NoPrimaryKeyFieldError :all
@@ -53,24 +53,24 @@ Ecto.Query.API :all
 Ecto.Query.CastError :all
 Ecto.Query.CompileError :all
 Ecto.QueryError :all
-Ecto.Schema :all
+Ecto.Schema except __after_verify__/1, __belongs_to__/4, __define_timestamps__/2, __embeds_many__/4, __embeds_module__/4, __embeds_one__/4, __field__/4, __has_many__/4, __has_one__/4, __many_to_many__/4, __schema__/1, __schema__/5, __timestamps__/1, association/5
 Ecto.StaleEntryError :all
 Ecto.SubQueryError :all
-Ecto.Type :all
+Ecto.Type except adapter_autogenerate/2, adapter_dump/3, adapter_load/3
 Ecto.UUID :all
 Enum :all
 Enum.EmptyError :all
 Enum.OutOfBoundsError :all
 Enumerable :all
-ErlangError :all
-Exception :all
+ErlangError except normalize/2
+Exception except blame/3, blame_mfa/3, format/3, format_banner/3, format_exit/1, normalize/3
 File.CopyError :all
 File.Error :all
 File.LinkError :all
 File.RenameError :all
 Float :all
 Function except capture/3
-FunctionClauseError :all
+FunctionClauseError except blame/2
 Host.Code :all
 Host.File :all
 Host.HTTP :all
