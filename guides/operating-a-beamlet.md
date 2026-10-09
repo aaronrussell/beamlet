@@ -30,6 +30,8 @@ The environment sets how your beamlet runs, and the config file sets what it doe
 | `BEAMLET_DATA_DIR` | `/data` | The data dir. The image sets it. |
 | `BEAMLET_DEFINE_TIMEOUT` | `30000` | How long one define or patch may take to compile, in milliseconds. |
 | `BEAMLET_EVAL_TIMEOUT` | `30000` | How long one eval may run, in milliseconds. |
+| `BEAMLET_FIREWALL` | `on` | `off` starts your beamlet without its [firewall](#the-firewall) rules. |
+| `BEAMLET_HTTP_ALLOW` | none | Hosts on your own network that agent code may reach, comma-separated. See [the firewall](#the-firewall). |
 | `BEAMLET_MCP_REQUEST_TIMEOUT` | `65000` | How long a tool has to answer before the client sees "Server unavailable", in milliseconds. |
 | `BEAMLET_URL` | `http://localhost:4000` | The address your beamlet is reached at. Sign-in and OAuth are built on it. |
 | `PORT` | `4000` | The port it listens on inside the container. |
@@ -39,28 +41,31 @@ The MCP request timeout must be longer than the other two, so that a slow eval r
 
 Your beamlet serves plain HTTP. HTTPS belongs to whatever sits in front of it, and `BEAMLET_URL` is the `https` address it's reached at.
 
-### The config file
+### Firewall
 
-The config file, `config.exs` in the data dir, sets everything else. [Tokens and policies](tokens-and-policies.md) covers writing policies there, and copying the file in.
+Inside Docker, your beamlet sets firewall rules as it starts, which is what `--cap-add NET_ADMIN` is for. They bound what agent code reaches, even code that gets past its policy: TCP to public addresses, apart from port 25 for mail, and DNS. Your own network, other containers, a cloud provider's metadata address and every other protocol are refused.
 
-The other setting people reach for is the allow list. Agent code reaches only the public internet, so a host on your own network has to be allowed:
+A host on your own network that agent code should reach goes in `BEAMLET_HTTP_ALLOW`, as names, addresses or CIDR blocks:
 
-```elixir
-import Config
-
-config :beamlet,
-  http: [allow: ["homeassistant.local", "192.168.1.0/24"]]
+```shell
+-e BEAMLET_HTTP_ALLOW=homeassistant.local,192.168.1.0/24
 ```
 
-Allow a host by name if that's how agent code will ask for it; allowing its address is not enough. The same file sets the eval's memory and output caps and a path prefix for the agents' routes, and `Beamlet.Config` lists every key.
+Where your beamlet can't have `NET_ADMIN`, `BEAMLET_FIREWALL=off` starts it without the rules. Agent code then reaches whatever the container can, held back only by `Host.HTTP`.
+
+### Policies
+
+Policies are defined in `config.exs` in the data dir. [Tokens and policies](tokens-and-policies.md) covers writing policies there, and copying the file in.
 
 ## Reading what it built
 
 The easy way is to ask the agent, as in [Working with your beamlet](working-with-your-beamlet.md). From the shell, the code dir is a git repository with a commit for every change, its author the token that made it:
 
 ```shell
-docker exec my-beamlet git -C /data/code log
+docker exec -u beamlet my-beamlet git -C /data/code log
 ```
+
+Run git as `beamlet`, the user that owns the code dir. Git refuses a repository another user owns.
 
 The databases are SQLite files, which any SQLite tool can open.
 

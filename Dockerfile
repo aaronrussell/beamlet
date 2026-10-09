@@ -37,11 +37,12 @@ RUN mix compile --warnings-as-errors && mix release
 
 FROM ${RUNNER_IMAGE}
 
-# git is what the code audit shells out to; the rest is what ERTS
-# needs on a slim image, libsctp1 so the socket layer stops warning
-# that it cannot find it.
+# git is what the code audit shells out to and iptables what the
+# entrypoint sets the firewall with; the rest is what ERTS needs on a
+# slim image, libsctp1 so the socket layer stops warning that it
+# cannot find it.
 RUN apt-get update -y && \
-    apt-get install -y git libstdc++6 openssl libncurses5 libsctp1 locales ca-certificates && \
+    apt-get install -y git iptables libstdc++6 openssl libncurses5 libsctp1 locales ca-certificates && \
     apt-get clean && rm -f /var/lib/apt/lists/*_*
 
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
@@ -49,19 +50,23 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
-# `fly ssh console` runs as root, and git refuses a repository another
-# user owns, so the code dir is trusted for everyone.
-RUN git config --system --add safe.directory /data/code
-
-RUN useradd --uid 1000 --user-group --create-home --home-dir /app --shell /usr/sbin/nologin beamlet && \
+# The image starts as root, for the entrypoint's firewall, and the
+# release drops to `beamlet` (rel/env.sh.eex). `beamlet` owns /data
+# and nothing else: the release, /app included, is root's, so code
+# past the policy cannot change what root runs later, and it has no
+# home. What the release writes goes to /tmp.
+RUN useradd --uid 1000 --user-group --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin beamlet && \
     mkdir /data && chown beamlet:beamlet /data
 
 WORKDIR /app
-COPY --from=builder --chown=beamlet:beamlet /app/server/_build/prod/rel/beamlet_server ./
-USER beamlet
+COPY --from=builder /app/server/_build/prod/rel/beamlet_server ./
+COPY server/rel/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
 ENV BEAMLET_DATA_DIR=/data
+ENV RELEASE_TMP=/tmp
+ENV ERL_CRASH_DUMP=/tmp/erl_crash.dump
 ENV PATH="/app/bin:${PATH}"
 EXPOSE 4000
 
+ENTRYPOINT ["docker-entrypoint"]
 CMD ["beamlet_server", "start"]

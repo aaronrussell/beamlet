@@ -29,6 +29,7 @@ The easiest way to run Beamlet is with Docker. Run the published image with a vo
 ```shell
 docker run -d \
   --name my-beamlet \
+  --cap-add NET_ADMIN \
   -p 4000:4000 \
   -v beamlet_data:/data \
   -e BEAMLET_URL=http://localhost:4000 \

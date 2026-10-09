@@ -1,6 +1,6 @@
 # Security guide redraft
 
-**Status:** Analysis for the redraft of `guides/security.md` (2026-10-08). Roadmap, Next, v0.1.1. Folds into `security.md` once the Docker hardening lands; the ratings below are a first pass for the guide to test.
+**Status:** Analysis for the redraft of `guides/security.md` (2026-10-08). Roadmap, Next, v0.1.1. Folds into `security.md` with the redraft; the Docker hardening it assumes has landed (design § Deployment). The ratings below are a first pass for the guide to test.
 
 A reply to the launch post said the guide disclaims sandboxing without advising on it, and that the threat is not only someone else controlling a beamlet but a coding agent with the run of a remote server, even a disposable one. It suggested Anthropic's sandbox-runtime (srt). The guide today says what a policy is not and lists what is in place; the redraft says what can go wrong, how, how likely, and what the owner does about each.
 
@@ -11,7 +11,7 @@ Anything wrapped around the server process wraps the whole beamlet, not the agen
 - **srt.** On Linux bubblewrap leaves the process an empty network namespace, so nothing reaches the port; it is built for commands that only connect out. Outbound goes through its proxy via `HTTP_PROXY`, which Req, Finch and Mint ignore. Inside Docker it needs user namespaces or its weaker nested mode. A fork adding exposed ports exists privately; carrying one means a Node beta in the runtime image. A fit for a local beamlet on a Mac, where Seatbelt can allow a local port, once `Host.HTTP` speaks a proxy. Untested.
 - **landrun** (Landlock). Keeps the port, and children inherit its limits. But the BEAM needs reads across the release and system, writes to `/data` and `/tmp`, and to run its helpers, `git` and `sh`, so inside the container it adds only two things: no writes to the release, which a root-owned release gives for one line, and a limit on which programs run, which `sh` and the BEAM itself (files, sockets, native code) mostly route around. It would stop the common download-and-run binary. Worth it on a bare Linux VM, or around a separate agent node that need not read `beamlet.db`.
 - **smokescreen.** An egress proxy whose one addition over `iptables` is rules by domain name. It enforces nothing alone, since a proxy sees only traffic sent to it; `iptables` must force traffic through it either way. Worth carrying only if a domain allowlist becomes a feature, and the cheaper first step for that is one in `Host.HTTP`, where injection goes anyway.
-- **`iptables`.** Filters every packet by address, port and protocol, whatever sent it, and checks the address actually connected to, which closes DNS rebinding for private ranges. Shipped by default, roadmap v0.1.1.
+- **`iptables`.** Filters every packet by address, port and protocol, whatever sent it, and checks the address actually connected to, which closes DNS rebinding for private ranges. Shipped in the image (2026-10-09).
 
 ## The risks
 
@@ -44,7 +44,7 @@ The likely ways in, a leaked token and injection through ordinary APIs, need no 
 
 - Lead with the risks and the ways in, then what Beamlet does, then what the owner does. Keep "a guardrail, not a sandbox", but say what that means in consequences rather than as a disclaimer.
 - What the owner does: a strong password; HTTPS in front; only `/beamlet` and `/.well-known` open to the internet; a token per client, deleted when unused, and client config files treated as secrets; resource limits on the container; backups; third-party keys with narrow scope that can be revoked; treat the beamlet as disposable and reset after a suspected compromise; give it no cloud role or credentials it does not need; be wary of what the agent reads alongside a beamlet token.
-- What Beamlet does: today's list, plus the image's network rules and root-owned release once they land.
+- What Beamlet does: today's list, plus the image's network rules and root-owned release, which have landed.
 - Design work this points at, for the backlog when planned: token hygiene (expiry, last used), an outbound request log and an optional allowlist in `Host.HTTP`, credentials applied by Beamlet, and the consent hardening already in the backlog.
 
 ## References

@@ -8,7 +8,6 @@ Work tracking for Beamlet: the next release, the backlog, what to watch and loos
 
 ### v0.1.1
 
-- **Harden the Docker image** (2026-10-08). Bound what code past the policy reaches beyond the beamlet: the private network, the cloud metadata address, protocols other than TCP, the release itself. The release is copied in owned by root, not `beamlet`, with `RELEASE_TMP=/tmp`; check nothing else writes under `/app`, the `beamlet` user's home. The image installs `iptables` and starts as root: an entrypoint sets IPv4 and IPv6 rules (loopback, DNS, replies to inbound; outbound TCP to public addresses only, not port 25), opens the hosts in `http: [allow: ...]`, read from Beamlet's config with `eval` before dropping privileges and resolved at start, then `setpriv`s to `beamlet` with every capability gone and no-new-privileges set. Without `NET_ADMIN` it refuses to start with a message saying what to add, unless an explicit opt-out variable is set. `bin/beamlet` drops to `beamlet` when run as root, since `docker exec` now runs as root. Spike first: `iptables` on Fly, IPv6 on Docker and Fly (Fly's internal DNS is on a private IPv6 address the rules must leave open, its private network one they must close). Update every `docker run` (README, getting started, operating), the Fly guide if it needs anything, and fold the result into `security.md` and `design.md`. landrun, srt and smokescreen were assessed and left out; `notes/security-guide.md` says why.
 - **Redraft the security guide** (2026-10-08). From disclaiming the sandbox to saying what the risks are, how someone gets in, and what the owner can do about each, with references. Prompted by a reply to the launch post. See `notes/security-guide.md`.
 
 ### 0.2.0
@@ -45,6 +44,7 @@ Grouped by area.
 
 - **The modern-era MCP protocol** (2026-07-28). Anubis 2.0 is legacy-era and current clients negotiate it. Waits on Anubis.
 - **`BEAMLET_URL` from the platform** (2026-10-05). When it is unset, `runtime.exs` falls back to an address from a variable the platform sets, `https://$FLY_APP_NAME.fly.dev` on Fly and the like elsewhere, `BEAMLET_URL` always winning. The Fly guide loses its `fly secrets set` step.
+- **The configuration story** (2026-10-09). Settle what an operator of the standalone server configures where. `config.exs` was made for policies and drifted, through the docs, into a general place for any key: design § Deployment's "the file configures the beamlet", the `Beamlet.Config.Provider` moduledoc, the operating guide. So today the eval's memory and output caps and the route prefix can be set only in the file, the timeouts in both with the file winning, and the allow list in the environment for the firewall while the file still sets it for `Host.HTTP`. Not everything belongs in a variable; the review decides each key's home and whether the file is held to policies, then brings the design, the moduledoc and the guides into line. Until then the guides say less rather than more.
 - **A session plug for embedders.** At the head of the app's pipeline, raising when the session is already fetched, enforcing design § Web's precondition. Once embedding is settled.
 
 ### Hardening

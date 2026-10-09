@@ -66,6 +66,19 @@ if beamlet_url = System.get_env("BEAMLET_URL") do
     url: [host: url.host, port: url.port, scheme: url.scheme]
 end
 
+# The private hosts agent code may reach through Host.HTTP, as a
+# comma-separated list. The image's firewall reads the same variable
+# and nothing else, so in the image this is where a host is opened.
+if allow = System.get_env("BEAMLET_HTTP_ALLOW") do
+  hosts =
+    allow
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+
+  config :beamlet, http: [allow: hosts]
+end
+
 # The timeouts, in milliseconds as config takes them. Only a variable
 # that is set lands in config, so the defaults stay in Beamlet.Config
 # and the operator file in the data dir, merged after this, still has

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Added
+
+- The Docker image has a firewall that keeps agent code off your network, opened to the hosts you choose with `BEAMLET_HTTP_ALLOW`. It needs `--cap-add NET_ADMIN`.
+
 ### Changed
 
 - The default policy closes a few more ways for agent code to call a module indirectly, out of the policy's sight.

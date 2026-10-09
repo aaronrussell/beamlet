@@ -27,13 +27,14 @@ The easiest way to run Beamlet is with Docker. Run the published image with a vo
 ```shell
 docker run -d \
   --name my-beamlet \
+  --cap-add NET_ADMIN \
   -p 4000:4000 \
   -v beamlet_data:/data \
   -e BEAMLET_URL=http://localhost:4000 \
   ghcr.io/aaronrussell/beamlet:0.1
 ```
 
-The volume is the whole beamlet. Keep it and you keep everything the agent has built. `BEAMLET_URL` is the address you reach your beamlet at. On your own machine that's localhost. On a server, set it to the server's public HTTPS address.
+The volume is the whole beamlet. Keep it and you keep everything the agent has built. `--cap-add NET_ADMIN` lets your beamlet set firewall rules as it starts, keeping agent code off your network. `BEAMLET_URL` is the address you reach your beamlet at. On your own machine that's localhost. On a server, set it to the server's public HTTPS address.
 
 A beamlet has one user, you. Set your email and password:
 

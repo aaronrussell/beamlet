@@ -23,6 +23,7 @@ It isn't a sandbox. Agent code runs in the same VM as your beamlet, and Elixir i
 - Token secrets are shown once and stored only as hashes.
 - Chat clients connect with OAuth, using PKCE and single-use codes.
 - HTTP requests from agent code can't reach your private network, loopback or a cloud provider's metadata address, unless you allow a host.
+- In the Docker image, firewall rules hold agent code to public TCP even if it gets past its policy, and your beamlet runs as a user with no rights beyond its data dir.
 - Agent code's files are kept to the files dir, and the agent database can't reach any other file.
 - Your sign-in cookie is kept away from the pages agents build.
 
@@ -31,6 +32,6 @@ It isn't a sandbox. Agent code runs in the same VM as your beamlet, and Elixir i
 - Choose a strong password when you run `beamlet setup`.
 - Put HTTPS in front of your beamlet once it's online.
 - Give tokens only to clients you trust, and [delete the ones](tokens-and-policies.md#creating-and-managing-tokens) you stop using.
-- Open the [allow list](operating-a-beamlet.md#the-config-file) only to the hosts you mean.
+- Open the [allow list](operating-a-beamlet.md#the-firewall) only to the hosts you mean.
 - Consider opening only `/beamlet` and `/.well-known` to the internet at your proxy, and keeping everything else to your own network or behind basic auth. Clients connect and you sign in through those two paths alone.
 - Otherwise, treat every page an agent builds as public. Anyone with the address can open it, so don't build anything you wouldn't put on the open web.
